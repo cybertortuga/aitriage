@@ -46,7 +46,7 @@ jobs:
         run: CGO_ENABLED=1 go test -race -coverprofile=coverage.out ./...
 
       - name: Validate GoReleaser config
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: latest
           args: check
