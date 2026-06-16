@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cybertortuga/aitriage/internal/engine/baseline"
@@ -401,11 +403,91 @@ var scanCmd = &cobra.Command{
 			shouldFail = true
 			fmt.Fprintf(os.Stderr, "\nFAIL: Security Score %d is below required threshold %d\n", report.SecurityScore, failScore)
 		}
+		// ── GitHub Actions integration ────────────────────────────────
+		if os.Getenv("GITHUB_ACTIONS") == "true" {
+			printGitHubActionsAnnotations(report)
+			writeGitHubActionsSummary(report)
+		}
+
 		if shouldFail {
 			os.Exit(1)
 		}
 		return nil
 	},
+}
+
+func printGitHubActionsAnnotations(report scanner.ScanReport) {
+	for _, r := range report.Results {
+		if r.File == "" {
+			continue
+		}
+		relPath := r.File
+		if filepath.IsAbs(relPath) {
+			if rel, err := filepath.Rel(report.ProjectPath, relPath); err == nil {
+				relPath = rel
+			}
+		}
+
+		severity := "warning"
+		if r.Severity == "CRITICAL" || r.Severity == "HIGH" {
+			severity = "error"
+		}
+
+		line := r.Line
+		if line <= 0 {
+			line = 1
+		}
+
+		fmt.Printf("::%s file=%s,line=%d::[%s] %s - %s\n", severity, relPath, line, r.ID, r.Name, r.Suggestion)
+	}
+}
+
+func writeGitHubActionsSummary(report scanner.ScanReport) {
+	summaryFile := os.Getenv("GITHUB_STEP_SUMMARY")
+	if summaryFile == "" {
+		return
+	}
+
+	f, err := os.OpenFile(summaryFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	f.WriteString("## AITriage Security Scan Summary\n\n")
+	fmt.Fprintf(f, "**Security Grade:** %s | **Security Score:** %d/100\n\n", report.SecurityGrade, report.SecurityScore)
+
+	if len(report.Results) == 0 {
+		f.WriteString("✓ No security vulnerabilities found.\n")
+		return
+	}
+
+	f.WriteString("| Severity | Rule ID | File | Line | Recommendation |\n")
+	f.WriteString("|----------|---------|------|------|----------------|\n")
+
+	for _, r := range report.Results {
+		relPath := r.File
+		if relPath != "" && filepath.IsAbs(relPath) {
+			if rel, err := filepath.Rel(report.ProjectPath, relPath); err == nil {
+				relPath = rel
+			}
+		}
+		if relPath == "" {
+			relPath = "Project-level"
+		}
+
+		lineStr := "-"
+		if r.Line > 0 {
+			lineStr = fmt.Sprintf("%d", r.Line)
+		}
+
+		// Escape pipeline chars in suggestion/recommendation to prevent breaking markdown table
+		msg := strings.ReplaceAll(r.Suggestion, "|", "\\|")
+		msg = strings.ReplaceAll(msg, "\n", " ")
+		msg = strings.ReplaceAll(msg, "\r", "")
+
+		fmt.Fprintf(f, "| %s | %s | %s | %s | %s |\n", r.Severity, r.ID, relPath, lineStr, msg)
+	}
 }
 
 func init() {
