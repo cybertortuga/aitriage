@@ -8,22 +8,109 @@ permissions:
   contents: write
 
 jobs:
-  goreleaser:
-    runs-on: ubuntu-latest
+  build:
+    name: Build Binary (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            binary_name: aitriage
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            binary_name: aitriage
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            binary_name: aitriage
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            binary_name: aitriage.exe
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
-      - uses: goreleaser/goreleaser-action@v6
+      - name: Set up MSYS2 (Windows only)
+        if: matrix.os == 'windows-latest'
+        uses: msys2/setup-msys2@v2
         with:
-          version: latest
-          args: release --clean
+          update: true
+          path-type: inherit
+          install: mingw-w64-ucrt-x86_64-gcc
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: msys2 {0}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CGO_ENABLED: 1
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          go build -v -ldflags="-s -w" -o dist/${{ matrix.binary_name }} ./cmd/aitriage
+
+      - name: Build (Unix)
+        if: matrix.os != 'windows-latest'
+        env:
+          CGO_ENABLED: 1
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          go build -v -ldflags="-s -w" -o dist/${{ matrix.binary_name }} ./cmd/aitriage
+
+      - name: Package
+        shell: bash
+        run: |
+          cd dist
+          VERSION="${{ github.ref_name }}"
+          CLEAN_VER="${VERSION#v}"
+          OS_NAME=$(echo ${{ matrix.goos }} | awk '{print toupper(substr($0,1,1))substr($0,2)}')
+          ARCH_NAME="${{ matrix.goarch }}"
+          if [ "$ARCH_NAME" = "amd64" ]; then ARCH_NAME="x86_64"; fi
+          
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            tar -a -c -f ../aitriage_${CLEAN_VER}_${OS_NAME}_${ARCH_NAME}.zip ${{ matrix.binary_name }}
+          else
+            tar -czf ../aitriage_${CLEAN_VER}_${OS_NAME}_${ARCH_NAME}.tar.gz ${{ matrix.binary_name }}
+          fi
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: aitriage_*
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate Checksums
+        run: |
+          cd dist
+          sha256sum aitriage_* > checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/aitriage_*
+            dist/checksums.txt
+          generate_release_notes: true
+
