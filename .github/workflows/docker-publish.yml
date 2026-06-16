@@ -53,6 +53,7 @@ jobs:
             type=semver,pattern=v{{version}}
             type=semver,pattern=v{{major}}.{{minor}}
             type=semver,pattern=v{{major}}
+            type=ref,event=tag
 
       - name: Build and push
         uses: docker/build-push-action@v6
