@@ -49,7 +49,7 @@ func TestScanCommand(t *testing.T) {
 
 	// We run `scan <tempDir> --format json`
 	// We might get a non-zero exit code if fail-on is triggered, but we mainly care about output parsing.
-	cmd := exec.Command("./"+binaryName, "scan", tempDir, "--format", "json")
+	cmd := exec.Command("./"+binaryName, "scan", tempDir, "--format", "json", "--no-summary")
 
 	var out bytes.Buffer
 	var stderr bytes.Buffer

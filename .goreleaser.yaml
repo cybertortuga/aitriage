@@ -29,7 +29,7 @@ builds:
       - -s -w -X main.Version={{.Version}}
 
 archives:
-  - format: tar.gz
+  - formats: ["tar.gz"]
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -39,7 +39,7 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats: ["zip"]
 
 checksum:
   name_template: 'checksums.txt'
@@ -71,7 +71,7 @@ changelog:
 # ── Homebrew ──────────────────────────────────────────────────────────────────
 # Requires: cybertortuga/homebrew-aitriage repo + HOMEBREW_TAP_GITHUB_TOKEN secret
 # Users install via: brew install cybertortuga/aitriage/aitriage
-brews:
+homebrew_casks:
   - name: aitriage
     repository:
       owner: cybertortuga
@@ -80,10 +80,6 @@ brews:
     homepage: "https://github.com/cybertortuga/aitriage"
     description: "AI-Powered Security Audit Engine — 180+ rules, 11 stacks, zero dependencies"
     license: "MIT"
-    install: |
-      bin.install "aitriage"
-    test: |
-      system "#{bin}/aitriage", "version"
 
 # ── Release Notes ─────────────────────────────────────────────────────────────
 release:
