@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
 	"github.com/cybertortuga/aitriage/internal/agent/prompts"
@@ -163,8 +164,8 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 		combinedTriage = combinedTriage[:30000] + "\n...[TRUNCATED — too many findings]"
 	}
 
-	metadataBlock := fmt.Sprintf("## AITriage Core Engine Summary\n- **Security Score**: %d/100 (%s)\n- **Total raw findings**: %d\n\n",
-		state.SecurityScore, state.SecurityGrade, len(state.EnrichedFindings))
+	metadataBlock := fmt.Sprintf("## AITriage Core Engine Summary\n- **Date**: %s\n- **Security Score**: %d/100 (%s)\n- **Total raw findings**: %d\n\n",
+		time.Now().Format("January 2, 2006"), state.SecurityScore, state.SecurityGrade, len(state.EnrichedFindings))
 
 	userPrompt := fmt.Sprintf(prompts.ReportUserPromptTemplate, metadataBlock+combinedTriage)
 

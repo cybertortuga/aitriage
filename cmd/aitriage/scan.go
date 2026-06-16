@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cybertortuga/aitriage/internal/engine/core"
 	"github.com/cybertortuga/aitriage/internal/engine/baseline"
 	"github.com/cybertortuga/aitriage/internal/engine/history"
 	"github.com/cybertortuga/aitriage/internal/report/reporter"
@@ -418,11 +419,8 @@ var scanCmd = &cobra.Command{
 
 func printGitHubActionsAnnotations(report scanner.ScanReport) {
 	for _, r := range report.Results {
-		if r.File == "" {
-			continue
-		}
 		relPath := r.File
-		if filepath.IsAbs(relPath) {
+		if relPath != "" && filepath.IsAbs(relPath) {
 			if rel, err := filepath.Rel(report.ProjectPath, relPath); err == nil {
 				relPath = rel
 			}
@@ -433,12 +431,15 @@ func printGitHubActionsAnnotations(report scanner.ScanReport) {
 			severity = "error"
 		}
 
-		line := r.Line
-		if line <= 0 {
-			line = 1
+		if r.File == "" {
+			fmt.Printf("::%s::[%s] %s - %s\n", severity, r.ID, r.Name, r.Suggestion)
+		} else {
+			line := r.Line
+			if line <= 0 {
+				line = 1
+			}
+			fmt.Printf("::%s file=%s,line=%d::[%s] %s - %s\n", severity, relPath, line, r.ID, r.Name, r.Suggestion)
 		}
-
-		fmt.Printf("::%s file=%s,line=%d::[%s] %s - %s\n", severity, relPath, line, r.ID, r.Name, r.Suggestion)
 	}
 }
 
@@ -458,35 +459,55 @@ func writeGitHubActionsSummary(report scanner.ScanReport) {
 	fmt.Fprintf(f, "**Security Grade:** %s | **Security Score:** %d/100\n\n", report.SecurityGrade, report.SecurityScore)
 
 	if len(report.Results) == 0 {
-		f.WriteString("✓ No security vulnerabilities found.\n")
+		f.WriteString("No security issues found.\n")
 		return
 	}
 
-	f.WriteString("| Severity | Rule ID | File | Line | Recommendation |\n")
-	f.WriteString("|----------|---------|------|------|----------------|\n")
+	var codeFindings []core.CheckResult
+	var archFindings []core.CheckResult
 
 	for _, r := range report.Results {
-		relPath := r.File
-		if relPath != "" && filepath.IsAbs(relPath) {
-			if rel, err := filepath.Rel(report.ProjectPath, relPath); err == nil {
-				relPath = rel
+		if r.File == "" {
+			archFindings = append(archFindings, r)
+		} else {
+			codeFindings = append(codeFindings, r)
+		}
+	}
+
+	if len(codeFindings) > 0 {
+		f.WriteString("### Code-Level Vulnerabilities\n\n")
+		f.WriteString("| Severity | Rule ID | File | Line | Recommendation |\n")
+		f.WriteString("|----------|---------|------|------|----------------|\n")
+		for _, r := range codeFindings {
+			relPath := r.File
+			if relPath != "" && filepath.IsAbs(relPath) {
+				if rel, err := filepath.Rel(report.ProjectPath, relPath); err == nil {
+					relPath = rel
+				}
 			}
-		}
-		if relPath == "" {
-			relPath = "Project-level"
-		}
+			msg := strings.ReplaceAll(r.Suggestion, "|", "\\|")
+			msg = strings.ReplaceAll(msg, "\n", " ")
+			msg = strings.ReplaceAll(msg, "\r", "")
 
-		lineStr := "-"
-		if r.Line > 0 {
-			lineStr = fmt.Sprintf("%d", r.Line)
+			fmt.Fprintf(f, "| %s | %s | %s | %d | %s |\n", r.Severity, r.ID, relPath, r.Line, msg)
 		}
+		f.WriteString("\n")
+	}
 
-		// Escape pipeline chars in suggestion/recommendation to prevent breaking markdown table
-		msg := strings.ReplaceAll(r.Suggestion, "|", "\\|")
-		msg = strings.ReplaceAll(msg, "\n", " ")
-		msg = strings.ReplaceAll(msg, "\r", "")
+	if len(archFindings) > 0 {
+		f.WriteString("### Project-Level & Architectural Issues\n\n")
+		f.WriteString("| Severity | Rule ID | Issue | Recommendation |\n")
+		f.WriteString("|----------|---------|-------|----------------|\n")
+		for _, r := range archFindings {
+			msg := strings.ReplaceAll(r.Suggestion, "|", "\\|")
+			msg = strings.ReplaceAll(msg, "\n", " ")
+			msg = strings.ReplaceAll(msg, "\r", "")
 
-		fmt.Fprintf(f, "| %s | %s | %s | %s | %s |\n", r.Severity, r.ID, relPath, lineStr, msg)
+			name := strings.ReplaceAll(r.Name, "|", "\\|")
+
+			fmt.Fprintf(f, "| %s | %s | %s | %s |\n", r.Severity, r.ID, name, msg)
+		}
+		f.WriteString("\n")
 	}
 }
 
