@@ -36,6 +36,12 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
       - name: Test
         run: CGO_ENABLED=1 go test -race -coverprofile=coverage.out ./...
 

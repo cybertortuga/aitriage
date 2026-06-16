@@ -24,6 +24,10 @@ test:
 	@echo "$(BLUE)Executing test suite...$(RESET)"
 	@go test ./... -v
 
+lint:
+	@echo "$(BLUE)Running golangci-lint...$(RESET)"
+	@golangci-lint run ./...
+
 clean:
 	@echo "$(BLUE)Cleaning build artifacts...$(RESET)"
 	@rm -rf bin/

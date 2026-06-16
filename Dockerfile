@@ -37,10 +37,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── semgrep + bandit via pipx ─────────────────────────────────────────────────
+ENV PIPX_HOME=/opt/pipx
+ENV PIPX_BIN_DIR=/usr/local/bin
 RUN pip3 install --break-system-packages pipx && \
     pipx install semgrep && \
     pipx install bandit
-ENV PATH="/root/.local/bin:${PATH}"
 
 # ── gitleaks v8.30.1 ──────────────────────────────────────────────────────────
 RUN ARCH="$(dpkg --print-architecture)" && \
@@ -56,14 +57,20 @@ RUN ARCH="$(dpkg --print-architecture)" && \
     | tar -xz -C /usr/local/bin trivy && \
     chmod +x /usr/local/bin/trivy
 
-WORKDIR /project
-
 # GitHub Action entrypoint wrapper (referenced by action.yml via `entrypoint:`)
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # ── AITriage binary (LAST — changes every build, everything above is cached) ─
 COPY --from=go-builder /aitriage /usr/local/bin/aitriage
+
+# Create non-root user
+RUN groupadd -g 1000 aitriage && \
+    useradd -u 1000 -g aitriage -s /bin/bash -m aitriage && \
+    mkdir -p /project && chown -R aitriage:aitriage /project
+
+USER aitriage
+WORKDIR /project
 
 # Health check for web mode
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
