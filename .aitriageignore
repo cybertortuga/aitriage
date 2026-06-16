@@ -1,0 +1,18 @@
+# ==========================================
+# AITRIAGE IGNORE FILE
+# Works exactly like .gitignore. 
+# Add paths here that the scanner should skip.
+# ==========================================
+
+# Third-party dependencies
+vendor/
+node_modules/
+.git/
+
+# Build and temporary artifacts
+tmp/
+build/
+dist/
+
+# Ignored by default in repo
+examples/

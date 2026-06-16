@@ -1,0 +1,39 @@
+name: Test Action
+
+# Validates the Docker Action wiring against the CURRENT code in the PR by
+# building the image locally (action.yml itself uses the pre-built GHCR image,
+# so we build here to exercise unmerged changes to Dockerfile/entrypoint.sh).
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Build action image
+        run: docker build -t aitriage:test .
+
+      - name: Run scan via entrypoint (SARIF gate)
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/project" \
+            -e AITRIAGE_COMMAND=scan \
+            -e AITRIAGE_PROJECT_DIR=/project \
+            -e AITRIAGE_FORMAT=sarif \
+            -e AITRIAGE_OUTPUT_FILE=/project/aitriage-results.sarif \
+            -e AITRIAGE_FAIL_ON=never \
+            --entrypoint /entrypoint.sh \
+            aitriage:test
+
+      - name: Verify SARIF output exists
+        run: test -s aitriage-results.sarif && echo "SARIF generated OK"

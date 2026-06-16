@@ -1,0 +1,9 @@
+fastapi
+python-jose
+pydantic
+slowapi
+secure
+sqlalchemy
+loguru
+fastapi-csrf-protect
+fastapi-permissions

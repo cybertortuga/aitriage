@@ -1,0 +1,7 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Linguist overrides to keep language statistics accurate
+docs/design_mockups/**/* linguist-documentation
+testdata/**/* linguist-vendored
+

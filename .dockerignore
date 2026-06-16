@@ -1,0 +1,29 @@
+# ─── AITriage Docker Ignore ──────────────────────────────────────────────────
+.git
+.github
+.jules
+.aitriage
+.gemini
+bin/
+docs/
+reports/
+scratch/
+tmp/
+testdata/
+stitch_*/
+
+# Pre-built binaries (58MB+)
+/aitriage
+/tmp_aitriage
+aitriage-report.html
+
+# Web node_modules (installed inside Docker)
+web/node_modules
+web/dist
+
+# Enterprise docs (not needed for build)
+enterprise/*.md
+
+# OS artifacts
+.DS_Store
+*.swp

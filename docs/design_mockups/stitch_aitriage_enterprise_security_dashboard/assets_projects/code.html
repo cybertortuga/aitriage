@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AITriage Enterprise - Assets</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=Geist:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        /* Base font application */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom scrollbar for brutalist terminal feel */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #131313;
+            border-left: 1px solid #444748;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #444748;
+            border: 1px solid #131313;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8e9192;
+        }
+    </style>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary-container": "#636565",
+                        "background": "#131313",
+                        "surface-container-highest": "#353534",
+                        "inverse-surface": "#e5e2e1",
+                        "on-secondary-container": "#c4abff",
+                        "on-surface-variant": "#c4c7c8",
+                        "primary-fixed-dim": "#c6c6c7",
+                        "error-container": "#93000a",
+                        "tertiary-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdad6",
+                        "on-primary-fixed-variant": "#454747",
+                        "on-tertiary-fixed": "#410002",
+                        "on-tertiary": "#690006",
+                        "surface-container-high": "#2a2a2a",
+                        "primary-container": "#e2e2e2",
+                        "surface-dim": "#131313",
+                        "inverse-primary": "#5d5f5f",
+                        "on-secondary-fixed": "#23005c",
+                        "on-error-container": "#ffdad6",
+                        "surface-container": "#201f1f",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-secondary": "#3c0091",
+                        "surface-variant": "#353534",
+                        "primary": "#ffffff",
+                        "surface-tint": "#c6c6c7",
+                        "tertiary": "#ffffff",
+                        "on-error": "#690005",
+                        "surface": "#131313",
+                        "error": "#ffb4ab",
+                        "surface-bright": "#3a3939",
+                        "on-surface": "#e5e2e1",
+                        "on-tertiary-container": "#c41f21",
+                        "on-primary": "#2f3131",
+                        "tertiary-fixed-dim": "#ffb4ac",
+                        "outline": "#8e9192",
+                        "inverse-on-surface": "#313030",
+                        "on-secondary-fixed-variant": "#5516be",
+                        "on-tertiary-fixed-variant": "#93000d",
+                        "on-background": "#e5e2e1",
+                        "outline-variant": "#444748",
+                        "on-primary-fixed": "#1a1c1c",
+                        "secondary": "#d0bcff",
+                        "secondary-fixed-dim": "#d0bcff",
+                        "primary-fixed": "#e2e2e2",
+                        "secondary-fixed": "#e9ddff",
+                        "secondary-container": "#571bc1",
+                        "surface-container-low": "#1c1b1b"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "panel-padding": "24px",
+                        "data-density-comfortable": "16px",
+                        "gutter": "16px",
+                        "margin-desktop": "32px",
+                        "margin-mobile": "16px",
+                        "unit": "4px",
+                        "data-density-compact": "8px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "mono-data": ["Geist"],
+                        "label-caps": ["Geist"],
+                        "display-lg": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "mono-metrics": ["Geist"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", { "lineHeight": "1.3", "fontWeight": "600" }],
+                        "body-sm": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "mono-data": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "label-caps": ["11px", { "lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "700" }],
+                        "display-lg": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.04em", "fontWeight": "700" }],
+                        "headline-lg": ["32px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "headline-sm": ["18px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "mono-metrics": ["20px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface min-h-screen overflow-x-hidden selection:bg-primary selection:text-background">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center w-full px-gutter h-8 bg-background dark:bg-background docked full-width top-0 z-50 fixed border-b border-outline-variant dark:border-outline-variant">
+<div class="flex items-center gap-gutter">
+<div class="text-headline-sm font-headline-sm font-bold text-primary dark:text-primary tracking-tighter uppercase">AITriage Enterprise</div>
+<!-- Brutalist Search on Left -->
+<div class="hidden md:flex items-center border border-outline-variant bg-surface-container-lowest h-6 px-2 w-64 ml-8">
+<span class="material-symbols-outlined text-on-surface-variant text-[14px]">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-mono-data font-mono-data text-primary placeholder:text-on-surface-variant w-full h-full py-0" placeholder="QUERY_ASSETS..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-4 text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider">
+<span>Org: Tortuga Co</span>
+<div class="w-px h-3 bg-outline-variant"></div>
+<span class="text-mono-metrics font-mono-metrics text-primary dark:text-primary">94/100</span>
+</div>
+<div class="flex items-center gap-4 text-primary dark:text-primary">
+<button class="hover:bg-surface-container-high dark:hover:bg-surface-container-high transition-colors duration-75 flex items-center justify-center h-8 w-8 opacity-80 hover:opacity-100">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">notifications</span>
+</button>
+<button class="hover:bg-surface-container-high dark:hover:bg-surface-container-high transition-colors duration-75 flex items-center justify-center h-8 w-8 opacity-80 hover:opacity-100">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">account_circle</span>
+</button>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-8 bottom-0 flex flex-col z-40 border-r border-outline-variant dark:border-outline-variant bg-surface-container-lowest dark:bg-surface-container-lowest h-full w-16 hover:w-64 transition-all duration-150 ease-linear group overflow-hidden">
+<div class="flex-1 py-4 flex flex-col gap-2">
+<!-- Item 1: Command Center -->
+<a class="flex items-center h-12 px-5 gap-4 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors duration-75 w-64" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">dashboard</span>
+<span class="text-label-caps font-label-caps whitespace-nowrap uppercase tracking-widest">Command Center</span>
+</a>
+<!-- Item 2: Triage -->
+<a class="flex items-center h-12 px-5 gap-4 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors duration-75 w-64" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">security</span>
+<span class="text-label-caps font-label-caps whitespace-nowrap uppercase tracking-widest">Triage</span>
+</a>
+<!-- Item 3: Remediation Hub -->
+<a class="flex items-center h-12 px-5 gap-4 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors duration-75 w-64" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">build</span>
+<span class="text-label-caps font-label-caps whitespace-nowrap uppercase tracking-widest">Remediation Hub</span>
+</a>
+<!-- Item 4: Assets (ACTIVE) -->
+<a class="flex items-center h-12 px-5 gap-4 bg-surface-container-highest dark:bg-surface-container-highest text-primary border-r-2 border-primary hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors duration-75 w-64" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">inventory_2</span>
+<span class="text-label-caps font-label-caps whitespace-nowrap uppercase tracking-widest">Assets</span>
+</a>
+<!-- Item 5: Policies -->
+<a class="flex items-center h-12 px-5 gap-4 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors duration-75 w-64" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">policy</span>
+<span class="text-label-caps font-label-caps whitespace-nowrap uppercase tracking-widest">Policies</span>
+</a>
+<!-- Item 6: Reports & SBOM -->
+<a class="flex items-center h-12 px-5 gap-4 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors duration-75 w-64" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">description</span>
+<span class="text-label-caps font-label-caps whitespace-nowrap uppercase tracking-widest">Reports &amp; SBOM</span>
+</a>
+<!-- Item 7: RBAC & Settings -->
+<a class="flex items-center h-12 px-5 gap-4 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors duration-75 w-64" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">settings</span>
+<span class="text-label-caps font-label-caps whitespace-nowrap uppercase tracking-widest">RBAC &amp; Settings</span>
+</a>
+</div>
+<div class="border-t border-outline-variant py-4 flex flex-col gap-2">
+<a class="flex items-center h-12 px-5 gap-4 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors duration-75 w-64" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">help</span>
+<span class="text-label-caps font-label-caps whitespace-nowrap uppercase tracking-widest">Help</span>
+</a>
+<a class="flex items-center h-12 px-5 gap-4 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors duration-75 w-64" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">menu_book</span>
+<span class="text-label-caps font-label-caps whitespace-nowrap uppercase tracking-widest">Docs</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="ml-16 mt-8 p-margin-desktop min-h-[calc(100vh-2rem)] flex flex-col gap-8">
+<!-- Header -->
+<div class="flex justify-between items-end border-b border-outline-variant pb-6">
+<div class="flex flex-col gap-2">
+<span class="text-mono-data font-mono-data text-on-surface-variant uppercase tracking-widest">SYSTEM // DIRECTORY</span>
+<h1 class="text-display-lg font-display-lg text-primary tracking-tighter">Assets &amp; Projects</h1>
+</div>
+<div class="flex gap-4">
+<!-- Brutalist Primary Button -->
+<button class="bg-primary text-background font-label-caps text-label-caps px-6 py-3 rounded-none uppercase tracking-widest hover:bg-surface-tint transition-none active:translate-y-px">
+                    ADD NEW ASSET
+                </button>
+</div>
+</div>
+<!-- Data Grid -->
+<div class="border border-outline-variant bg-surface-container-lowest flex flex-col w-full">
+<!-- Grid Header -->
+<div class="grid grid-cols-12 gap-gutter px-6 py-4 bg-surface-container-high border-b border-outline-variant text-label-caps font-label-caps text-on-surface-variant uppercase tracking-widest">
+<div class="col-span-3">Project / Repository</div>
+<div class="col-span-3">Tech Stack</div>
+<div class="col-span-2">Last Scan (UTC)</div>
+<div class="col-span-2">Sec Score</div>
+<div class="col-span-2 flex justify-between">
+<span>CI/CD Block</span>
+<span>Action</span>
+</div>
+</div>
+<!-- Row 1: High Score -->
+<div class="grid grid-cols-12 gap-gutter px-6 py-4 items-center border-b border-outline-variant hover:bg-surface-container-high transition-none group cursor-default">
+<div class="col-span-3 flex flex-col gap-1">
+<span class="text-headline-sm font-headline-sm text-primary">core-payment-gateway</span>
+<span class="text-mono-data font-mono-data text-on-surface-variant">repo://internal/fin/core-pay</span>
+</div>
+<div class="col-span-3 flex flex-wrap gap-2">
+<span class="border border-outline-variant px-2 py-1 text-mono-data font-mono-data text-primary bg-surface-variant rounded-none uppercase">GO</span>
+<span class="border border-outline-variant px-2 py-1 text-mono-data font-mono-data text-primary bg-surface-variant rounded-none uppercase">POSTGRES</span>
+<span class="border border-outline-variant px-2 py-1 text-mono-data font-mono-data text-primary bg-surface-variant rounded-none uppercase">REDIS</span>
+</div>
+<div class="col-span-2 text-mono-data font-mono-data text-on-surface-variant">
+                    2023-10-24<br/>14:32:01
+                </div>
+<div class="col-span-2 flex items-center gap-3">
+<div class="w-3 h-3 bg-primary rounded-none"></div>
+<span class="text-mono-metrics font-mono-metrics text-primary text-2xl">98</span>
+</div>
+<div class="col-span-2 flex items-center justify-between">
+<!-- Custom Brutalist Toggle ON -->
+<button aria-label="Toggle CI/CD Block" class="w-10 h-5 border border-primary bg-primary flex justify-end p-[2px] cursor-pointer">
+<div class="w-3 h-full bg-background rounded-none"></div>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+</div>
+<!-- Row 2: Critical/Low Score -->
+<div class="grid grid-cols-12 gap-gutter px-6 py-4 items-center border-b border-outline-variant hover:bg-surface-container-high transition-none group cursor-default bg-error-container/10">
+<div class="col-span-3 flex flex-col gap-1">
+<span class="text-headline-sm font-headline-sm text-error">legacy-auth-service</span>
+<span class="text-mono-data font-mono-data text-on-surface-variant">repo://legacy/auth-v1</span>
+</div>
+<div class="col-span-3 flex flex-wrap gap-2">
+<span class="border border-outline-variant px-2 py-1 text-mono-data font-mono-data text-primary bg-surface-variant rounded-none uppercase">PYTHON</span>
+<span class="border border-outline-variant px-2 py-1 text-mono-data font-mono-data text-primary bg-surface-variant rounded-none uppercase">DJANGO</span>
+</div>
+<div class="col-span-2 text-mono-data font-mono-data text-on-surface-variant">
+                    2023-10-24<br/>12:15:44
+                </div>
+<div class="col-span-2 flex items-center gap-3">
+<div class="w-3 h-3 bg-error rounded-none animate-pulse"></div>
+<span class="text-mono-metrics font-mono-metrics text-error text-2xl">34</span>
+</div>
+<div class="col-span-2 flex items-center justify-between">
+<!-- Custom Brutalist Toggle ON (Enforced) -->
+<button aria-label="Toggle CI/CD Block" class="w-10 h-5 border border-error bg-error flex justify-end p-[2px] cursor-pointer">
+<div class="w-3 h-full bg-background rounded-none"></div>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+</div>
+<!-- Row 3: Medium Score / Warning style -->
+<div class="grid grid-cols-12 gap-gutter px-6 py-4 items-center border-b border-outline-variant hover:bg-surface-container-high transition-none group cursor-default">
+<div class="col-span-3 flex flex-col gap-1">
+<span class="text-headline-sm font-headline-sm text-primary">frontend-dashboard-ui</span>
+<span class="text-mono-data font-mono-data text-on-surface-variant">repo://web/admin-dash</span>
+</div>
+<div class="col-span-3 flex flex-wrap gap-2">
+<span class="border border-outline-variant px-2 py-1 text-mono-data font-mono-data text-primary bg-surface-variant rounded-none uppercase">REACT</span>
+<span class="border border-outline-variant px-2 py-1 text-mono-data font-mono-data text-primary bg-surface-variant rounded-none uppercase">NODE.JS</span>
+</div>
+<div class="col-span-2 text-mono-data font-mono-data text-on-surface-variant">
+                    2023-10-23<br/>08:00:12
+                </div>
+<div class="col-span-2 flex items-center gap-3">
+<div class="w-3 h-3 bg-surface-tint rounded-none"></div>
+<span class="text-mono-metrics font-mono-metrics text-primary text-2xl">72</span>
+</div>
+<div class="col-span-2 flex items-center justify-between">
+<!-- Custom Brutalist Toggle OFF -->
+<button aria-label="Toggle CI/CD Block" class="w-10 h-5 border border-outline-variant bg-transparent flex justify-start p-[2px] cursor-pointer">
+<div class="w-3 h-full bg-outline-variant rounded-none"></div>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+</div>
+<!-- Row 4: New / Unscanned -->
+<div class="grid grid-cols-12 gap-gutter px-6 py-4 items-center hover:bg-surface-container-high transition-none group cursor-default">
+<div class="col-span-3 flex flex-col gap-1">
+<span class="text-headline-sm font-headline-sm text-primary opacity-60">experimental-ai-agent</span>
+<span class="text-mono-data font-mono-data text-on-surface-variant">repo://labs/ai-agent-01</span>
+</div>
+<div class="col-span-3 flex flex-wrap gap-2">
+<span class="border border-outline-variant px-2 py-1 text-mono-data font-mono-data text-primary bg-surface-variant rounded-none uppercase opacity-60">PYTHON</span>
+</div>
+<div class="col-span-2 text-mono-data font-mono-data text-on-surface-variant opacity-60">
+                    --
+                </div>
+<div class="col-span-2 flex items-center gap-3 opacity-60">
+<div class="w-3 h-3 border border-outline-variant rounded-none"></div>
+<span class="text-mono-metrics font-mono-metrics text-on-surface-variant text-2xl">--</span>
+</div>
+<div class="col-span-2 flex items-center justify-between opacity-60 pointer-events-none">
+<button aria-label="Toggle CI/CD Block disabled" class="w-10 h-5 border border-outline-variant bg-transparent flex justify-start p-[2px]">
+<div class="w-3 h-full bg-outline-variant rounded-none"></div>
+</button>
+<button class="text-on-surface-variant">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Pagination / Footer simple -->
+<div class="flex justify-between items-center text-mono-data font-mono-data text-on-surface-variant mt-4">
+<span>SHOWING 4 OF 1,024 ASSETS</span>
+<div class="flex gap-2">
+<button class="border border-outline-variant px-3 py-1 hover:bg-surface-container-high hover:text-primary transition-none rounded-none uppercase">PREV</button>
+<button class="border border-outline-variant px-3 py-1 hover:bg-surface-container-high hover:text-primary transition-none rounded-none uppercase bg-surface-container-highest text-primary">1</button>
+<button class="border border-outline-variant px-3 py-1 hover:bg-surface-container-high hover:text-primary transition-none rounded-none uppercase">2</button>
+<button class="border border-outline-variant px-3 py-1 hover:bg-surface-container-high hover:text-primary transition-none rounded-none uppercase">3</button>
+<button class="border border-outline-variant px-3 py-1 hover:bg-surface-container-high hover:text-primary transition-none rounded-none uppercase">NEXT</button>
+</div>
+</div>
+</main>
+</body></html>

@@ -1,0 +1,108 @@
+# ─── AITriage Enterprise Docker Compose ─────────────────────────────────────────
+# One-liner security audit:
+#   docker compose run --rm aitriage scan /project -i
+#
+# Start Web Dashboard & API (Default):
+#   make up (or: docker compose up -d web)
+#
+# Start Full Stack with LangGraph Agent:
+#   docker compose --profile agent up -d
+#
+# Mount your project into /project for scanning.
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: aitriage:latest
+    container_name: aitriage-web
+    restart: unless-stopped
+    volumes:
+      # Mount scan workspace (configure SCAN_ROOT in .env)
+      # Example: SCAN_ROOT=~/Documents/GitHub
+      - ${SCAN_ROOT:-.}:/host
+      # Persistent SQLite volume
+      - aitriage-data:/app/data
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - JWT_SECRET=${JWT_SECRET:-super-secret-development-key-change-in-prod}
+      - DB_PATH=/app/data/aitriage.db
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - TERM=xterm-256color
+    ports:
+      - "8080:8080"
+    command: ["web", "--port", "8080", "--host-prefix", "/host"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    tty: true
+    stdin_open: true
+
+  # ─── AITriage MCP Server (SSE) ──────────────────────────────────────────────
+  # Exposes all 13 AITriage security tools via Model Context Protocol over HTTP.
+  # Used by the LangGraph Python agent and compatible AI clients (Claude, Cursor).
+  #
+  # Connect LangGraph to: http://localhost:9090/sse
+  aitriage-mcp:
+    image: aitriage:latest
+    container_name: aitriage-mcp
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["serve", "--transport", "sse", "--port", "9090"]
+    ports:
+      - "9090:9090"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ${PROJECT_PATH:-.}:/project:ro
+    profiles:
+      - agent
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/sse"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ─── LangGraph Security Agent ────────────────────────────────────────────────
+  # Python agent that connects to aitriage-mcp and runs a stateful
+  # security remediation workflow using LangGraph.
+  aitriage-agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    container_name: aitriage-agent
+    volumes:
+      - ${PROJECT_PATH:-.}:/project:ro
+    environment:
+      # AITriage MCP server URL (internal Docker network)
+      - AITRIAGE_MCP_URL=http://aitriage-mcp:9090/sse
+      # LLM provider (pick one)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - AGENT_MODEL=${AGENT_MODEL:-google-genai:gemini-2.5-flash}
+      # Human-in-the-Loop: set to "1" to pause before fixes
+      - AGENT_HITL=${AGENT_HITL:-0}
+      # LangSmith Observability (optional but recommended)
+      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2:-false}
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY:-}
+      - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT:-aitriage}
+    depends_on:
+      aitriage-mcp:
+        condition: service_healthy
+    profiles:
+      - agent
+
+volumes:
+  aitriage-data:
+    name: aitriage_sqlite_data

@@ -1,0 +1,3 @@
+ignore:
+  rules:
+    - ENTR-01 # Password leak rule

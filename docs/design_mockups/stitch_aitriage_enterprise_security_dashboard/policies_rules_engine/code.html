@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AITriage Enterprise - Policies &amp; Rules Engine</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=Geist+Mono:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-primary-container": "#636565",
+                        "background": "#131313",
+                        "surface-container-highest": "#353534",
+                        "inverse-surface": "#e5e2e1",
+                        "on-secondary-container": "#c4abff",
+                        "on-surface-variant": "#c4c7c8",
+                        "primary-fixed-dim": "#c6c6c7",
+                        "error-container": "#93000a",
+                        "tertiary-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdad6",
+                        "on-primary-fixed-variant": "#454747",
+                        "on-tertiary-fixed": "#410002",
+                        "on-tertiary": "#690006",
+                        "surface-container-high": "#2a2a2a",
+                        "primary-container": "#e2e2e2",
+                        "surface-dim": "#131313",
+                        "inverse-primary": "#5d5f5f",
+                        "on-secondary-fixed": "#23005c",
+                        "on-error-container": "#ffdad6",
+                        "surface-container": "#201f1f",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-secondary": "#3c0091",
+                        "surface-variant": "#353534",
+                        "primary": "#ffffff",
+                        "surface-tint": "#c6c6c7",
+                        "tertiary": "#ffffff",
+                        "on-error": "#690005",
+                        "surface": "#131313",
+                        "error": "#ffb4ab",
+                        "surface-bright": "#3a3939",
+                        "on-surface": "#e5e2e1",
+                        "on-tertiary-container": "#c41f21",
+                        "on-primary": "#2f3131",
+                        "tertiary-fixed-dim": "#ffb4ac",
+                        "outline": "#8e9192",
+                        "inverse-on-surface": "#313030",
+                        "on-secondary-fixed-variant": "#5516be",
+                        "on-tertiary-fixed-variant": "#93000d",
+                        "on-background": "#e5e2e1",
+                        "outline-variant": "#444748",
+                        "on-primary-fixed": "#1a1c1c",
+                        "secondary": "#d0bcff",
+                        "secondary-fixed-dim": "#d0bcff",
+                        "primary-fixed": "#e2e2e2",
+                        "secondary-fixed": "#e9ddff",
+                        "secondary-container": "#571bc1",
+                        "surface-container-low": "#1c1b1b"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0px",
+                        "lg": "0px",
+                        "xl": "0px",
+                        "full": "0px"
+                    },
+                    spacing: {
+                        "panel-padding": "24px",
+                        "data-density-comfortable": "16px",
+                        "gutter": "16px",
+                        "margin-desktop": "32px",
+                        "margin-mobile": "16px",
+                        "unit": "4px",
+                        "data-density-compact": "8px"
+                    },
+                    fontFamily: {
+                        "headline-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "mono-data": ["Geist Mono"],
+                        "label-caps": ["Geist Mono"],
+                        "display-lg": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "mono-metrics": ["Geist Mono"]
+                    },
+                    fontSize: {
+                        "headline-md": ["24px", { lineHeight: "1.3", fontWeight: "600" }],
+                        "body-sm": ["14px", { lineHeight: "1.5", fontWeight: "400" }],
+                        "mono-data": ["13px", { lineHeight: "1.5", fontWeight: "400" }],
+                        "label-caps": ["11px", { lineHeight: "1", letterSpacing: "0.1em", fontWeight: "700" }],
+                        "display-lg": ["48px", { lineHeight: "1.1", letterSpacing: "-0.04em", fontWeight: "700" }],
+                        "headline-lg": ["32px", { lineHeight: "1.2", letterSpacing: "-0.02em", fontWeight: "600" }],
+                        "headline-sm": ["18px", { lineHeight: "1.4", fontWeight: "600" }],
+                        "body-lg": ["16px", { lineHeight: "1.6", fontWeight: "400" }],
+                        "mono-metrics": ["20px", { lineHeight: "1", letterSpacing: "0.05em", fontWeight: "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Cyber-Brutalist scrollbar */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #000; border-left: 1px solid #333; }
+        ::-webkit-scrollbar-thumb { background: #444748; }
+        ::-webkit-scrollbar-thumb:hover { background: #8e9192; }
+    </style>
+</head>
+<body class="bg-background text-on-background h-screen overflow-hidden flex font-body-sm text-body-sm selection:bg-primary selection:text-on-primary">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-lowest dark:bg-surface-container-lowest docked left-0 h-full w-16 hover:w-64 transition-all duration-150 ease-linear border-r border-outline-variant dark:border-outline-variant flat no shadows fixed left-0 top-8 bottom-0 flex flex-col z-40 group overflow-hidden">
+<div class="h-16 flex items-center px-4 border-b border-outline-variant shrink-0">
+<div class="w-8 h-8 bg-primary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-on-primary" style="font-size: 20px;">security</span>
+</div>
+<div class="ml-4 flex flex-col opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+<span class="text-label-caps font-label-caps text-primary dark:text-primary tracking-tighter">AITriage</span>
+<span class="text-[10px] text-on-surface-variant tracking-widest uppercase">Enterprise</span>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto py-4 flex flex-col gap-1">
+<!-- Inactive -->
+<a class="flex items-center px-4 py-3 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0">dashboard</span>
+<span class="ml-4 text-label-caps font-label-caps whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Command Center</span>
+</a>
+<!-- Inactive -->
+<a class="flex items-center px-4 py-3 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0">security</span>
+<span class="ml-4 text-label-caps font-label-caps whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Triage</span>
+</a>
+<!-- Inactive -->
+<a class="flex items-center px-4 py-3 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0">build</span>
+<span class="ml-4 text-label-caps font-label-caps whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Remediation Hub</span>
+</a>
+<!-- Inactive -->
+<a class="flex items-center px-4 py-3 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0">inventory_2</span>
+<span class="ml-4 text-label-caps font-label-caps whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Assets</span>
+</a>
+<!-- ACTIVE -->
+<a class="flex items-center px-4 py-3 bg-surface-container-highest dark:bg-surface-container-highest text-primary border-r-2 border-primary hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0" style="font-variation-settings: 'FILL' 1;">policy</span>
+<span class="ml-4 text-label-caps font-label-caps whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Policies</span>
+</a>
+<!-- Inactive -->
+<a class="flex items-center px-4 py-3 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0">description</span>
+<span class="ml-4 text-label-caps font-label-caps whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Reports &amp; SBOM</span>
+</a>
+<!-- Inactive -->
+<a class="flex items-center px-4 py-3 text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:bg-surface-container dark:hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0">settings</span>
+<span class="ml-4 text-label-caps font-label-caps whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">RBAC &amp; Settings</span>
+</a>
+</div>
+<div class="mt-auto border-t border-outline-variant py-2">
+<a class="flex items-center px-4 py-3 text-on-surface-variant opacity-70 hover:bg-surface-container hover:opacity-100" href="#">
+<span class="material-symbols-outlined shrink-0">help</span>
+<span class="ml-4 text-label-caps font-label-caps whitespace-nowrap opacity-0 group-hover:opacity-100">Help</span>
+</a>
+<a class="flex items-center px-4 py-3 text-on-surface-variant opacity-70 hover:bg-surface-container hover:opacity-100" href="#">
+<span class="material-symbols-outlined shrink-0">menu_book</span>
+<span class="ml-4 text-label-caps font-label-caps whitespace-nowrap opacity-0 group-hover:opacity-100">Docs</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Wrapper -->
+<div class="flex-1 flex flex-col ml-16 bg-[#000000]">
+<!-- TopAppBar -->
+<header class="bg-background dark:bg-background text-primary dark:text-primary docked full-width top-0 h-8 border-b border-outline-variant dark:border-outline-variant flat no shadows flex justify-between items-center w-full px-gutter h-8 shrink-0 z-30">
+<div class="flex items-center gap-4">
+<span class="text-headline-sm font-headline-sm font-bold text-primary dark:text-primary tracking-tighter">AITriage Enterprise</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center border-l border-outline-variant pl-4 gap-4">
+<span class="text-mono-data font-mono-data text-on-surface-variant">Org: Tortuga Co</span>
+<div class="flex items-center gap-2 bg-surface-container-highest px-2 py-0.5 border border-outline-variant">
+<span class="w-2 h-2 bg-[#8B5CF6]"></span>
+<span class="text-mono-metrics font-mono-metrics text-primary text-[14px]">94/100</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<button class="text-on-surface-variant hover:text-primary transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">account_circle</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Canvas -->
+<main class="flex-1 overflow-auto p-gutter lg:p-margin-desktop flex flex-col gap-margin-desktop">
+<!-- Page Header -->
+<div class="flex items-end justify-between border-b border-outline-variant pb-4">
+<div>
+<h1 class="text-display-lg font-display-lg text-primary uppercase tracking-tight">Policies &amp; Rules</h1>
+<p class="text-mono-data font-mono-data text-on-surface-variant mt-2">Manage 180+ security rules across active environments.</p>
+</div>
+<div class="flex gap-4">
+<button class="border border-outline-variant bg-transparent text-primary px-4 py-2 text-label-caps font-label-caps hover:bg-surface-container transition-none">
+                        IMPORT YAML
+                    </button>
+<button class="bg-[#8B5CF6] text-primary px-4 py-2 text-label-caps font-label-caps hover:bg-opacity-90 transition-none flex items-center gap-2">
+<span class="material-symbols-outlined text-[14px]">add</span> NEW RULE
+                    </button>
+</div>
+</div>
+<!-- Two Column Layout -->
+<div class="flex flex-col lg:flex-row gap-gutter h-full min-h-0">
+<!-- Left Column: Categories -->
+<aside class="w-full lg:w-64 shrink-0 flex flex-col gap-4">
+<div class="bg-surface-container-lowest border border-outline-variant flex flex-col">
+<div class="bg-[#1A1A1A] border-b border-outline-variant p-data-density-comfortable">
+<h2 class="text-label-caps font-label-caps text-on-surface-variant tracking-widest">CATEGORIES</h2>
+</div>
+<div class="flex flex-col">
+<button class="flex items-center justify-between px-4 py-3 border-b border-outline-variant text-left hover:bg-surface-container transition-none text-primary bg-surface-container border-l-2 border-l-primary">
+<span class="text-mono-data font-mono-data uppercase">Universal</span>
+<span class="text-mono-data font-mono-data text-on-surface-variant">142</span>
+</button>
+<button class="flex items-center justify-between px-4 py-3 border-b border-outline-variant text-left hover:bg-surface-container transition-none text-on-surface-variant">
+<span class="text-mono-data font-mono-data uppercase">Next.js</span>
+<span class="text-mono-data font-mono-data text-on-surface-variant">18</span>
+</button>
+<button class="flex items-center justify-between px-4 py-3 border-b border-outline-variant text-left hover:bg-surface-container transition-none text-on-surface-variant">
+<span class="text-mono-data font-mono-data uppercase">FastAPI</span>
+<span class="text-mono-data font-mono-data text-on-surface-variant">12</span>
+</button>
+<button class="flex items-center justify-between px-4 py-3 border-b border-outline-variant text-left hover:bg-surface-container transition-none text-on-surface-variant">
+<span class="text-mono-data font-mono-data uppercase">LLM Security</span>
+<span class="text-mono-data font-mono-data text-on-surface-variant">9</span>
+</button>
+<button class="flex items-center justify-between px-4 py-3 text-left hover:bg-surface-container transition-none text-on-surface-variant">
+<span class="text-mono-data font-mono-data uppercase">IaC</span>
+<span class="text-mono-data font-mono-data text-on-surface-variant">3</span>
+</button>
+</div>
+</div>
+</aside>
+<!-- Right Column: Rules & Editor -->
+<div class="flex-1 flex flex-col gap-gutter min-w-0">
+<!-- Rules List -->
+<div class="bg-surface-container-lowest border border-outline-variant flex flex-col flex-1 min-h-[300px]">
+<div class="bg-[#1A1A1A] border-b border-outline-variant p-data-density-comfortable flex justify-between items-center">
+<h2 class="text-label-caps font-label-caps text-on-surface-variant tracking-widest">ACTIVE RULES / UNIVERSAL</h2>
+<div class="relative w-64">
+<span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-[16px]">search</span>
+<input class="w-full bg-[#000000] border border-outline-variant text-mono-data font-mono-data text-primary py-1 pl-8 pr-2 focus:border-primary focus:ring-0 placeholder:text-on-surface-variant" placeholder="Filter rules..." type="text"/>
+</div>
+</div>
+<div class="overflow-y-auto">
+<table class="w-full text-left border-collapse">
+<thead class="bg-[#111111] border-b border-outline-variant sticky top-0 z-10">
+<tr>
+<th class="p-3 text-label-caps font-label-caps text-on-surface-variant font-normal">RULE ID</th>
+<th class="p-3 text-label-caps font-label-caps text-on-surface-variant font-normal">SEVERITY</th>
+<th class="p-3 text-label-caps font-label-caps text-on-surface-variant font-normal w-full">DESCRIPTION</th>
+<th class="p-3 text-label-caps font-label-caps text-on-surface-variant font-normal text-right">STATUS</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<tr class="hover:bg-[#1A1A1A] transition-none group">
+<td class="p-3 text-mono-data font-mono-data text-primary">SEC-U-001</td>
+<td class="p-3">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 bg-error"></div>
+<span class="text-mono-data font-mono-data text-error">CRITICAL</span>
+</div>
+</td>
+<td class="p-3">
+<div class="text-body-sm font-body-sm text-primary">Detect Hardcoded Credentials</div>
+<div class="text-mono-data font-mono-data text-on-surface-variant mt-1">Regex scan for API keys, AWS secrets, and JWT tokens in source code.</div>
+</td>
+<td class="p-3 text-right">
+<!-- Brutalist Toggle ON -->
+<button class="w-10 h-5 border border-primary bg-primary relative cursor-pointer group-hover:border-primary">
+<div class="absolute right-0 top-0 bottom-0 w-5 bg-background border-l border-primary"></div>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-[#1A1A1A] transition-none group">
+<td class="p-3 text-mono-data font-mono-data text-primary">SEC-U-042</td>
+<td class="p-3">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 bg-[#F59E0B]"></div>
+<span class="text-mono-data font-mono-data text-[#F59E0B]">HIGH</span>
+</div>
+</td>
+<td class="p-3">
+<div class="text-body-sm font-body-sm text-primary">Insecure Deserialization</div>
+<div class="text-mono-data font-mono-data text-on-surface-variant mt-1">Flags usage of unsafe deserialization functions (e.g., pickle.loads, yaml.load).</div>
+</td>
+<td class="p-3 text-right">
+<!-- Brutalist Toggle ON -->
+<button class="w-10 h-5 border border-primary bg-primary relative cursor-pointer group-hover:border-primary">
+<div class="absolute right-0 top-0 bottom-0 w-5 bg-background border-l border-primary"></div>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-[#1A1A1A] transition-none group opacity-60">
+<td class="p-3 text-mono-data font-mono-data text-primary">SEC-U-089</td>
+<td class="p-3">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 bg-[#3B82F6]"></div>
+<span class="text-mono-data font-mono-data text-[#3B82F6]">LOW</span>
+</div>
+</td>
+<td class="p-3">
+<div class="text-body-sm font-body-sm text-primary">Missing Security Headers</div>
+<div class="text-mono-data font-mono-data text-on-surface-variant mt-1">Checks for absence of CSP, HSTS, and X-Frame-Options in HTTP responses.</div>
+</td>
+<td class="p-3 text-right">
+<!-- Brutalist Toggle OFF -->
+<button class="w-10 h-5 border border-outline-variant bg-transparent relative cursor-pointer group-hover:border-primary">
+<div class="absolute left-0 top-0 bottom-0 w-5 bg-outline-variant border-r border-outline-variant group-hover:bg-primary group-hover:border-primary"></div>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Custom Rule Builder (YAML Editor) -->
+<div class="bg-surface-container-lowest border border-outline-variant flex flex-col h-[350px] shrink-0">
+<div class="bg-[#1A1A1A] border-b border-outline-variant p-data-density-comfortable flex justify-between items-center">
+<h2 class="text-label-caps font-label-caps text-on-surface-variant tracking-widest">CUSTOM RULE BUILDER (YAML)</h2>
+<div class="flex gap-2">
+<button class="text-on-surface-variant hover:text-primary px-2 text-label-caps font-label-caps">FORMAT</button>
+<button class="bg-primary text-background px-3 py-1 text-label-caps font-label-caps">VALIDATE &amp; SAVE</button>
+</div>
+</div>
+<div class="flex-1 bg-[#000000] p-4 overflow-auto font-mono-data text-mono-data leading-relaxed relative">
+<!-- Line numbers simulated with border -->
+<div class="absolute left-0 top-0 bottom-0 w-10 border-r border-[#333333] bg-[#0A0A0A] flex flex-col text-on-surface-variant items-end pr-2 pt-4 select-none">
+<span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
+</div>
+<div class="pl-10">
+<pre class="text-on-surface-variant"><span class="text-primary">id</span>: <span class="text-[#8B5CF6]">custom-ast-auth-bypass</span>
+<span class="text-primary">info</span>:
+  <span class="text-primary">name</span>: <span class="text-[#F59E0B]">"Detect missing auth middleware in router"</span>
+  <span class="text-primary">author</span>: <span class="text-[#F59E0B]">"sec-ops-team"</span>
+  <span class="text-primary">severity</span>: <span class="text-error">high</span>
+<span class="text-primary">rules</span>:
+  - <span class="text-primary">pattern</span>: |
+      <span class="text-[#3B82F6]">router.get($PATH, $FUNC)</span>
+  - <span class="text-primary">filters</span>:
+      - <span class="text-primary">not-inside</span>: |
+          <span class="text-[#3B82F6]">router.use(requireAuth)</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

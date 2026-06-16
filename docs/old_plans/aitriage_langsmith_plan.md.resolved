@@ -1,0 +1,341 @@
+# AITriage v2 — LangGraph + LangSmith Implementation Plan
+
+## Решение по стеку
+
+**Python + LangGraph + LangSmith**
+
+| Критерий | Выбор | Обоснование |
+|---|---|---|
+| **Язык** | Python | Все AI-библиотеки выходят тут первыми. LangGraph mature именно на Python |
+| **Оркестрация** | LangGraph | Production-grade stateful агент с циклами, HITL, checkpointing |
+| **Трассировка** | LangSmith | Автоматический трейс каждого шага — бесплатно до 5K traces/month |
+| **Промпты** | LangSmith Hub | Версионирование промптов с commit hash, environments (staging/prod) |
+| **Инструменты** | `@tool` decorators | LangChain tool protocol, вызов Go-бинарей через subprocess |
+| **CLI** | Click / Typer | Аналог cobra для Python |
+| **Установка** | `pip install` / `uv` | `uv run aitriage-labs` |
+
+> Существующий Go-код **не выбрасывается** — Python вызывает Go-бинарь как subprocess-инструменты.
+
+---
+
+## Структура в репо
+
+```
+aitriage/
+├── cmd/              ← существующий Go AITriage (не трогаем)
+├── internal/         ← существующий Go AITriage (не трогаем)
+└── labs/
+    └── langsmith/    ← НОВЫЙ Python AITriage v2
+        ├── pyproject.toml
+        ├── .env.example
+        ├── README.md
+        ├── aitriage_labs/
+        │   ├── __init__.py
+        │   ├── cli.py              ← CLI entry point (click)
+        │   ├── agent/
+        │   │   ├── __init__.py
+        │   │   ├── graph.py        ← LangGraph StateGraph
+        │   │   ├── state.py        ← AgentState TypedDict
+        │   │   └── nodes.py        ← каждый node графа
+        │   ├── tools/
+        │   │   ├── __init__.py
+        │   │   ├── scanner.py      ← вызов Go aitriage scan
+        │   │   ├── semgrep.py      ← внешний semgrep
+        │   │   ├── gitleaks.py     ← внешний gitleaks
+        │   │   ├── trivy.py        ← внешний trivy
+        │   │   ├── bandit.py       ← внешний bandit
+        │   │   ├── nfr.py          ← вызов Go aitriage nfr
+        │   │   └── diagram.py      ← архитектурная схема
+        │   ├── prompts/
+        │   │   ├── __init__.py
+        │   │   └── hub.py          ← pull из LangSmith Hub
+        │   └── evals/
+        │       ├── __init__.py
+        │       ├── dataset.py      ← load dataset из LangSmith
+        │       └── evaluators.py   ← LLM-as-judge
+        └── tests/
+            ├── test_tools.py
+            └── test_graph.py
+```
+
+---
+
+## Фаза 1 — Scaffolding (день 1)
+
+### 1.1 Создать `pyproject.toml`
+
+```toml
+[project]
+name = "aitriage-labs"
+version = "0.1.0"
+description = "AITriage v2 — LangGraph + LangSmith"
+requires-python = ">=3.11"
+dependencies = [
+    "langchain>=0.3",
+    "langgraph>=0.2",
+    "langchain-openai>=0.2",
+    "langchain-anthropic>=0.2",
+    "langsmith>=0.2",
+    "click>=8.1",
+    "pydantic>=2.0",
+    "rich>=13.0",
+]
+
+[project.scripts]
+aitriage-labs = "aitriage_labs.cli:main"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+```
+
+### 1.2 `.env.example`
+
+```bash
+# LLM Provider (любой один)
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+
+# LangSmith (обязательно)
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=lsv2_pt_...
+LANGCHAIN_PROJECT=aitriage-labs
+LANGSMITH_WORKSPACE_ID=a758f53f-8e41-44e5-8844-46b8079721ec
+
+# Путь к Go-бинарю (опционально)
+AITRIAGE_BINARY=aitriage
+```
+
+---
+
+## Фаза 2 — State & Graph (день 1-2)
+
+### 2.1 `state.py` — что агент знает
+
+```python
+from typing import TypedDict, Annotated, List, Optional
+from langgraph.graph.message import add_messages
+
+class ScanResult(TypedDict):
+    tool: str          # "semgrep" | "bandit" | "gitleaks" | "trivy"
+    findings: list
+    exit_code: int
+
+class AgentState(TypedDict):
+    # Входные данные
+    target_path: str
+    user_query: Optional[str]
+    
+    # Накопленные результаты
+    scan_results: List[ScanResult]
+    nfr_findings: list
+    git_findings: list
+    architecture_diagram: Optional[str]
+    
+    # LLM диалог
+    messages: Annotated[list, add_messages]
+    
+    # Финальный отчёт
+    report_markdown: Optional[str]
+    fix_plan: Optional[str]
+    risk_score: Optional[int]
+```
+
+### 2.2 `graph.py` — LangGraph StateGraph
+
+```
+START
+  │
+  ▼
+[plan_scan]          ← LLM решает какие инструменты запускать
+  │
+  ▼
+[run_scanners]       ← параллельно: semgrep + bandit + gitleaks + trivy
+  │
+  ▼
+[run_nfr]            ← NFR compliance check
+  │
+  ▼
+[run_git_analysis]   ← git history analysis
+  │
+  ▼
+[build_architecture] ← Mermaid diagram
+  │
+  ▼
+[analyze_results]    ← LLM анализирует все findings
+  │
+  ▼
+[generate_report]    ← Markdown + fix_plan
+  │
+  ▼
+[consult]            ← цикл Q&A с пользователем (HITL)
+  │
+  ▼
+END
+```
+
+Узлы `run_scanners` выполняются **параллельно** через `Send()` API LangGraph.
+
+---
+
+## Фаза 3 — Tools (день 2-3)
+
+Каждый инструмент — простой `@tool` декоратор. Вызов существующего Go-бинаря:
+
+```python
+from langchain_core.tools import tool
+import subprocess, json
+
+@tool
+def run_aitriage_scan(path: str) -> dict:
+    """Run AITriage deterministic security scan on a directory."""
+    result = subprocess.run(
+        ["aitriage", "scan", "--json", path],
+        capture_output=True, text=True, timeout=120
+    )
+    return json.loads(result.stdout) if result.returncode == 0 else {"error": result.stderr}
+
+@tool  
+def run_semgrep(path: str) -> dict:
+    """Run Semgrep SAST scanner."""
+    result = subprocess.run(
+        ["semgrep", "--json", "--config", "auto", path],
+        capture_output=True, text=True, timeout=300, shell=False
+    )
+    return json.loads(result.stdout)
+
+@tool
+def run_gitleaks(path: str) -> dict:
+    """Detect secrets in git history."""
+    result = subprocess.run(
+        ["gitleaks", "detect", "--source", path, "--report-format", "json"],
+        capture_output=True, text=True, timeout=120
+    )
+    return json.loads(result.stdout) if result.stdout else {"leaks": []}
+```
+
+---
+
+## Фаза 4 — Промпты в LangSmith Hub (день 3)
+
+### Структура промптов в Hub
+
+| Prompt name | Описание |
+|---|---|
+| `aitriage/plan-scan` | Решение какие сканеры запускать |
+| `aitriage/analyze-results` | Анализ всех findings |
+| `aitriage/generate-report` | Генерация финального Markdown |
+| `aitriage/consult-system` | System prompt для Q&A режима |
+
+### `hub.py` — загрузка промптов
+
+```python
+from langsmith import Client
+from langchain import hub
+
+def get_prompt(name: str, commit_hash: str = None):
+    """Pull prompt from LangSmith Hub."""
+    ref = f"aitriage/{name}"
+    if commit_hash:
+        ref += f":{commit_hash}"  # pin to specific version in prod
+    return hub.pull(ref)
+```
+
+> **Правило**: в staging — `latest`, в prod — всегда конкретный commit hash.
+
+---
+
+## Фаза 5 — Evaluation на LangSmith (день 4)
+
+### Dataset структура
+
+В LangSmith создать dataset `aitriage-eval-set` с примерами:
+
+```json
+{
+  "inputs": {"target_path": "examples/nextjs-terrible"},
+  "outputs": {
+    "expected_severities": ["CRITICAL", "HIGH"],
+    "expected_tools": ["semgrep", "gitleaks"],
+    "min_findings": 3
+  }
+}
+```
+
+### Evaluators
+
+```python
+from langsmith.evaluation import evaluate, LangChainStringEvaluator
+
+def findings_coverage_evaluator(run, example):
+    """Проверяет что агент нашёл минимальное количество findings."""
+    actual = len(run.outputs.get("scan_results", []))
+    expected = example.outputs.get("min_findings", 1)
+    return {"key": "findings_coverage", "score": 1 if actual >= expected else 0}
+
+results = evaluate(
+    agent.invoke,
+    data="aitriage-eval-set",
+    evaluators=[findings_coverage_evaluator],
+    experiment_prefix="aitriage-v2",
+)
+```
+
+---
+
+## Фаза 6 — CLI (день 4)
+
+```python
+import click
+from rich.console import Console
+
+@click.group()
+def main():
+    """AITriage v2 — powered by LangGraph + LangSmith"""
+    pass
+
+@main.command()
+@click.argument("path")
+@click.option("--model", default="gpt-4o", help="LLM model")
+@click.option("--no-consult", is_flag=True, help="Skip Q&A mode")
+def agent(path, model, no_consult):
+    """Run AI-powered security audit."""
+    from aitriage_labs.agent.graph import build_graph
+    graph = build_graph(model=model)
+    result = graph.invoke({"target_path": path})
+    Console().print(result["report_markdown"])
+```
+
+---
+
+## Что получаем в итоге
+
+| Возможность | Go AITriage v1 | Python AITriage v2 |
+|---|---|---|
+| Статический анализ | ✅ | ✅ (вызывает v1) |
+| LangGraph stateful агент | ❌ | ✅ |
+| Параллельные сканеры | ✅ (goroutines) | ✅ (Send() API) |
+| Трассировка в LangSmith | ❌ | ✅ автоматически |
+| Промпты с версионированием | ❌ | ✅ Hub + commit hash |
+| Evaluation датасеты | ❌ | ✅ |
+| Human-in-the-loop | ❌ | ✅ LangGraph HITL |
+| Time-travel debugging | ❌ | ✅ |
+| Single binary | ✅ | ❌ (Python env) |
+
+---
+
+## Порядок реализации
+
+| День | Задача |
+|---|---|
+| 1 | `pyproject.toml`, `.env`, `state.py`, basic `graph.py` skeleton |
+| 2 | Все `tools/` — вызов Go бинарей + внешних сканеров |
+| 3 | Полный `graph.py` с параллельными узлами, промпты в Hub |
+| 4 | CLI (`click`), evaluation dataset в LangSmith, тесты |
+| 5 | README, `uv` install инструкции, CI |
+
+---
+
+> **Итог**: AITriage v2 в `labs/langsmith/` — это production-grade AI-агент с полной observability. Go v1 остаётся как надёжный детерминированный движок, который Python v2 вызывает как инструмент.

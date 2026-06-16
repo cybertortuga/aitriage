@@ -1,0 +1,653 @@
+{
+  "header": {
+    "rebuild_title": "Rebuild Container",
+    "rebuild_confirm_text": "Are you sure you want to rebuild the container? This will stop and compile the environment.",
+    "rebuild_cancel": "Cancel",
+    "rebuild_confirm": "Rebuild",
+    "rebuilding": "Rebuilding Environment...",
+    "rebuild_success": "Rebuild initiated successfully.",
+    "rebuild_error": "Failed to initiate rebuild or connection lost.",
+    "rebuild_close": "Close",
+    "rebuild_retry": "Retry"
+  },
+  "security_platform": "Security Platform",
+  "search": "SEARCH...",
+  "switch_language": "Switch Language",
+  "theme_settings": "Theme Settings",
+  "copilot": "Copilot",
+  "switch_advanced": "Switch to Advanced Mode",
+  "switch_simple": "Switch to Simple Mode",
+  "advanced": "Advanced",
+  "simple": "Simple",
+  "system_settings": "SYSTEM_SETTINGS",
+  "theme": "Theme",
+  "database": "Database",
+  "general": "General",
+  "select_accent_palette": "SELECT_ACCENT_PALETTE",
+  "danger_zone": "Danger Zone",
+  "danger_zone_desc": "These actions are irreversible and will permanently delete data from the database.",
+  "clear_findings_cache": "Clear Findings Cache",
+  "clear_cache_desc": "Removes all cached scan results. Next scan will take longer.",
+  "confirm_clear_cache": "Are you sure you want to clear the findings cache? This will reset all current scan results.",
+  "clear_cache_failed": "Failed to clear cache",
+  "clear_cache_btn": "Clear Cache",
+  "purge_all_data": "Purge All Data",
+  "purge_all_data_desc": "Permanently deletes all findings, topologies, and settings.",
+  "confirm_purge_data": "Are you absolutely sure? This will delete all data (except configuration and users) permanently!",
+  "purge_data_failed": "Failed to purge database",
+  "purge_database_btn": "Purge Database",
+  "application_settings": "Application Settings",
+  "enable_analytics": "Enable Analytics",
+  "enable_analytics_desc": "Send anonymous usage data to improve AITriage.",
+  "auto_scan_startup": "Auto-Scan on Startup",
+  "auto_scan_startup_desc": "Automatically initiate a full system scan when the platform starts.",
+  "apply_close": "APPLY & CLOSE",
+  "unpin_sidebar": "Unpin sidebar",
+  "pin_sidebar": "Pin sidebar",
+  "nav_command_center": "Command Center",
+  "nav_ai_triage_hub": "AI Triage Hub",
+  "nav_findings": "Findings",
+  "nav_topology": "Topology",
+  "nav_products": "Products",
+  "nav_scanners": "Scanners",
+  "nav_policies": "Policies",
+  "nav_reports": "Reports",
+  "nav_terminal": "Terminal",
+  "nav_faq": "Documentation",
+  "errorBoundary": {
+    "systemFailure": "SYSTEM_FAILURE",
+    "runtimeError": "Runtime application error encountered.",
+    "criticalRuntime": "CRITICAL_RUNTIME_ERROR",
+    "reboot": "REBOOT_SYSTEM",
+    "routingError": "Routing error encountered.",
+    "criticalRouting": "CRITICAL_ROUTING_ERROR"
+  },
+  "initializing_system": "Initializing AITriage System",
+  "tab_overview": "Overview",
+  "tab_repositories": "Repositories",
+  "tab_triaged": "Triaged",
+  "tab_reports": "Reports",
+  "tab_ai_assistant": "AI Assistant",
+  "tab_faq": "FAQ",
+  "aiCopilot": {
+    "autoFixPrompt": "Generate a short prompt for another AI (e.g. GitHub Copilot or developer) to automatically fix this vulnerability.",
+    "autoFixButton": "AUTO-FIX PROMPT"
+  },
+  "login": {
+    "brand_name": "AITriage Enterprise",
+    "secure_access_portal": "SECURE ACCESS PORTAL",
+    "operator_identity": "OPERATOR IDENTITY",
+    "username_placeholder": "username",
+    "access_token": "ACCESS TOKEN",
+    "verifying": "VERIFYING...",
+    "initialize_session": "INITIALIZE SESSION",
+    "standby": "STANDBY",
+    "protected_by": "PROTECTED BY AITRIAGE NEURAL-FORENSIC LAYER",
+    "errors": {
+      "invalid_credentials": "INVALID CREDENTIALS",
+      "auth_server_unreachable": "AUTH SERVER UNREACHABLE"
+    },
+    "accent_violet": "Violet Accent",
+    "accent_cyan": "Cyan Accent",
+    "accent_amber": "Amber Accent",
+    "accent_white": "Quartz White"
+  },
+  "APIKeysTab": {
+    "enterKeyName": "Enter key name (e.g., CI/CD Pipeline):",
+    "keyGeneratedAlert": "New API Key generated and copied to clipboard:",
+    "tokenNotShownAgain": "This token will not be shown again.",
+    "failedToGenerateKey": "Failed to generate key",
+    "failedToFetchKeys": "Failed to fetch keys",
+    "confirmRevoke": "Are you sure you want to revoke this key? This action is permanent.",
+    "failedToRevokeKey": "Failed to revoke key",
+    "title": "MACHINE-TO-MACHINE ACCESS",
+    "description": "Manage API tokens for external integrations, CI/CD pipelines, and automated security orchestration.",
+    "generateKey": "GENERATE KEY",
+    "tableHeader": {
+      "keyName": "KEY_NAME",
+      "tokenPrefix": "TOKEN_PREFIX",
+      "createdAt": "CREATED_AT",
+      "status": "STATUS",
+      "operations": "OPERATIONS"
+    },
+    "syncingKeys": "SYNCING_HSM_KEYS...",
+    "noKeysFound": "NO_ACTIVE_SECURITY_KEYS_FOUND",
+    "copyPrefix": "Copy Prefix",
+    "revokeAccess": "REVOKE_ACCESS",
+    "securityNotice": {
+      "title": "ENTERPRISE_SECURITY_NOTICE",
+      "descPart1": "All API keys are cryptographically bound to the hardware security module (HSM). Key rotation is enforced every 90 days for",
+      "complianceLevel": "Level 3 Compliance",
+      "descPart2": ". Revocation events are logged in the immutable audit trail."
+    }
+  },
+  "UsersTab": {
+    "title": "RBAC_IDENTITY_REGISTRY",
+    "subtitle": "Manage operator access and security clearance levels",
+    "totalIdentities": "Total_Identities",
+    "addOperator": "ADD_OPERATOR",
+    "tableHeader": {
+      "identityHandle": "IDENTITY_HANDLE",
+      "roleTier": "ROLE_TIER",
+      "status": "STATUS",
+      "operations": "OPERATIONS"
+    },
+    "noEmail": "no-email",
+    "active": "ACTIVE",
+    "suspended": "SUSPENDED",
+    "manage": "MANAGE",
+    "terminate": "TERMINATE"
+  },
+  "AuditReportPanel": {
+    "failedToGenerateReport": "Failed to generate report",
+    "connectionError": "Connection error",
+    "securityAuditReport": "SECURITY AUDIT REPORT",
+    "comprehensiveAssessment": "COMPREHENSIVE ASSESSMENT • SECURECODER",
+    "export": "EXPORT",
+    "executiveSummary": "Executive Summary",
+    "executiveSummaryDesc": "High-level overview",
+    "threatModel": "Threat Model",
+    "threatModelDesc": "STRIDE analysis",
+    "findings": "Findings",
+    "findingsDesc": "Vulnerabilities & risks",
+    "remediation": "Remediation",
+    "remediationDesc": "Fix roadmap",
+    "auditTarget": "AUDIT TARGET",
+    "auditTargetPlaceholder": "Project path, repository URL, or description of system to audit...",
+    "generating": "GENERATING...",
+    "generateFullAudit": "GENERATE FULL AUDIT",
+    "thisMayTakeAMoment": "This may take a moment...",
+    "auditReportGenerated": "AUDIT REPORT GENERATED"
+  },
+  "ThreatModelPanel": {
+    "failedToGenerateThreatModel": "Failed to generate threat model",
+    "connectionError": "Connection error",
+    "strideThreatModel": "STRIDE THREAT MODEL",
+    "securecoderIntegration": "SECURECODER INTEGRATION",
+    "stride": {
+      "S": {
+        "name": "Spoofing",
+        "desc": "Identity fraud & impersonation attacks"
+      },
+      "T": {
+        "name": "Tampering",
+        "desc": "Unauthorized data modification"
+      },
+      "R": {
+        "name": "Repudiation",
+        "desc": "Deniability of performed actions"
+      },
+      "I": {
+        "name": "Info Disclosure",
+        "desc": "Unauthorized information exposure"
+      },
+      "D": {
+        "name": "Denial of Service",
+        "desc": "Service availability disruption"
+      },
+      "E": {
+        "name": "Elevation of Privilege",
+        "desc": "Unauthorized privilege escalation"
+      }
+    },
+    "targetContext": "TARGET CONTEXT",
+    "targetContextPlaceholder": "Describe the system, project path, or paste findings to analyze...",
+    "analyzing": "ANALYZING...",
+    "generateThreatModel": "GENERATE THREAT MODEL",
+    "secureCoderProcessing": "SecureCoder processing...",
+    "threatModelResults": "THREAT MODEL RESULTS"
+  },
+  "SecurityPlanPanel": {
+    "failedToGeneratePlan": "Failed to generate plan",
+    "connectionError": "Connection error",
+    "failedToGeneratePoC": "Failed to generate PoC",
+    "remediationAndVerification": "REMEDIATION & VERIFICATION",
+    "securityPlanAndPoc": "SECURITY PLAN • POC ATTACK SIMULATION",
+    "implPlan": "IMPL PLAN",
+    "pocAttacks": "POC ATTACKS",
+    "vulnContextRemediation": "VULNERABILITY CONTEXT FOR REMEDIATION",
+    "targetForPocSimulation": "TARGET FOR POC SIMULATION",
+    "planPlaceholder": "Describe vulnerabilities to remediate, paste scan results, or specify project path...",
+    "pocPlaceholder": "Describe the attack surface, vulnerabilities to verify, or paste finding details...",
+    "planning": "PLANNING...",
+    "generateSecurityPlan": "GENERATE SECURITY PLAN",
+    "simulating": "SIMULATING...",
+    "generatePocAttacks": "GENERATE POC ATTACKS",
+    "secureCoderProcessing": "SecureCoder processing...",
+    "pocWarning": "POC SIMULATIONS ARE NON-DESTRUCTIVE • FOR VERIFICATION PURPOSES ONLY",
+    "pocSimulationResults": "POC SIMULATION RESULTS",
+    "implementationPlan": "IMPLEMENTATION PLAN"
+  },
+  "dependencies": {
+    "title": "Dependency_Inventory",
+    "subtitle": "{{count}} Modules identified in Software Bill of Materials (SBOM)",
+    "filter": "FILTER:",
+    "searchPlaceholder": "SEARCH_REGEX...",
+    "exportSbom": "[ EXPORT_SBOM ]",
+    "headers": {
+      "id": "ID",
+      "componentName": "COMPONENT_NAME",
+      "version": "VERSION",
+      "ecosystem": "ECOSYSTEM",
+      "scope": "SCOPE"
+    },
+    "telemetry": {
+      "title": "SBOM_STATISTICS",
+      "directDeps": "DIRECT_DEPS",
+      "immediateUpstream": "IMMEDIATE_UPSTREAM",
+      "transitiveDeps": "TRANSITIVE_DEPS",
+      "deepGraphNodes": "DEEP_GRAPH_NODES",
+      "riskVectors": "RISK_VECTORS",
+      "zeroDetected": "00 DETECTED",
+      "supplyChainIntegrity": "SUPPLY_CHAIN_INTEGRITY",
+      "integrityCheck": ":: INTEGRITY_CHECK",
+      "integrityCheckDescription": "All listed components have been verified against the current lockfile. No unauthorized modifications detected in the supply chain."
+    }
+  },
+  "dependencyGraph": {
+    "title": "Topology_Visualization",
+    "subtitle": "Recursive dependency graph analysis.",
+    "refreshGraph": "[ REFRESH_GRAPH ]",
+    "renderEngine": "RENDER_ENGINE: WEBGL_CORE",
+    "telemetry": {
+      "title": "TOPOLOGY_METRICS",
+      "graphDepth": "GRAPH_DEPTH",
+      "sevenLayers": "07 LAYERS",
+      "maxRecursionLimit": "MAX_RECURSION_LIMIT",
+      "orphanNodes": "ORPHAN_NODES",
+      "zeroDetected": "00 DETECTED",
+      "isolatedComponents": "ISOLATED_COMPONENTS",
+      "circularDeps": "CIRCULAR_DEPS",
+      "recursiveIntegrity": "RECURSIVE_INTEGRITY",
+      "graphLegend": ":: GRAPH_LEGEND",
+      "primaryModule": "PRIMARY_MODULE",
+      "upstreamDependency": "UPSTREAM_DEPENDENCY",
+      "peerRelation": "PEER_RELATION"
+    }
+  },
+  "engagementsView": {
+    "title": "Audit_Engagements",
+    "subtitle": "Lifecycle management of security assessments and compliance audits.",
+    "executiveReportCsv": "[ EXECUTIVE_REPORT_CSV ]",
+    "newEngagement": "[ NEW_ENGAGEMENT ]",
+    "headers": {
+      "id": "ID",
+      "engagementName": "ENGAGEMENT_NAME",
+      "status": "STATUS",
+      "startDate": "START_DATE"
+    },
+    "synchronizing": "Synchronizing_Audit_Lifecycle...",
+    "telemetry": {
+      "title": "ENGAGEMENT_AUDIT",
+      "auditIdentifier": "AUDIT_IDENTIFIER",
+      "currentStatus": "CURRENT_STATUS",
+      "lifecycleStage": "LIFECYCLE_STAGE",
+      "forensicReporting": ":: FORENSIC_REPORTING",
+      "exportJson": "[ EXPORT_JSON ]",
+      "exportCsv": "[ EXPORT_CSV ]",
+      "viewFullAudit": "[ VIEW_FULL_AUDIT ]",
+      "selectAudit": "select_audit_engagement_to_view_forensics"
+    }
+  },
+  "fileBrowser": {
+    "title": "Select Scan Target",
+    "subtitle": "Navigate and select a directory to scan",
+    "goUp": "Go up one level",
+    "scanning": "Scanning filesystem...",
+    "retry": "Retry",
+    "emptyDirectory": "Empty directory",
+    "hidden": "hidden",
+    "scan": "Scan",
+    "footerHint": "Click folder to browse • Hover for scan",
+    "cancel": "Cancel",
+    "scanCurrent": "Scan current directory"
+  },
+  "foundry": {
+    "title": "Security_Foundry",
+    "subtitle": "Automated Patch Generation & LLM-Driven Remediation.",
+    "deployAllPatches": "[ DEPLOY_ALL_PATCHES ]",
+    "systemReady": "SYSTEM_READY",
+    "awaitingTriage": "Awaiting triage input for remediation pipeline.",
+    "analyze": "ANALYZE",
+    "generate": "GENERATE",
+    "validate": "VALIDATE",
+    "runDiagnostics": "[ RUN_DIAGNOSTICS ]",
+    "clearPipeline": "[ CLEAR_PIPELINE ]",
+    "telemetry": {
+      "title": "FOUNDRY_CONTROL",
+      "patchBuffer": "PATCH_BUFFER",
+      "ready": "00 READY",
+      "queuedRemediations": "QUEUED_REMEDIATIONS",
+      "llmAvailability": "LLM_AVAILABILITY",
+      "online": "ONLINE",
+      "gemini": "GEMINI_3.1_PRO",
+      "compilerStatus": "COMPILER_STATUS",
+      "stable": "STABLE",
+      "buildVerification": "BUILD_VERIFICATION",
+      "pipelineLogs": ":: PIPELINE_LOGS"
+    }
+  },
+  "foundryLoader": {
+    "title": "Foundry_Active",
+    "subtitle": "Engaging_Security_Subsystems",
+    "activeProcess": "ACTIVE_PROCESS",
+    "initializingCore": "INITIALIZING_CORE...",
+    "loadRatio": "LOAD_RATIO",
+    "nominal": "[ NOMINAL ]",
+    "warning": "CAUTION: DO NOT INTERRUPT SYSTEM ORCHESTRATION. SECURITY CONTEXT IS VOLATILE."
+  },
+  "sastView": {
+    "title": "Static_Analysis_Pipeline",
+    "subtitle": "External Scanner Aggregator & Orchestration View.",
+    "search": "SEARCH:",
+    "filterPlaceholder": "FILTER_FINDINGS...",
+    "triggerScan": "[ TRIGGER_SCAN ]",
+    "headers": {
+      "tool": "TOOL",
+      "severity": "SEV",
+      "messageBuffer": "MESSAGE_BUFFER",
+      "targetLocation": "TARGET_LOCATION"
+    },
+    "telemetry": {
+      "title": "FINDING_DETAILS",
+      "ruleIdentifier": "RULE_IDENTIFIER",
+      "severityLevel": "SEVERITY_LEVEL",
+      "scannerDetermination": "SCANNER_DETERMINATION",
+      "detailedReport": "DETAILED_REPORT",
+      "resourcePath": "RESOURCE_PATH",
+      "initializeFix": "[ INITIALIZE_FIX ]",
+      "selectEvent": "select_event_for_analysis"
+    }
+  },
+  "notificationDropdown": {
+    "operationalAlerts": "OPERATIONAL_ALERTS",
+    "new": "NEW",
+    "synchronizing": "SYNCHRONIZING...",
+    "noAlerts": "NO_ALERTS_DETECTED",
+    "markAsResolved": "[ MARK_AS_RESOLVED ]",
+    "viewAllLogs": "VIEW_ALL_SYSTEM_LOGS"
+  },
+  "sourceViewer": {
+    "title": "Source_Analysis",
+    "subtitle": "Inspecting resource: {{filename}}",
+    "downloadSource": "[ DOWNLOAD_SOURCE ]",
+    "telemetry": {
+      "title": "FILE_METADATA",
+      "loc": "LOC",
+      "linesOfCode": "LINES_OF_CODE",
+      "encoding": "ENCODING",
+      "characterSet": "CHARACTER_SET",
+      "language": "LANGUAGE",
+      "syntaxEngine": "SYNTAX_ENGINE",
+      "analysisHints": ":: ANALYSIS_HINTS",
+      "securityAlert": "! SECURITY_ALERT",
+      "securityAlertDescription": "Multiple instances of unsafe input handling detected in this module. Recommed immediate sanitization refactor."
+    }
+  },
+  "apiKeysTab": {
+    "enterKeyName": "Enter key name (e.g., CI/CD Pipeline):",
+    "keyGenerated": "New API Key generated and copied to clipboard:\n\n{{token}}\n\nThis token will not be shown again.",
+    "failedToGenerateKey": "Failed to generate key",
+    "confirmRevoke": "Are you sure you want to revoke this key? This action is permanent.",
+    "failedToRevokeKey": "Failed to revoke key",
+    "machineToMachineAccess": "MACHINE-TO-MACHINE ACCESS",
+    "description": "Manage API tokens for external integrations, CI/CD pipelines, and automated security orchestration.",
+    "generateKey": "GENERATE KEY",
+    "keyName": "KEY_NAME",
+    "tokenPrefix": "TOKEN_PREFIX",
+    "createdAt": "CREATED_AT",
+    "status": "STATUS",
+    "operations": "OPERATIONS",
+    "syncingKeys": "SYNCING_HSM_KEYS...",
+    "noActiveKeys": "NO_ACTIVE_SECURITY_KEYS_FOUND",
+    "copyPrefix": "Copy Prefix",
+    "revokeAccess": "REVOKE_ACCESS",
+    "enterpriseSecurityNotice": "ENTERPRISE_SECURITY_NOTICE",
+    "securityNoticeDescription": "All API keys are cryptographically bound to the hardware security module (HSM). Key rotation is enforced every 90 days for <strong>Level 3 Compliance</strong>. Revocation events are logged in the immutable audit trail."
+  },
+  "auditLogTab": {
+    "complianceAuditStream": "COMPLIANCE_AUDIT_STREAM",
+    "description": "Immutable ledger of administrative operations",
+    "downloadBundle": "DOWNLOAD_BUNDLE_Y2026",
+    "noRecords": "NO_RECORDS_FOUND_IN_ACTIVE_LEDGER",
+    "success": "SUCCESS"
+  },
+  "usersTab": {
+    "title": "RBAC_IDENTITY_REGISTRY",
+    "description": "Manage operator access and security clearance levels",
+    "totalIdentities": "Total_Identities",
+    "addOperator": "ADD_OPERATOR",
+    "identityHandle": "IDENTITY_HANDLE",
+    "roleTier": "ROLE_TIER",
+    "status": "STATUS",
+    "operations": "OPERATIONS",
+    "noEmail": "no-email",
+    "active": "ACTIVE",
+    "suspended": "SUSPENDED",
+    "manage": "MANAGE",
+    "terminate": "TERMINATE"
+  },
+  "dataTable": {
+    "filter": "FILTER...",
+    "rows": "ROWS",
+    "noData": "NO_DATA_AVAILABLE"
+  },
+  "statusBar": {
+    "idle": "IDLE",
+    "scanning": "SCANNING",
+    "ready": "READY",
+    "error": "ERROR",
+    "findings": "FINDINGS",
+    "secureCoder": "SECURECODER"
+  },
+  "auditReportPanel": {
+    "generateFailed": "Failed to generate report",
+    "connectionError": "Connection error",
+    "printTitle": "AITriage Security Audit Report",
+    "title": "SECURITY AUDIT REPORT",
+    "subtitle": "COMPREHENSIVE ASSESSMENT • SECURECODER",
+    "export": "EXPORT",
+    "sections": {
+      "executiveSummary": "Executive Summary",
+      "executiveSummaryDesc": "High-level overview",
+      "threatModel": "Threat Model",
+      "threatModelDesc": "STRIDE analysis",
+      "findings": "Findings",
+      "findingsDesc": "Vulnerabilities & risks",
+      "remediation": "Remediation",
+      "remediationDesc": "Fix roadmap"
+    },
+    "auditTarget": "AUDIT TARGET",
+    "placeholder": "Project path, repository URL, or description of system to audit...",
+    "generateButton": "GENERATE FULL AUDIT",
+    "generating": "GENERATING...",
+    "loadingMessage": "This may take a moment...",
+    "reportGenerated": "AUDIT REPORT GENERATED"
+  },
+  "securityPlanPanel": {
+    "failedToGeneratePlan": "Failed to generate plan",
+    "failedToGeneratePoC": "Failed to generate PoC",
+    "connectionError": "Connection error",
+    "title": "REMEDIATION & VERIFICATION",
+    "subtitle": "SECURITY PLAN • POC ATTACK SIMULATION",
+    "implPlan": "IMPL PLAN",
+    "pocAttacks": "POC ATTACKS",
+    "planTargetLabel": "VULNERABILITY CONTEXT FOR REMEDIATION",
+    "pocTargetLabel": "TARGET FOR POC SIMULATION",
+    "planPlaceholder": "Describe vulnerabilities to remediate, paste scan results, or specify project path...",
+    "pocPlaceholder": "Describe the attack surface, vulnerabilities to verify, or paste finding details...",
+    "generatePlan": "GENERATE SECURITY PLAN",
+    "planning": "PLANNING...",
+    "generatePoC": "GENERATE POC ATTACKS",
+    "simulating": "SIMULATING...",
+    "processing": "SecureCoder processing...",
+    "warning": "POC SIMULATIONS ARE NON-DESTRUCTIVE • FOR VERIFICATION PURPOSES ONLY",
+    "planResultsTitle": "IMPLEMENTATION PLAN",
+    "pocResultsTitle": "POC SIMULATION RESULTS"
+  },
+  "threatModelPanel": {
+    "stride": {
+      "spoofing": {
+        "name": "Spoofing",
+        "desc": "Identity fraud & impersonation attacks"
+      },
+      "tampering": {
+        "name": "Tampering",
+        "desc": "Unauthorized data modification"
+      },
+      "repudiation": {
+        "name": "Repudiation",
+        "desc": "Deniability of performed actions"
+      },
+      "infoDisclosure": {
+        "name": "Info Disclosure",
+        "desc": "Unauthorized information exposure"
+      },
+      "dos": {
+        "name": "Denial of Service",
+        "desc": "Service availability disruption"
+      },
+      "eop": {
+        "name": "Elevation of Privilege",
+        "desc": "Unauthorized privilege escalation"
+      }
+    },
+    "generateFailed": "Failed to generate threat model",
+    "connectionError": "Connection error",
+    "title": "STRIDE THREAT MODEL",
+    "subtitle": "SECURECODER INTEGRATION",
+    "targetContext": "TARGET CONTEXT",
+    "placeholder": "Describe the system, project path, or paste findings to analyze...",
+    "generateButton": "GENERATE THREAT MODEL",
+    "analyzing": "ANALYZING...",
+    "processing": "SecureCoder processing...",
+    "resultsTitle": "THREAT MODEL RESULTS"
+  },
+  "findingDetailModal": {
+    "errorLoadingFile": "// Error loading file content",
+    "tabs": {
+      "details": "Finding Details",
+      "code": "Source Preview",
+      "ai": "AI Remediator"
+    },
+    "sections": {
+      "description": "Description",
+      "impact": "Impact",
+      "fileLocation": "File Location",
+      "triageActions": "Triage Actions",
+      "metadata": "Metadata",
+      "assignment": "Assignment"
+    },
+    "noDescription": "No description provided.",
+    "impactPending": "Impact analysis pending.",
+    "openInExplorer": "OPEN IN EXPLORER",
+    "actions": {
+      "markInProgress": "MARK IN PROGRESS",
+      "markAsTriage": "TRIAGE",
+      "falsePositive": "FALSE POSITIVE"
+    },
+    "metadata": {
+      "stack": "Stack",
+      "cwe": "CWE",
+      "owasp": "OWASP",
+      "agnostic": "AGNOSTIC"
+    },
+    "assignment": {
+      "autoAssigned": "AUTO_ASSIGNED:BOT_01",
+      "secOps": "SecOps_Orchestrator_Default"
+    },
+    "ai": {
+      "requestRemediation": "Request AI Remediation",
+      "description": "Our LLM will analyze the code snippet, finding context, and provide a secure fix suggestion with implementation steps.",
+      "generateFixPlan": "GENERATE FIX PLAN",
+      "analyzing": "LLM_ANALYZING..."
+    },
+    "footer": {
+      "entityId": "AITriage Entity ID",
+      "close": "CLOSE VIEW"
+    }
+  },
+  "brand": {
+    "subtitle": "Forensic_Engine"
+  },
+  "pageLayout": {
+    "systemDirectory": "SYSTEM // DIRECTORY"
+  },
+  "telemetry": {
+    "uplinkStable": "UPLINK_STABLE"
+  },
+  "aiPrompts": {
+    "title": "AI IDE PROMPTS",
+    "subtitle": "COPY & PASTE TO YOUR IDE",
+    "togglePanel": "Toggle AI Prompts Panel",
+    "compatibleWith": "WORKS WITH:",
+    "copyPrompt": "COPY",
+    "copied": "COPIED!",
+    "preview": "PREVIEW",
+    "hide": "HIDE",
+    "footerHint": "Copy any prompt and paste it into your AI-powered IDE to run security analysis on your codebase.",
+    "categories": {
+      "securityScan": "Security Scanning",
+      "remediation": "Remediation & Fixes",
+      "analysis": "Threat Analysis",
+      "compliance": "Compliance & Testing"
+    },
+    "prompts": {
+      "scanProject": {
+        "title": "Full Project Security Scan",
+        "desc": "Deep SAST analysis with CWE mapping across all source files",
+        "prompt": "You are a senior security engineer performing a comprehensive Static Application Security Testing (SAST) engagement.\n\n## Scope\nAnalyze ALL source files in this project. Do not skip test files, configuration, or infrastructure code.\n\n## Analysis Checklist\n1. **Injection** — SQL, NoSQL, OS command, LDAP, XPath, template injection, XSS (reflected, stored, DOM)\n2. **Authentication & Session** — hardcoded credentials, weak session IDs, missing auth checks, session fixation\n3. **Cryptography** — weak/broken algorithms (MD5, SHA1, DES), hardcoded keys/IVs, insufficient entropy, missing TLS verification\n4. **Data Exposure** — secrets in source (API keys, tokens, passwords), sensitive data in logs/URLs, unencrypted PII storage\n5. **Configuration** — debug mode in production, permissive CORS, missing security headers (CSP, HSTS, X-Frame-Options), default credentials\n6. **Supply Chain** — known-vulnerable dependencies (check CVE databases), typosquatting risk, unmaintained packages\n7. **Business Logic** — race conditions (TOCTOU), integer overflow/underflow, insecure direct object references (IDOR)\n\n## Output Format\nFor each finding, provide a structured block:\n```\n### [SEVERITY] Finding Title\n- **File**: path/to/file.ext:LINE\n- **CWE**: CWE-XXX — Name\n- **CVSS 3.1**: X.X (vector string)\n- **Description**: What the vulnerability is and why it matters\n- **Vulnerable Code**: (snippet)\n- **Fixed Code**: (snippet with minimal, targeted fix)\n- **Verification**: How to confirm the fix works\n```\n\nSort findings: CRITICAL first, then HIGH, MEDIUM, LOW.\nEnd with a summary table: | Severity | Count | Top CWE |"
+      },
+      "scanFile": {
+        "title": "Single File Deep Scan",
+        "desc": "Line-by-line security audit of the active file with exploit analysis",
+        "prompt": "You are a security code auditor. Perform a line-by-line security review of THIS FILE ONLY.\n\n## Analysis Vectors\n1. **Data Flow** — Trace every external input (HTTP params, env vars, file reads, DB results) to where it is used. Flag any unsanitized flow into sensitive sinks (SQL, shell, HTML, file system, eval, deserialization).\n2. **Trust Boundaries** — Identify where data crosses trust boundaries. Verify validation exists at each boundary.\n3. **Error Handling** — Check for information leakage in error messages, missing error handlers, catch blocks that swallow exceptions silently.\n4. **Auth/Authz** — Missing access control checks, privilege escalation paths, insecure default permissions.\n5. **Secrets** — Hardcoded tokens, API keys, passwords, connection strings, private keys.\n6. **Concurrency** — TOCTOU bugs, shared mutable state without synchronization, deadlock potential.\n7. **Memory Safety** — Buffer overflows, use-after-free, null pointer dereference (for C/C++/Rust/Go).\n\n## Output per Finding\n- Severity: CRITICAL | HIGH | MEDIUM | LOW\n- Vulnerable code snippet with line numbers\n- Attack scenario: step-by-step how an attacker would exploit this\n- Fixed code: minimal, drop-in replacement\n- Confidence: HIGH | MEDIUM | LOW\n\nIf the file is clean, state: \"No security issues found. Confidence: [X]%\" with reasoning."
+      },
+      "scanDeps": {
+        "title": "Supply Chain & Dependency Audit",
+        "desc": "CVE scan, license check, and supply chain risk assessment",
+        "prompt": "You are a supply chain security analyst. Perform a comprehensive dependency audit.\n\n## For Each Dependency\n1. Check against NVD, GitHub Advisory Database, and OSV for known CVEs\n2. Assess maintenance status: last release date, open issues, bus factor\n3. Analyze for typosquatting risk (compare against popular package names)\n4. Check for suspicious install scripts (preinstall, postinstall hooks)\n5. Verify integrity: pinned versions vs ranges, lockfile consistency\n6. License compatibility: identify copyleft, restrictive, or unknown licenses\n\n## Supply Chain Analysis\n- Dependency tree depth and transitive dependency count\n- Packages with known malicious versions (event-stream, ua-parser-js, etc.)\n- Packages requesting excessive permissions (filesystem, network, native modules)\n- Abandoned packages (no updates > 2 years) with known alternatives\n\n## Output\nGenerate a risk assessment table:\n| Package | Version | Pinned? | Last Update | CVEs | Risk | Action Required |\n\nFollow with:\n1. **Critical Actions** — Must fix immediately (active CVEs, malicious packages)\n2. **Recommended Updates** — Should update soon (outdated, deprecated)\n3. **Monitoring** — Watch for future issues (low-activity maintainers)\n4. **License Report** — Compatibility matrix with your project license"
+      },
+      "fixVuln": {
+        "title": "Fix Vulnerability (SecureCoder)",
+        "desc": "Root-cause remediation with PoC verification following SecureCoder methodology",
+        "prompt": "You are an expert security engineer performing code remediation following the SecureCoder methodology.\n\n## Remediation Rules\n1. Fix the ROOT CAUSE, not symptoms. If input is unsanitized, add validation at the trust boundary, not just at the point of use.\n2. Follow the principle of least privilege in every fix.\n3. Use established, well-audited security libraries where available (e.g., parameterized queries, OWASP ESAPI, bcrypt/argon2).\n4. Maintain backward compatibility. Do NOT change public API signatures unless strictly necessary for security.\n5. Add input validation at every trust boundary the data crosses.\n\n## Required Output\n\n### 1. Root Cause Analysis\nExplain WHY the original code is vulnerable. Cite the specific CWE.\n\n### 2. Threat Model Context\nIdentify the entry point, trust boundary, and sensitive data path involved.\n\n### 3. Fix (Before/After Diff)\nShow the exact code change. Minimal and surgical — do not refactor unrelated code.\n\n### 4. Edge Cases Handled\nList what your fix handles that the original code did not (null input, encoding bypass, concurrent access, etc.).\n\n### 5. PoC Verification\nReason through an exploit scenario step-by-step:\n- **Before fix**: Show how an attacker would exploit the vulnerability\n- **After fix**: Show why the same attack vector is now blocked\n- **Confidence**: HIGH | MEDIUM | LOW that the fix is complete\n\n### 6. Regression Test\nProvide a test case that proves the fix works and would catch regression."
+      },
+      "fixBatch": {
+        "title": "Batch Remediation (Fix All)",
+        "desc": "Automated scan-and-fix of all findings with SecureCoder workflow",
+        "prompt": "You are an automated security remediation system following the SecureCoder agent workflow.\n\n## Workflow (execute in order)\n\n### Phase 1: Threat Model\nBefore making ANY code changes, identify:\n- Entry points (HTTP endpoints, CLI args, file inputs, env vars)\n- Trust boundaries (user input -> backend, backend -> database, etc.)\n- Sensitive data paths (credentials, PII, tokens, session data)\n- Priority review areas based on exposure\n\n### Phase 2: Implementation Plan\nCreate a prioritized fix plan:\n1. CRITICAL — RCE, SQL injection, auth bypass, deserialization attacks\n2. HIGH — XSS, SSRF, path traversal, privilege escalation\n3. MEDIUM — Information disclosure, weak cryptography, missing rate limits\n4. LOW — Debug info exposure, missing security headers, minor config issues\n\n### Phase 3: Remediation\nFor EACH fix:\n- File path and line number\n- Before/after code diff\n- CWE ID and attack vector\n- Why this fix is correct\n\n### Phase 4: Verification\nAfter all fixes, perform a verification pass:\n- Confirm each vulnerability is no longer exploitable\n- Check for regressions (did any fix introduce new issues?)\n- Verify no functional behavior was broken\n\n## Constraints\n- Do NOT break existing functionality\n- Do NOT change public API signatures unless necessary for security\n- Prefer standard library solutions over third-party\n- Add TODO comments for issues requiring manual review or infrastructure changes\n\n## Final Report\n| # | Severity | CWE | File | Status | Fix Description |\nTotal: X fixed, Y require manual review, Z false positives"
+      },
+      "secureRefactor": {
+        "title": "Security-First Refactor",
+        "desc": "Defense-in-depth refactoring with secure coding guidelines",
+        "prompt": "You are a security architect performing a defense-in-depth code refactoring.\n\n## Secure Coding Principles (apply ALL)\n1. **Defense in Depth** — Multiple independent security controls. If one layer fails, the next catches it.\n2. **Fail-Safe Defaults** — Deny by default, allow explicitly. Default to the most restrictive permission.\n3. **Least Privilege** — Every module, process, and user gets only the minimum access needed.\n4. **Input Validation** — Validate ALL external inputs at trust boundaries. Use allowlists over denylists.\n5. **Output Encoding** — Context-aware encoding: HTML entities for HTML, parameterized queries for SQL, percent-encoding for URLs.\n6. **Secure Error Handling** — Generic messages to users, detailed logs server-side. Never expose stack traces, file paths, or SQL in errors.\n7. **Audit Logging** — Log security-relevant events (auth attempts, access control decisions, data modifications) WITHOUT including sensitive data.\n\n## Specific Patterns to Apply\n- Replace string concatenation in queries with parameterized/prepared statements\n- Add Content-Security-Policy, Strict-Transport-Security, X-Content-Type-Options headers\n- Implement rate limiting on authentication and sensitive endpoints\n- Add CSRF protection (anti-CSRF tokens or SameSite cookies) for state-changing requests\n- Use constant-time comparison for secrets/tokens\n- Ensure TLS certificate validation is enabled (no InsecureSkipVerify)\n\n## Output\nShow refactored code with inline comments explaining each security improvement. Group changes by security principle."
+      },
+      "threatModel": {
+        "title": "STRIDE Threat Model",
+        "desc": "Full STRIDE analysis with data flow diagram and attack trees",
+        "prompt": "You are a threat modeling expert following the SecureCoder determine_threat_model methodology.\n\n## Step 1: Component Identification\nIdentify all components, their roles, and the data they handle.\n\n## Step 2: Data Flow Diagram\nCreate an ASCII data flow diagram showing:\n- External entities (users, third-party services)\n- Processes (your application components)\n- Data stores (databases, file systems, caches)\n- Data flows (arrows with data type labels)\n- TRUST BOUNDARIES (marked with dashed lines)\n\n## Step 3: STRIDE Analysis\nFor each component/data flow that crosses a trust boundary:\n\n| Category | Threat | Attack Vector | Likelihood (1-5) | Impact (1-5) | Risk Score | Existing Control | Gap | Mitigation |\n|----------|--------|---------------|-------------------|--------------|------------|-----------------|-----|------------|\n| **S**poofing | ? | ? | ? | ? | ? | ? | ? | ? |\n| **T**ampering | ? | ? | ? | ? | ? | ? | ? | ? |\n| **R**epudiation | ? | ? | ? | ? | ? | ? | ? | ? |\n| **I**nfo Disclosure | ? | ? | ? | ? | ? | ? | ? | ? |\n| **D**enial of Service | ? | ? | ? | ? | ? | ? | ? | ? |\n| **E**levation of Priv | ? | ? | ? | ? | ? | ? | ? | ? |\n\n## Step 4: Attack Trees\nFor the top 3 highest-risk threats, create attack trees showing:\n- Root goal (what attacker wants)\n- Sub-goals (intermediate steps)\n- Leaf nodes (specific techniques)\n- AND/OR relationships\n\n## Step 5: Prioritized Mitigations\nOrder by risk score. For each: effort estimate (hours), implementation complexity (L/M/H), and specific code changes needed.\n\nFocus on REALISTIC, EXPLOITABLE threats. Skip theoretical risks with no practical attack vector."
+      },
+      "codeReview": {
+        "title": "Security Code Review",
+        "desc": "Structured security review checklist with pass/fail assessment",
+        "prompt": "You are a senior security code reviewer conducting a structured review. Apply this checklist and report pass/fail for each item.\n\n## Authentication & Authorization\n- [ ] All endpoints require authentication (no unprotected routes)\n- [ ] Authorization checks at controller/handler level (not just middleware)\n- [ ] No hardcoded credentials, tokens, or API keys\n- [ ] Session management: secure flags (HttpOnly, Secure, SameSite), proper expiration, regeneration after login\n- [ ] Password storage: bcrypt/argon2/scrypt with appropriate cost factor\n\n## Input Handling\n- [ ] All user inputs validated (type, length, range, format)\n- [ ] Allowlist validation preferred over denylist\n- [ ] File uploads validated: type (magic bytes, not just extension), size limits, content scanning\n- [ ] No user input directly concatenated into SQL, OS commands, or HTML\n\n## Data Protection\n- [ ] Sensitive data encrypted at rest (AES-256-GCM or equivalent)\n- [ ] TLS 1.2+ enforced for all transit, certificate validation enabled\n- [ ] No sensitive data in logs, URLs, error messages, or client-side storage\n- [ ] PII handling complies with GDPR/CCPA requirements\n\n## Error Handling & Logging\n- [ ] Generic error messages for end users\n- [ ] Detailed errors only in server-side logs\n- [ ] No stack traces, SQL queries, or file paths exposed to clients\n- [ ] Security events logged: auth failures, access denials, input validation failures\n- [ ] Logs do NOT contain passwords, tokens, or PII\n\n## Code Quality\n- [ ] No TODO/FIXME/HACK comments for security-related items\n- [ ] Dependencies up to date, no known CVEs\n- [ ] No dead code with security implications (commented-out auth checks, disabled validation)\n- [ ] Constant-time comparison used for secrets and tokens\n\nFor each FAILED check: location (file:line), risk level, and specific remediation steps."
+      },
+      "attackSurface": {
+        "title": "Attack Surface Mapping",
+        "desc": "Complete entry point catalog with risk assessment per vector",
+        "prompt": "You are a penetration testing expert. Map the complete attack surface of this application.\n\n## Catalog All Entry Points\n\n### 1. Network Surface\n- HTTP/HTTPS endpoints (method, path, auth required, input params)\n- WebSocket connections (handshake, message types)\n- gRPC/GraphQL interfaces (queries, mutations, subscriptions)\n- File upload endpoints (accepted types, size limits, storage location)\n\n### 2. Data Input Surface\n- Form inputs (validation present? type constraints?)\n- URL parameters and path segments\n- Request headers (custom headers, User-Agent, Referer)\n- Cookies (flags: HttpOnly, Secure, SameSite, expiration)\n- File imports/parsing (CSV, XML, JSON, YAML — injection vectors?)\n\n### 3. Authentication Surface\n- Login mechanisms (password, OAuth, SSO, API keys, JWT)\n- Password reset flow (token generation, expiration, enumeration risk)\n- MFA implementation (bypass potential?)\n- Session management (storage, rotation, concurrent sessions)\n\n### 4. Infrastructure Surface\n- Environment variables (secrets? validation?)\n- Configuration files (committed to repo? sensitive defaults?)\n- Docker/container settings (privileged? capabilities? secrets mounting?)\n- CI/CD pipeline (secret injection, artifact integrity, deploy permissions)\n\n## Risk Assessment Per Entry Point\n| Entry Point | Trust Level | Input Validation | Attack Patterns | Risk | Priority |\n\n## Attack Surface Map\nVisualize as ASCII diagram showing external-facing surface area, internal boundaries, and high-risk paths.\n\nEnd with: Top 5 entry points an attacker would target first, and why."
+      },
+      "owaspCheck": {
+        "title": "OWASP Top 10 Audit (2025)",
+        "desc": "Compliance check against all OWASP Top 10 2025 categories",
+        "prompt": "You are an application security expert. Audit this codebase against the OWASP Top 10 2025.\n\nFor each category, assess the codebase and provide a detailed finding:\n\n## A01: Broken Access Control\nCheck: missing access controls, IDOR, path traversal, CORS misconfiguration, metadata manipulation\n\n## A02: Cryptographic Failures\nCheck: weak algorithms (MD5, SHA1, DES), hardcoded keys, plaintext storage/transit, missing TLS verification\n\n## A03: Injection\nCheck: SQL, NoSQL, OS command, LDAP, XPath, template, header injection, XSS (reflected/stored/DOM)\n\n## A04: Insecure Design\nCheck: missing threat modeling, insecure design patterns, no rate limiting, missing business logic validation\n\n## A05: Security Misconfiguration\nCheck: default configs, unnecessary features enabled, missing security headers, verbose error messages, open cloud storage\n\n## A06: Vulnerable and Outdated Components\nCheck: outdated deps with known CVEs, unmaintained packages, unpatched frameworks\n\n## A07: Identification and Authentication Failures\nCheck: weak passwords allowed, missing MFA, session fixation, credential stuffing protection\n\n## A08: Software and Data Integrity Failures\nCheck: unsigned updates, insecure deserialization, unverified CI/CD pipeline integrity, missing SRI\n\n## A09: Security Logging and Monitoring Failures\nCheck: missing audit logs, unmonitored auth failures, log injection, no alerting on suspicious activity\n\n## A10: Server-Side Request Forgery (SSRF)\nCheck: unvalidated URLs in server requests, DNS rebinding, cloud metadata endpoint access\n\n## Output Per Category\n- Status: PASS | WARNING | FAIL\n- Evidence: specific file:line references\n- Risk: what could go wrong\n- Remediation: concrete fix steps with code examples\n\n## Compliance Scorecard\n| Category | Status | Findings | Risk Level |\nOverall Risk Rating: CRITICAL / HIGH / MEDIUM / LOW"
+      },
+      "writeTests": {
+        "title": "Security Test Suite",
+        "desc": "Generate comprehensive security regression tests",
+        "prompt": "You are a security test engineer. Generate a comprehensive security test suite for this codebase.\n\nUse the project existing test framework. If none exists, use the most appropriate framework for the language.\n\n## 1. Input Validation Tests\n- SQL injection payloads: OR 1=1--, UNION SELECT, blind injection timing attacks\n- XSS payloads: script tags, onerror handlers, javascript: URIs, SVG/onload, polyglot payloads\n- Path traversal: ../, ..\\, %2e%2e/, null bytes, URL encoding bypass\n- Command injection: semicolons, pipes, subshells, backtick execution\n- Integer overflow: MAX_INT+1, negative values, zero-division\n- Encoding attacks: UTF-8 overlong encoding, Unicode normalization bypass\n\n## 2. Authentication Tests\n- Invalid credentials return generic error (no user enumeration)\n- Session expires after configured timeout\n- JWT tampering: alg=none, key confusion, expired token reuse\n- Brute force protection: account lockout or rate limiting after N failures\n- Concurrent session limits enforced\n- Password reset tokens: single-use, time-limited, sufficient entropy\n\n## 3. Authorization Tests\n- Horizontal privilege escalation: access another user resources by changing ID\n- Vertical privilege escalation: regular user accessing admin endpoints\n- IDOR: manipulate object IDs in URLs, request bodies, headers\n- Missing function-level access control: direct access to admin functions\n\n## 4. Business Logic Tests\n- Race conditions: concurrent requests to avoid limits (double-spend, etc.)\n- State manipulation: skip steps in multi-step workflows\n- Replay attacks: resubmit captured requests\n- Mass assignment: send unexpected fields in request body\n\n## 5. Error Handling Tests\n- No stack traces in response bodies\n- No database errors or SQL fragments exposed\n- Malformed input returns 400, not 500\n- Resource exhaustion: very large payloads, deeply nested JSON\n\nEach test MUST:\n- Have a descriptive name: test_[vulnerability]_[attack_vector]\n- Include both positive (attack blocked) and negative (normal flow works) cases\n- Assert specific security behaviors, not just status codes\n- Be independent and idempotent"
+      }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+# AITriage Configuration
+# Place this file as aitriage.yaml in your project root.
+# Docs: https://github.com/cybertortuga/aitriage
+
+# ─── Failure Thresholds ───────────────────────────────────────────────────────
+# Fail the scan (exit code 1) if ANY issue is found (default: only critical)
+strict_mode: false
+
+# Fail the scan if Security Score drops below this value (0 = disabled)
+fail_score: 70
+
+# ─── Ignore Rules ─────────────────────────────────────────────────────────────
+# Suppress specific rule IDs from results
+ignore:
+  rules:
+    # - ENTR-SLOP-01   # Uncomment to ignore AI scaffolding residue warnings
+    # - NEXT-LOGGING   # Uncomment to ignore missing logging rule
+
+  # Suppress findings in specific paths (supports glob-style prefix matching)
+  paths:
+    # - tests/
+    # - legacy/
+    # - scripts/
+
+# ─── Custom Rules ─────────────────────────────────────────────────────────────
+# Add your own project-specific rules here
+rules:
+  # - id: CUSTOM-NO-CONSOLE-LOG
+  #   name: "Direct console.log in production code"
+  #   stack: nextjs
+  #   extensions: [".ts", ".tsx"]
+  #   target: code
+  #   pattern: 'console\.log\('
+  #   suggestion: "Use a structured logger instead of console.log in production."
+  #   severity: "LOW"
+
+# ─── LLM Integration (optional, for aitriage remedy --ai) ───────────────────
+# llm:
+#   provider: openai        # openai | anthropic | ollama
+#   model: gpt-4o
+#   api_key: ""             # use env var OPENAI_API_KEY instead of hardcoding!
+#   timeout: 30

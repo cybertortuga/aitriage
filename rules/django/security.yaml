@@ -1,0 +1,145 @@
+# ============================================================
+# AITRIAGE RULES: Django — Security
+# ============================================================
+# Django is detected by the engine but previously had ZERO rules.
+# These rules cover the Django security checklist:
+# DEBUG mode, SECRET_KEY, CSRF, XSS, raw SQL, mass assignment,
+# middleware configuration, and session security.
+#
+# Reference: Django deployment checklist, OWASP, Bandit, Semgrep.
+# ============================================================
+
+rules:
+  - id: DJANGO-DEBUG
+    name: "Debug Mode Enabled"
+    stack: django
+    extensions: [".py"]
+    target: all
+    pattern: '^\s*DEBUG\s*=\s*True'
+    exclude_tests: true
+    suggestion: "CRITICAL: DEBUG=True exposes stack traces, environment variables, and an interactive debugger. Set DEBUG=False in production and load from environment."
+
+  - id: DJANGO-HOSTS
+    name: "Empty ALLOWED_HOSTS"
+    stack: django
+    extensions: [".py"]
+    target: all
+    pattern: 'ALLOWED_HOSTS\s*=\s*\[\s*\]'
+    suggestion: "CRITICAL: Empty ALLOWED_HOSTS enables HTTP Host header attacks in production. Add your domain names explicitly."
+
+  - id: DJANGO-SECRET
+    name: "Hardcoded SECRET_KEY"
+    stack: django
+    extensions: [".py"]
+    target: all
+    pattern: "SECRET_KEY\\s*=\\s*['\"][^'\"]{10,}['\"]"
+    condition: "not_contains:os.environ"
+    suggestion: "CRITICAL: SECRET_KEY is hardcoded in source. If leaked, attackers can forge sessions and CSRF tokens. Load from environment variable."
+
+  - id: DJANGO-CSRF-EXEMPT
+    name: "CSRF Exemption on View"
+    stack: django
+    extensions: [".py"]
+    target: all
+    pattern: '@csrf_exempt'
+    suggestion: "HIGH: @csrf_exempt disables CSRF protection on this view. Remove unless this is a webhook/API-only endpoint with token auth."
+
+  - id: DJANGO-MARK-SAFE
+    name: "XSS Risk via mark_safe"
+    stack: django
+    extensions: [".py"]
+    target: all
+    pattern: 'mark_safe\s*\('
+    suggestion: "HIGH: mark_safe() bypasses Django's auto-escaping. If applied to user-controlled data, this enables XSS. Use format_html() instead."
+
+  - id: DJANGO-RAW-SQL
+    name: "Raw SQL Query"
+    stack: django
+    extensions: [".py"]
+    target: all
+    pattern: '(?i)(\.raw\s*\(|\.extra\s*\(|cursor\.execute\s*\().*(%s|%d|\{|\+|f")'
+    suggestion: "CRITICAL: Raw SQL with string interpolation detected. Use Django ORM or parameterized queries (cursor.execute(sql, [params]))."
+
+  - id: DJANGO-MASS-ASSIGN
+    name: "Mass Assignment (fields=__all__)"
+    stack: django
+    extensions: [".py"]
+    target: all
+    pattern: "fields\\s*=\\s*['\"]__all__['\"]"
+    suggestion: "HIGH: fields='__all__' exposes all model fields to user input. Attackers can set is_staff, is_superuser, etc. Use explicit field allowlist."
+
+  - id: DJANGO-MIDDLEWARE
+    name: "Missing Security Middleware"
+    stack: django
+    extensions: [".py"]
+    target: all
+    condition: "required_pattern"
+    pattern: '(?i)(SecurityMiddleware|django\.middleware\.security)'
+    suggestion: "HIGH: Django SecurityMiddleware not found. It provides HSTS, SSL redirect, and XSS protection headers."
+
+  - id: DJANGO-CLICKJACK
+    name: "Missing Clickjacking Protection"
+    stack: django
+    extensions: [".py"]
+    target: all
+    condition: "required_pattern"
+    pattern: '(?i)(XFrameOptionsMiddleware|X-Frame-Options|django\.middleware\.clickjacking)'
+    suggestion: "MEDIUM: XFrameOptionsMiddleware not found. Your site may be vulnerable to clickjacking attacks."
+
+  - id: DJANGO-SESSION-SECURE
+    name: "Insecure Session Cookie"
+    stack: django
+    extensions: [".py"]
+    target: all
+    pattern: 'SESSION_COOKIE_SECURE\s*=\s*False'
+    suggestion: "HIGH: Session cookie is not marked Secure. It will be transmitted over unencrypted HTTP."
+
+  - id: DJANGO-CSRF-COOKIE
+    name: "Insecure CSRF Cookie"
+    stack: django
+    extensions: [".py"]
+    target: all
+    pattern: 'CSRF_COOKIE_SECURE\s*=\s*False'
+    suggestion: "HIGH: CSRF cookie is not marked Secure. Vulnerable to interception over HTTP."
+
+  - id: DJANGO-AUTH
+    name: "Missing Authentication Decorators"
+    stack: django
+    extensions: [".py"]
+    target: all
+    condition: "required_pattern"
+    pattern: '(?i)(login_required|permission_required|IsAuthenticated|IsAdminUser|DjangoModelPermissions|has_permission|LoginRequiredMixin)'
+    suggestion: "HIGH: No authentication decorators or permission classes found. Views may be accessible without login."
+
+  - id: DJANGO-LOGGING
+    name: "Missing Security Logging"
+    stack: django
+    extensions: [".py"]
+    target: all
+    condition: "required_pattern"
+    pattern: '(?i)(LOGGING\s*=|django\.utils\.log|logging\.getLogger)'
+    suggestion: "MEDIUM: No logging configuration found. Security events should be logged for audit trails."
+
+  - id: DJANGO-SAFE-FILTER
+    name: "XSS via |safe Template Filter"
+    stack: django
+    extensions: [".html"]
+    target: all
+    pattern: '\{\{.*\|safe\s*\}\}'
+    suggestion: "HIGH: |safe filter bypasses HTML escaping. If applied to user data, this enables XSS."
+
+  - id: DJANGO-SQLI-EXTRA
+    name: "Deprecated .extra() Query"
+    stack: django
+    extensions: [".py"]
+    target: all
+    pattern: '\.extra\s*\('
+    suggestion: "HIGH: QuerySet.extra() is deprecated and prone to SQL injection. Use .annotate(), .filter(), or raw SQL with parameterized queries."
+
+  - id: DJANGO-WILDCARD-HOSTS
+    name: "Wildcard ALLOWED_HOSTS"
+    stack: django
+    extensions: [".py"]
+    target: all
+    pattern: "ALLOWED_HOSTS\\s*=\\s*\\[\\s*['\"]\\*['\"]\\s*\\]"
+    suggestion: "HIGH: ALLOWED_HOSTS=['*'] disables host validation. Specify exact domain names for production."

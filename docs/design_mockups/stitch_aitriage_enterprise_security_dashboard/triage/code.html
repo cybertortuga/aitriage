@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AITriage Enterprise - Triage</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=Geist:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary-container": "#636565",
+                        "background": "#131313",
+                        "surface-container-highest": "#353534",
+                        "inverse-surface": "#e5e2e1",
+                        "on-secondary-container": "#c4abff",
+                        "on-surface-variant": "#c4c7c8",
+                        "primary-fixed-dim": "#c6c6c7",
+                        "error-container": "#93000a",
+                        "tertiary-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdad6",
+                        "on-primary-fixed-variant": "#454747",
+                        "on-tertiary-fixed": "#410002",
+                        "on-tertiary": "#690006",
+                        "surface-container-high": "#2a2a2a",
+                        "primary-container": "#e2e2e2",
+                        "surface-dim": "#131313",
+                        "inverse-primary": "#5d5f5f",
+                        "on-secondary-fixed": "#23005c",
+                        "on-error-container": "#ffdad6",
+                        "surface-container": "#201f1f",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-secondary": "#3c0091",
+                        "surface-variant": "#353534",
+                        "primary": "#ffffff",
+                        "surface-tint": "#c6c6c7",
+                        "tertiary": "#ffffff",
+                        "on-error": "#690005",
+                        "surface": "#131313",
+                        "error": "#ffb4ab",
+                        "surface-bright": "#3a3939",
+                        "on-surface": "#e5e2e1",
+                        "on-tertiary-container": "#c41f21",
+                        "on-primary": "#2f3131",
+                        "tertiary-fixed-dim": "#ffb4ac",
+                        "outline": "#8e9192",
+                        "inverse-on-surface": "#313030",
+                        "on-secondary-fixed-variant": "#5516be",
+                        "on-tertiary-fixed-variant": "#93000d",
+                        "on-background": "#e5e2e1",
+                        "outline-variant": "#444748",
+                        "on-primary-fixed": "#1a1c1c",
+                        "secondary": "#d0bcff",
+                        "secondary-fixed-dim": "#d0bcff",
+                        "primary-fixed": "#e2e2e2",
+                        "secondary-fixed": "#e9ddff",
+                        "secondary-container": "#571bc1",
+                        "surface-container-low": "#1c1b1b"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "panel-padding": "24px",
+                        "data-density-comfortable": "16px",
+                        "gutter": "16px",
+                        "margin-desktop": "32px",
+                        "margin-mobile": "16px",
+                        "unit": "4px",
+                        "data-density-compact": "8px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "mono-data": ["Geist"],
+                        "label-caps": ["Geist"],
+                        "display-lg": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "mono-metrics": ["Geist"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", { "lineHeight": "1.3", "fontWeight": "600" }],
+                        "body-sm": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "mono-data": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "label-caps": ["11px", { "lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "700" }],
+                        "display-lg": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.04em", "fontWeight": "700" }],
+                        "headline-lg": ["32px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "headline-sm": ["18px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "mono-metrics": ["20px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { background-color: #000000; color: #ffffff; }
+        .cyber-panel { background-color: #111111; border: 1px solid #333333; }
+        .cyber-widget { background-color: #1a1a1a; border: 1px solid #444444; }
+        .cyber-modal { background-color: #111111; border: 1px solid #ffffff; }
+        .cyber-grid-header { background-color: #1a1a1a; border-bottom: 1px solid #333333; }
+        .cyber-grid-row { border-bottom: 1px solid #333333; }
+        .cyber-input { background-color: #000000; border: 1px solid #333333; color: #ffffff; }
+        .cyber-input:focus { border-color: #ffffff; outline: none; }
+        .cyber-scrollbar::-webkit-scrollbar { width: 2px; height: 2px; }
+        .cyber-scrollbar::-webkit-scrollbar-track { background: #000000; }
+        .cyber-scrollbar::-webkit-scrollbar-thumb { background: #333333; }
+        .terminal-feed { background-color: #000000; }
+        
+        .btn-primary { background-color: #ffffff; color: #000000; border-radius: 0; }
+        .btn-secondary { background-color: transparent; border: 1px solid #333333; color: #ffffff; border-radius: 0; }
+        .btn-action { background-color: #8B5CF6; color: #ffffff; border-radius: 0; }
+        .btn-ghost { background-color: transparent; color: #A1A1AA; border-radius: 0; }
+        .btn-ghost:hover { text-decoration: underline; }
+    </style>
+</head>
+<body class="bg-background text-on-background h-screen flex flex-col overflow-hidden font-body-sm">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center w-full px-gutter h-8 bg-background border-b border-outline-variant z-50">
+<div class="flex items-center gap-4">
+<span class="text-headline-sm font-headline-sm font-bold text-primary tracking-tighter">AITriage Enterprise</span>
+<div class="flex items-center border border-outline-variant px-2 py-0.5 gap-2 h-6">
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant">search</span>
+<input class="bg-transparent border-none p-0 text-mono-data font-mono-data text-primary focus:ring-0 w-48 placeholder-on-surface-variant" placeholder="Search..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<span class="text-label-caps font-label-caps text-on-surface-variant">Org: Tortuga Co</span>
+<span class="text-mono-metrics font-mono-metrics text-primary">94/100</span>
+<div class="flex gap-2">
+<button class="text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">notifications</span></button>
+<button class="text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">account_circle</span></button>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-lowest flex flex-col z-40 border-r border-outline-variant w-16 hover:w-64 transition-all duration-150 ease-linear h-full group">
+<div class="p-4 border-b border-outline-variant flex items-center gap-4 overflow-hidden h-[60px] shrink-0">
+<div class="w-8 h-8 bg-primary flex items-center justify-center shrink-0">
+<span class="text-background font-bold text-xs">AT</span>
+</div>
+<div class="flex-col opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+<div class="text-label-caps font-label-caps text-primary">AITriage</div>
+<div class="text-xs text-on-surface-variant">Enterprise</div>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto cyber-scrollbar py-4 flex flex-col gap-1">
+<a class="flex items-center px-4 py-2 text-on-surface-variant opacity-70 hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0">dashboard</span>
+<span class="ml-4 text-label-caps font-label-caps opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Command Center</span>
+</a>
+<a class="flex items-center px-4 py-2 bg-surface-container-highest text-primary border-r-2 border-primary" href="#">
+<span class="material-symbols-outlined shrink-0" style="font-variation-settings: 'FILL' 1;">security</span>
+<span class="ml-4 text-label-caps font-label-caps opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Triage</span>
+</a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant opacity-70 hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0">build</span>
+<span class="ml-4 text-label-caps font-label-caps opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Remediation Hub</span>
+</a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant opacity-70 hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0">inventory_2</span>
+<span class="ml-4 text-label-caps font-label-caps opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Assets</span>
+</a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant opacity-70 hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0">policy</span>
+<span class="ml-4 text-label-caps font-label-caps opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Policies</span>
+</a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant opacity-70 hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0">description</span>
+<span class="ml-4 text-label-caps font-label-caps opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Reports &amp; SBOM</span>
+</a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant opacity-70 hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0">settings</span>
+<span class="ml-4 text-label-caps font-label-caps opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">RBAC &amp; Settings</span>
+</a>
+</div>
+<div class="border-t border-outline-variant p-2 flex flex-col gap-1 shrink-0">
+<a class="flex items-center px-2 py-2 text-on-surface-variant opacity-70 hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0 text-[18px]">help</span>
+<span class="ml-4 text-label-caps font-label-caps opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Help</span>
+</a>
+<a class="flex items-center px-2 py-2 text-on-surface-variant opacity-70 hover:bg-surface-container hover:opacity-100 transition-colors" href="#">
+<span class="material-symbols-outlined shrink-0 text-[18px]">menu_book</span>
+<span class="ml-4 text-label-caps font-label-caps opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Docs</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Area - Master/Detail Split -->
+<main class="flex-1 flex overflow-hidden">
+<!-- Left Pane (Master Grid) -->
+<div class="w-[60%] flex flex-col border-r border-[#333333] cyber-panel m-4">
+<!-- Action Bar -->
+<div class="flex items-center justify-between p-2 border-b border-[#333333] bg-[#1a1a1a]">
+<div class="flex items-center gap-2">
+<button class="btn-secondary px-3 py-1 text-label-caps font-label-caps flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">filter_list</span> Filter
+                        </button>
+<span class="text-mono-data font-mono-data text-on-surface-variant">1,204 Findings</span>
+</div>
+<button class="btn-secondary px-3 py-1 text-label-caps font-label-caps">Bulk Auto-Fix</button>
+</div>
+<!-- Grid Data -->
+<div class="flex-1 overflow-auto cyber-scrollbar">
+<table class="w-full text-left border-collapse">
+<thead class="sticky top-0 z-10 cyber-grid-header">
+<tr>
+<th class="p-2 w-8"><input class="cyber-input" type="checkbox"/></th>
+<th class="p-2 w-8"></th>
+<th class="p-2 text-label-caps font-label-caps text-on-surface-variant uppercase">Rule ID</th>
+<th class="p-2 text-label-caps font-label-caps text-on-surface-variant uppercase">File Path</th>
+<th class="p-2 text-label-caps font-label-caps text-on-surface-variant uppercase">Engine</th>
+<th class="p-2 text-label-caps font-label-caps text-on-surface-variant uppercase">Status</th>
+</tr>
+</thead>
+<tbody class="text-mono-data font-mono-data">
+<!-- Selected Row -->
+<tr class="cyber-grid-row bg-[#1a1a1a] cursor-pointer">
+<td class="p-2"><input class="cyber-input" type="checkbox"/></td>
+<td class="p-2"><div class="w-2 h-2 bg-error"></div></td>
+<td class="p-2 text-primary">GO-001</td>
+<td class="p-2 text-on-surface-variant truncate max-w-[200px]">/src/auth/token_gen.go</td>
+<td class="p-2">Entropy</td>
+<td class="p-2"><span class="text-error">Open</span></td>
+</tr>
+<!-- Standard Rows -->
+<tr class="cyber-grid-row hover:bg-[#1a1a1a] cursor-pointer">
+<td class="p-2"><input class="cyber-input" type="checkbox"/></td>
+<td class="p-2"><div class="w-2 h-2 bg-error"></div></td>
+<td class="p-2">AST-142</td>
+<td class="p-2 text-on-surface-variant truncate max-w-[200px]">/api/v1/users.py</td>
+<td class="p-2">AST</td>
+<td class="p-2"><span class="text-error">Open</span></td>
+</tr>
+<tr class="cyber-grid-row hover:bg-[#1a1a1a] cursor-pointer">
+<td class="p-2"><input class="cyber-input" type="checkbox"/></td>
+<td class="p-2"><div class="w-2 h-2 bg-[#F59E0B]"></div></td>
+<td class="p-2">CFG-089</td>
+<td class="p-2 text-on-surface-variant truncate max-w-[200px]">/k8s/deployment.yaml</td>
+<td class="p-2">Config</td>
+<td class="p-2"><span class="text-[#F59E0B]">Investigating</span></td>
+</tr>
+<tr class="cyber-grid-row hover:bg-[#1a1a1a] cursor-pointer">
+<td class="p-2"><input class="cyber-input" type="checkbox"/></td>
+<td class="p-2"><div class="w-2 h-2 bg-error"></div></td>
+<td class="p-2">GO-045</td>
+<td class="p-2 text-on-surface-variant truncate max-w-[200px]">/pkg/crypto/cipher.go</td>
+<td class="p-2">Entropy</td>
+<td class="p-2"><span class="text-error">Open</span></td>
+</tr>
+<tr class="cyber-grid-row hover:bg-[#1a1a1a] cursor-pointer">
+<td class="p-2"><input class="cyber-input" type="checkbox"/></td>
+<td class="p-2"><div class="w-2 h-2 bg-on-surface-variant"></div></td>
+<td class="p-2 text-on-surface-variant">AST-012</td>
+<td class="p-2 text-on-surface-variant truncate max-w-[200px]">/utils/helper.js</td>
+<td class="p-2 text-on-surface-variant">AST</td>
+<td class="p-2 text-on-surface-variant">Suppressed</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Right Pane (Inspection Detail) -->
+<div class="w-[40%] flex flex-col cyber-panel m-4 ml-0">
+<!-- Detail Header -->
+<div class="p-4 border-b border-[#333333] bg-[#1a1a1a]">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 bg-error"></div>
+<h2 class="text-headline-sm font-headline-sm font-bold text-primary">GO-001: High Entropy String</h2>
+</div>
+<span class="text-mono-data font-mono-data text-on-surface-variant">Lines: 42-45</span>
+</div>
+<div class="text-mono-data font-mono-data text-on-surface-variant">/src/auth/token_gen.go</div>
+</div>
+<div class="flex-1 overflow-auto cyber-scrollbar p-4 flex flex-col gap-4">
+<!-- Description -->
+<div class="cyber-widget p-4">
+<h3 class="text-label-caps font-label-caps text-on-surface-variant mb-2">Analysis</h3>
+<p class="text-body-sm font-body-sm text-primary">Chat residue detected. High Shannon Entropy indicating a potential hardcoded secret or AI-generated artifact left in production code.</p>
+</div>
+<!-- Code Block -->
+<div class="terminal-feed border border-[#333333] flex flex-col">
+<div class="bg-[#1a1a1a] px-2 py-1 border-b border-[#333333] text-label-caps font-label-caps text-on-surface-variant flex justify-between">
+<span>token_gen.go</span>
+<span class="material-symbols-outlined text-[14px]">content_copy</span>
+</div>
+<div class="p-2 text-mono-data font-mono-data whitespace-pre overflow-x-auto cyber-scrollbar">
+<span class="text-on-surface-variant">40 |</span> func generateAdminToken() string {
+<span class="text-on-surface-variant">41 |</span>     // TODO: Replace with KMS fetch
+<div class="bg-error/20 border-l-2 border-error -ml-2 pl-2 text-primary">42 |     secret := "sk_test_8f92a1b3c4d5e6f7g8h9i0j1k2l3m4n5"
+43 |     // AI Note: ensure this is rotated
+44 |     return crypto.SignToken(payload, secret)</div><span class="text-on-surface-variant">45 |</span> }
+<span class="text-on-surface-variant">46 |</span>
+</div>
+</div>
+<!-- Metadata -->
+<div class="grid grid-cols-2 gap-4">
+<div class="cyber-widget p-3">
+<div class="text-label-caps font-label-caps text-on-surface-variant mb-1">Detected By</div>
+<div class="text-mono-data font-mono-data">Entropy Engine v2.4</div>
+</div>
+<div class="cyber-widget p-3">
+<div class="text-label-caps font-label-caps text-on-surface-variant mb-1">First Seen</div>
+<div class="text-mono-data font-mono-data">2023-10-27T14:32:00Z</div>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="p-4 border-t border-[#333333] flex gap-2">
+<button class="btn-secondary flex-1 py-3 text-label-caps font-label-caps">Suppress</button>
+<button class="btn-secondary flex-1 py-3 text-label-caps font-label-caps">Send to Jira</button>
+<button class="btn-action flex-[2] py-3 text-label-caps font-label-caps flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[16px]">auto_fix_high</span> Generate AI Fix
+                    </button>
+</div>
+</div>
+</main>
+</div>
+</body></html>

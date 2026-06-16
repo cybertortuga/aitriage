@@ -1,0 +1,29 @@
+# AITriage Pre-Commit Hooks
+# ==========================
+# Use with the pre-commit framework (https://pre-commit.com)
+#
+# Add to your .pre-commit-config.yaml:
+#   repos:
+#     - repo: https://github.com/cybertortuga/aitriage
+#       rev: v1.0.0
+#       hooks:
+#         - id: aitriage
+#         - id: aitriage-secrets
+
+- id: aitriage
+  name: AITriage Security Scan
+  description: Run AITriage security scan on changed files
+  entry: aitriage scan . --fail-on critical
+  language: golang
+  types: [file]
+  pass_filenames: false
+  always_run: true
+
+- id: aitriage-secrets
+  name: AITriage Secret Detection
+  description: Check for hardcoded secrets using Shannon Entropy analysis
+  entry: aitriage scan . --fail-on critical --universal-only
+  language: golang
+  types: [file]
+  pass_filenames: false
+  always_run: true

@@ -1,0 +1,100 @@
+# ============================================================
+# AITRIAGE RULES: Docker & Container Security
+# ============================================================
+# Covers Dockerfile best practices and docker-compose
+# misconfigurations: running as root, using :latest,
+# hardcoded secrets, privileged containers, and insecure
+# build patterns.
+#
+# Reference: Docker CIS Benchmark, Hadolint, Trivy.
+# ============================================================
+
+rules:
+  - id: DOCKER-LATEST
+    name: "Using :latest Image Tag"
+    stack: universal
+    extensions: ["Dockerfile"]
+    target: all
+    pattern: '^FROM\s+\S+:latest'
+    suggestion: "MEDIUM: Using :latest tag makes builds non-reproducible. Pin to a specific version (e.g., node:20-alpine)."
+
+  - id: DOCKER-ADD
+    name: "Using ADD Instead of COPY"
+    stack: universal
+    extensions: ["Dockerfile"]
+    target: all
+    pattern: '^ADD\s+(?!https?://)'
+    suggestion: "MEDIUM: ADD can auto-extract archives and fetch URLs, introducing unexpected behavior. Use COPY for local files."
+
+  - id: DOCKER-SECRET-ENV
+    name: "Secrets in Dockerfile ENV"
+    stack: universal
+    extensions: ["Dockerfile"]
+    target: all
+    pattern: '(?i)^ENV\s+\S*(PASSWORD|SECRET|TOKEN|API_KEY|PRIVATE_KEY)\S*\s*='
+    suggestion: "CRITICAL: Secrets in ENV instructions persist in image layers. Use --mount=type=secret or runtime environment variables."
+
+  - id: DOCKER-SECRET-ARG
+    name: "Secrets in Dockerfile ARG"
+    stack: universal
+    extensions: ["Dockerfile"]
+    target: all
+    pattern: '(?i)^ARG\s+\S*(PASSWORD|SECRET|TOKEN|API_KEY|PRIVATE_KEY)\S*='
+    suggestion: "HIGH: Secrets in ARG instructions can be exposed via docker history. Use multi-stage builds with --mount=type=secret."
+
+  - id: DOCKER-CURL-PIPE
+    name: "Curl Pipe to Shell"
+    stack: universal
+    extensions: ["Dockerfile"]
+    target: all
+    pattern: '(?i)(curl|wget)\s+.*\|\s*(sh|bash|zsh)'
+    suggestion: "HIGH: Piping curl/wget output to shell is risky. Download first, verify checksum, then execute."
+
+  - id: DOCKER-PRIVILEGED
+    name: "Privileged Container"
+    stack: universal
+    extensions: [".yaml", ".yml"]
+    target: all
+    pattern: 'privileged:\s*true'
+    suggestion: "CRITICAL: Privileged containers have near-host-level access. Remove privileged:true unless absolutely required."
+
+  - id: DOCKER-HOST-NET
+    name: "Host Network Mode"
+    stack: universal
+    extensions: [".yaml", ".yml"]
+    target: all
+    pattern: 'network_mode:\s*["\x27]?host'
+    suggestion: "HIGH: Host network mode bypasses container network isolation. The container can access host services and metadata APIs."
+
+  - id: DOCKER-HOST-PID
+    name: "Host PID Namespace"
+    stack: universal
+    extensions: [".yaml", ".yml"]
+    target: all
+    pattern: '(?:hostPID|pid):\s*["\x27]?(?:true|host)'
+    suggestion: "CRITICAL: Host PID namespace allows the container to see and interact with all host processes. Remove unless required for debugging."
+
+  - id: DOCKER-CAP-SYS-ADMIN
+    name: "SYS_ADMIN Capability"
+    stack: universal
+    extensions: [".yaml", ".yml"]
+    target: all
+    pattern: 'SYS_ADMIN'
+    suggestion: "CRITICAL: SYS_ADMIN capability grants near-root access. Drop this capability unless absolutely necessary."
+
+  - id: DOCKER-NO-USER
+    name: "Missing USER Instruction"
+    stack: universal
+    extensions: ["Dockerfile"]
+    target: all
+    condition: "required_pattern"
+    pattern: '^USER\s+'
+    suggestion: "HIGH: No USER instruction in Dockerfile. Container runs as root by default. Add USER nonroot."
+
+  - id: DOCKER-EXPOSE-ALL
+    name: "Exposing Sensitive Ports"
+    stack: universal
+    extensions: ["Dockerfile"]
+    target: all
+    pattern: '^EXPOSE\s+(22|3389|5432|3306|6379|27017)\b'
+    suggestion: "MEDIUM: Exposing administrative or database ports (SSH, RDP, Postgres, MySQL, Redis, MongoDB) in the container image."

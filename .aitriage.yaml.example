@@ -1,0 +1,44 @@
+# ============================================================
+# AITRIAGE CONFIGURATION
+# Copy this file to '.aitriage.yaml' in your project root.
+# Environment variables are supported using $VAR or ${VAR} syntax.
+# ============================================================
+
+llm:
+  # Supported providers: gemini | openai | anthropic | ollama
+  provider: gemini
+  
+  # The model used for deep analysis and remediation
+  model: gemini-2.5-flash
+  
+  # NEVER hardcode keys here. Always use environment variables.
+  api_key: $GEMINI_API_KEY
+
+ignore:
+  # Rule IDs that the scanner should completely ignore (e.g., ["ENTR-04"])
+  rules: []
+  
+  # Paths the scanner should skip (you can also use .aitriageignore)
+  paths:
+    - "/vendor"
+    - "/node_modules"
+    - "/.git"
+
+# ============================================================
+# CUSTOM RULES ENGINE (OPTIONAL)
+# Uncomment to write your own presence/absence security checks.
+# ============================================================
+# rules:
+#   - id: CUSTOM-NO-CONSOLE
+#     name: "Ban Console Logs"
+#     stack: universal
+#     extensions: [".ts", ".js"]
+#     target: code
+#     pattern: 'console\.log'
+#     suggestion: "LOW: Remove debugging logs before creating a PR."
+
+# ============================================================
+# CI/CD STRICT MODE (OPTIONAL)
+# ============================================================
+# strict_mode: false        # Fail the build (exit 1) if ANY issue is found.
+# fail_score: 80            # Fail the build if the SecurityScore drops below this number.

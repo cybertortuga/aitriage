@@ -1,0 +1,162 @@
+# AITriage — Статус проекта
+### Для руководства · 12 мая 2026
+
+---
+
+## 🎯 Что это
+
+**AITriage** — open-source enterprise-grade SAST-движок нового поколения, написанный на Go. Предназначен для детекции уязвимостей в коде, генерируемом ИИ ("entropy-based" проектах).
+
+> **Ключевое отличие от конкурентов:** Semgrep/Snyk находят **баги в написанном коде**. AITriage находит **отсутствие security-практик** + ловит специфические AI-артефакты (чат-резидуум, hallucinated TODOs, monolithic "god files").
+
+---
+
+## 📊 Ключевые метрики
+
+| Метрика | Значение |
+|---|---|
+| **Язык** | Go 1.25, 134,723 LOC |
+| **Go-файлы (core)** | 63 файла в 22 модулях |
+| **Коммитов** | 36 |
+| **Последний коммит** | 23 апр 2026 (~3 недели назад) |
+| **Ветки** | `main` (стабильная), `feature/aitriage-v2-implementation` |
+| **CI/CD** | 4 GitHub Actions workflow (CI, Release, Shield, Test) |
+| **Бинарник** | Собирается ✅ (14.5 MB, кросс-платформа) |
+
+---
+
+## ✅ Что готово (реально работает)
+
+### Ядро движка
+- **O(N) Single-Pass Engine** — сканирование за один проход по файлам (а не N×M как у конкурентов)
+- **Tree-sitter AST-анализ** — парсинг Go, Python, TypeScript, JavaScript на уровне синтаксического дерева (не regex)
+- **13+ security presence checks** — аутентификация, авторизация, rate limiting, CORS, CSRF, secrets, SQL injection и др.
+- **Детекция AI-артефактов** — "chat residue", entropy detection, "god files", hallucinated TODOs
+- **OWASP Top 10 маппинг** — каждый finding привязан к стандарту
+
+### Сканеры (оркестрация)
+| Сканер | Статус |
+|---|---|
+| Semgrep | ✅ Интегрирован |
+| Bandit (Python) | ✅ Интегрирован |
+| Gitleaks (секреты) | ✅ Интегрирован |
+| Trivy (SCA/containers) | ✅ Интегрирован |
+| Параллельный запуск всех | ✅ `runParallelScan()` |
+
+### Инфра-аудит
+- ✅ Dockerfile / docker-compose анализ (root USER, privileged, hardcoded secrets)
+- ✅ Makefile / nginx.conf / k8s YAML
+- ✅ Git-история: поиск `.env`, `.key`, `.pem` + энтропийный анализ содержимого
+- ✅ Network probing (DNS resolution, TCP port scan)
+- ✅ NFR-чекер (Non-Functional Requirements)
+- ✅ Авто-генерация Mermaid-диаграмм архитектуры
+
+### Каналы доставки (5 штук)
+| Канал | Статус | Детали |
+|---|---|---|
+| **CLI** | ✅ | `aitriage scan .` / `aitriage agent .` / `aitriage web` |
+| **MCP Server** | ✅ | `aitriage serve` — интеграция с Claude Desktop / Cursor (13 tools) |
+| **GitHub Action** | ✅ | `action.yml` + SARIF → GitHub Security Tab |
+| **Docker** | ✅ | Multi-stage Dockerfile с semgrep/bandit/gitleaks/trivy |
+| **GoReleaser** | ✅ | Кросс-платформа: Linux/macOS/Windows × amd64/arm64 |
+
+### Выходные форматы
+- ✅ Terminal (colored)
+- ✅ JSON
+- ✅ SARIF 2.1 (нативный GitHub Security Tab)
+- ✅ **HTML Dashboard** — glassmorphic dark-mode UI с Security Grade (A-F)
+
+### AI/LLM Agent Mode
+- ✅ Multi-provider: Anthropic, OpenAI, Ollama, Groq
+- ✅ Map-Reduce архитектура (параллельный анализ)
+- ✅ Taint Analysis toolkit (Source-to-Sink tracing)
+- ✅ Интерактивный Q&A по результатам
+- ✅ Auto-fix engine (`aitriage autofix`)
+- ✅ Генерация `CLAUDE.md` / спеки для AI-агентов
+
+---
+
+## ⚠️ Что в процессе / не завершено
+
+| Пункт | Статус | Комментарий |
+|---|---|---|
+| **Web UI (фронтенд)** | ⚠️ Partial | HTTP-сервер написан, Docker готов. UI — базовый placeholder, не premium |
+| **LLM видит ВСЕ findings** | ⚠️ Partial | В web API — да. В CLI agent — исправлялось, нужна верификация |
+| **Стеки** | ⚠️ | Готово: Next.js, FastAPI, Flask. Нет: Express.js, Django, Go, Rails |
+| **Тесты** | ⚠️ | Есть unit-тесты для ключевых модулей, но покрытие не измерено |
+| **Документация** | ⚠️ | README отличный, SUMMARY.md устарел (ещё упоминает TypeScript MVP) |
+
+---
+
+## 🔴 Риски и честная оценка
+
+> [!WARNING]
+> **Последний значимый коммит — 23 апреля.** 3 недели без активной разработки.
+
+1. **SUMMARY.md устарел** — ссылается на TypeScript/Node.js, хотя проект давно на Go. Нужно обновить перед любым public-facing показом.
+2. **Go version** — `go.mod` указывает `go 1.25.5` — может вызвать вопросы о версии.
+3. **GoReleaser: CGO_ENABLED=0** — но tree-sitter требует `CGO_ENABLED=1`. В Dockerfile это правильно, в `.goreleaser.yaml` — нет. Release бинарники будут **без AST-анализа**.
+4. **Нет e2e тестов** — нет демонстрации на реальном проекте в CI.
+5. **POC (LangChain)** — начат, но не интегрирован. Это отвлекающий фактор.
+
+---
+
+## 🏗 Архитектура (для слайда)
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    CLI / MCP / Web                   │
+├─────────────────────────────────────────────────────┤
+│              Orchestrator (agent.go)                 │
+│    ┌──────────┬──────────┬──────────┬──────────┐    │
+│    │ AITriage │ External │ Deploy   │ Git      │    │
+│    │ Engine   │ Scanners │ Audit    │ Analysis │    │
+│    │ (AST)    │ (4 tools)│ (Docker) │ (secrets)│    │
+│    └──────────┴──────────┴──────────┴──────────┘    │
+├─────────────────────────────────────────────────────┤
+│              LLM Layer (multi-provider)              │
+│         Anthropic │ OpenAI │ Ollama │ Groq           │
+├─────────────────────────────────────────────────────┤
+│              Reporter (SARIF/HTML/JSON)               │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📌 Рекомендация: что сказать руководству
+
+### Короткая версия (1 минута):
+
+> AITriage — это работающий SAST-движок на Go, который уже:
+> - Собирается и запускается как CLI
+> - Сканирует код через Tree-sitter AST + 4 внешних сканера
+> - Подключается к Claude/Cursor как MCP-сервер
+> - Деплоится через GitHub Actions в CI/CD
+> - Генерирует premium HTML-дашборд
+>
+> Из 8 гэпов в task.md — **все 8 закрыты**. Проект в состоянии **late beta** и готов к демонстрации на реальных репозиториях.
+
+### Что нужно для production:
+1. Фиксировать GoReleaser CGO (неделя)
+2. Расширить стеки (Express/Django) — 2 недели
+3. Premium Web UI вместо placeholder — 1-2 недели
+4. E2E тесты + coverage — 1 неделя
+
+---
+
+## 🎬 Демо-сценарий (если попросят показать)
+
+```bash
+# 1. Быстрый скан текущего проекта
+aitriage scan .
+
+# 2. HTML-дашборд (уже есть готовый в reports/)
+aitriage scan . --format html
+open reports/aitriage-report.html
+
+# 3. MCP в Claude Desktop
+aitriage install-mcp
+
+# 4. Agent mode с AI-анализом
+aitriage agent . --provider anthropic --model claude-sonnet-4-20250514
+```

@@ -1,0 +1,4 @@
+llm:
+  provider: gemini
+  model: gemini-2.5-flash
+  api_key: $GEMINI_API_KEY

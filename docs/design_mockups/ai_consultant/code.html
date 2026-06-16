@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AITriage - Consultant View</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "background": "#0d1515",
+                        "on-primary-container": "#006c71",
+                        "error": "#ffb4ab",
+                        "surface-variant": "#2e3637",
+                        "tertiary-container": "#ffdb3f",
+                        "surface-container": "#192121",
+                        "secondary-container": "#0043eb",
+                        "primary-container": "#00f5ff",
+                        "on-background": "#dce4e4",
+                        "inverse-primary": "#00696e",
+                        "surface-container-lowest": "#081010",
+                        "on-secondary-fixed": "#001356",
+                        "outline-variant": "#3a494a",
+                        "on-secondary-container": "#c6ceff",
+                        "on-tertiary-fixed": "#221b00",
+                        "on-primary-fixed": "#002021",
+                        "primary": "#e9feff",
+                        "primary-fixed-dim": "#00dce5",
+                        "inverse-on-surface": "#2a3232",
+                        "surface-container-high": "#232b2c",
+                        "on-secondary": "#002388",
+                        "on-tertiary-fixed-variant": "#544600",
+                        "tertiary-fixed-dim": "#e7c427",
+                        "on-primary-fixed-variant": "#004f53",
+                        "surface-tint": "#00dce5",
+                        "on-surface-variant": "#b9caca",
+                        "outline": "#849495",
+                        "inverse-surface": "#dce4e4",
+                        "on-secondary-fixed-variant": "#0035be",
+                        "surface-bright": "#323b3b",
+                        "on-surface": "#dce4e4",
+                        "secondary-fixed-dim": "#b8c3ff",
+                        "surface": "#0d1515",
+                        "tertiary": "#fff9f0",
+                        "surface-container-highest": "#2e3637",
+                        "surface-container-low": "#151d1d",
+                        "on-tertiary": "#3a3000",
+                        "on-error-container": "#ffdad6",
+                        "primary-fixed": "#63f7ff",
+                        "surface-dim": "#0d1515",
+                        "on-error": "#690005",
+                        "error-container": "#93000a",
+                        "secondary": "#b8c3ff",
+                        "on-primary": "#003739",
+                        "on-tertiary-container": "#736000",
+                        "secondary-fixed": "#dde1ff",
+                        "tertiary-fixed": "#ffe16c"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    spacing: {
+                        "cell-y": "1em",
+                        "section-gap": "1.5rem",
+                        "cell-x": "1ch",
+                        "grid-gutter": "1px",
+                        "container-padding": "2rem"
+                    },
+                    fontFamily: {
+                        "code-sm": ["JetBrains Mono"],
+                        "header-md": ["JetBrains Mono"],
+                        "body-base": ["JetBrains Mono"],
+                        "label-xs": ["JetBrains Mono"],
+                        "display-lg": ["JetBrains Mono"]
+                    },
+                    fontSize: {
+                        "code-sm": ["12px", { lineHeight: "16px", fontWeight: "400" }],
+                        "header-md": ["18px", { lineHeight: "24px", letterSpacing: "0.05em", fontWeight: "600" }],
+                        "body-base": ["14px", { lineHeight: "20px", fontWeight: "400" }],
+                        "label-xs": ["11px", { lineHeight: "14px", fontWeight: "500" }],
+                        "display-lg": ["24px", { lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "700" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'JetBrains Mono', monospace; }
+    </style>
+</head>
+<body class="bg-background text-on-background h-screen flex flex-col overflow-hidden">
+<!-- TopAppBar -->
+<header class="docked full-width top-0 border-b border-outline-variant bg-background dark:bg-background flex justify-between items-center px-section-gap py-cell-y w-full">
+<div class="flex items-center gap-4">
+<span class="font-display-lg text-display-lg text-primary-fixed-dim tracking-tighter">AITriage</span>
+<nav class="hidden md:flex gap-6 ml-8">
+<a class="text-on-surface-variant font-medium hover:text-primary-fixed hover:bg-surface-container-high transition-colors duration-150 ease-in-out py-1 px-2" href="#">1:DASH</a>
+<a class="text-on-surface-variant font-medium hover:text-primary-fixed hover:bg-surface-container-high transition-colors duration-150 ease-in-out py-1 px-2" href="#">2:VULN</a>
+<a class="text-on-surface-variant font-medium hover:text-primary-fixed hover:bg-surface-container-high transition-colors duration-150 ease-in-out py-1 px-2" href="#">3:CODE</a>
+<a class="text-primary-container font-bold border-b-2 border-primary-container hover:bg-surface-container-high transition-colors duration-150 ease-in-out py-1 px-2" href="#">4:AUDIT</a>
+<a class="text-on-surface-variant font-medium hover:text-primary-fixed hover:bg-surface-container-high transition-colors duration-150 ease-in-out py-1 px-2" href="#">5:REPT</a>
+</nav>
+</div>
+<div class="flex items-center">
+<span class="font-header-md text-header-md text-primary-fixed-dim dark:text-primary-fixed-dim">PROJECT: ALPHA_SEC</span>
+</div>
+</header>
+<!-- Main Content Area -->
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar -->
+<aside class="docked left-0 h-full w-64 border-r border-outline-variant flex flex-col bg-surface-container-low dark:bg-surface-container-low hidden md:flex">
+<div class="p-4 border-b border-outline-variant flex items-center gap-3">
+<div class="w-10 h-10 bg-surface-variant rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="person">person</span>
+</div>
+<div>
+<div class="font-header-md text-header-md text-primary-fixed-dim">OPERATOR_01</div>
+<div class="font-code-sm text-code-sm text-on-surface-variant">Level 4 Clearance</div>
+</div>
+</div>
+<div class="p-4 border-b border-outline-variant">
+<button class="w-full border border-primary-fixed-dim text-primary-fixed-dim font-body-base text-body-base py-2 hover:bg-primary-fixed-dim hover:text-background transition-colors duration-150 flex items-center justify-center gap-2">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+                    NEW SCAN
+                </button>
+</div>
+<nav class="flex-1 overflow-y-auto py-2">
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-all font-body-base text-body-base" href="#">
+<span class="material-symbols-outlined" data-icon="terminal">terminal</span>
+                    Dashboard
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-all font-body-base text-body-base" href="#">
+<span class="material-symbols-outlined" data-icon="security">security</span>
+                    Vulnerabilities
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-all font-body-base text-body-base" href="#">
+<span class="material-symbols-outlined" data-icon="code">code</span>
+                    Source Code
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 bg-primary-container text-on-primary-fixed-variant border-l-4 border-primary-fixed-dim hover:bg-surface-container-highest transition-all font-body-base text-body-base" href="#">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+                    Audit Logs
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-all font-body-base text-body-base" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+                    Reports
+                </a>
+</nav>
+<div class="border-t border-outline-variant py-2">
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-all font-body-base text-body-base" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+                    Settings
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-all font-body-base text-body-base" href="#">
+<span class="material-symbols-outlined" data-icon="keyboard">keyboard</span>
+                    Terminal
+                </a>
+</div>
+</aside>
+<!-- Chat Area -->
+<main class="flex-1 flex flex-col bg-background relative border-l border-r border-outline-variant max-w-5xl mx-auto w-full">
+<!-- Context Bar -->
+<div class="bg-surface-container p-3 border-b border-outline-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-fixed-dim" data-icon="info">info</span>
+<span class="font-body-base text-body-base text-on-surface">Consulting on: <span class="text-primary-fixed-dim">CVE-2023-4567 - SQL Injection in auth.go</span></span>
+</div>
+<!-- Message Stream -->
+<div class="flex-1 overflow-y-auto p-section-gap flex flex-col gap-6">
+<!-- System Message -->
+<div class="flex flex-col gap-1 max-w-3xl self-start">
+<div class="flex items-center gap-2 text-primary-fixed-dim font-label-xs text-label-xs mb-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="smart_toy">smart_toy</span>
+                        AI_CONSULTANT
+                    </div>
+<div class="bg-surface-container-high border border-outline-variant p-4 font-body-base text-body-base text-on-surface relative">
+<div class="absolute top-0 left-0 w-1 h-full bg-secondary-container"></div>
+<p class="mb-2">I have analyzed the provided context for <span class="text-tertiary-fixed-dim">CVE-2023-4567</span>.</p>
+<p class="mb-2">The vulnerability stems from improper sanitization of user input within the <code class="bg-surface-container-highest px-1 text-primary-fixed-dim">loginUser()</code> function in <code class="bg-surface-container-highest px-1 text-primary-fixed-dim">auth.go</code>. Specifically, the <code class="bg-surface-container-highest px-1 text-primary-fixed-dim">username</code> parameter is concatenated directly into the SQL query string.</p>
+<p>How would you like to proceed? I can offer mitigation strategies, generate a patch, or trace the data flow.</p>
+</div>
+</div>
+<!-- User Message -->
+<div class="flex flex-col gap-1 max-w-3xl self-end">
+<div class="flex items-center justify-end gap-2 text-on-surface-variant font-label-xs text-label-xs mb-1">
+                        OPERATOR_01
+                        <span class="material-symbols-outlined text-[14px]" data-icon="person">person</span>
+</div>
+<div class="bg-surface-variant border border-outline-variant p-4 font-body-base text-body-base text-on-surface">
+<p>Generate a secure patch using parameterized queries for the Go code.</p>
+</div>
+</div>
+<!-- System Message - Code -->
+<div class="flex flex-col gap-1 max-w-3xl self-start w-full">
+<div class="flex items-center gap-2 text-primary-fixed-dim font-label-xs text-label-xs mb-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="smart_toy">smart_toy</span>
+                        AI_CONSULTANT
+                    </div>
+<div class="bg-surface-container-high border border-outline-variant p-4 font-body-base text-body-base text-on-surface relative w-full overflow-x-auto">
+<div class="absolute top-0 left-0 w-1 h-full bg-secondary-container"></div>
+<p class="mb-4">Here is the proposed patch implementing parameterized queries using <code class="bg-surface-container-highest px-1 text-primary-fixed-dim">database/sql</code>:</p>
+<div class="bg-background border border-outline-variant p-3 font-code-sm text-code-sm text-on-surface-variant whitespace-pre">
+<span class="text-outline">--- a/auth.go</span>
+<span class="text-outline">+++ b/auth.go</span>
+<span class="text-primary-fixed-dim">@@ -45,7 +45,7 @@</span>
+ func loginUser(db *sql.DB, username, password string) bool {
+<span class="text-error">-    query := fmt.Sprintf("SELECT id FROM users WHERE username='%s' AND password='%s'", username, password)</span>
+<span class="text-error">-    rows, err := db.Query(query)</span>
+<span class="text-primary-container">+    query := "SELECT id FROM users WHERE username=$1 AND password=$2"</span>
+<span class="text-primary-container">+    rows, err := db.Query(query, username, password)</span>
+     if err != nil {
+         log.Println("Database error:", err)
+         return false</div>
+</div>
+</div>
+</div>
+<!-- Input Lab -->
+<div class="p-4 border-t border-outline-variant bg-surface-container-low">
+<div class="flex items-center gap-2 bg-background border border-outline-variant p-2">
+<span class="text-primary-fixed-dim font-body-base text-body-base select-none">&gt;</span>
+<input autofocus="" class="flex-1 bg-transparent border-none outline-none focus:ring-0 text-on-surface font-body-base text-body-base p-0" placeholder="Type command or prompt..." type="text"/>
+<button class="text-on-surface-variant hover:text-primary-fixed-dim p-1 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="send">send</span>
+</button>
+</div>
+</div>
+</main>
+</div>
+<!-- Footer -->
+<footer class="fixed bottom-0 w-full flex justify-between items-center px-container-padding py-1 border-t border-outline-variant z-50 bg-surface-container-lowest dark:bg-surface-container-lowest">
+<span class="font-label-xs text-label-xs text-secondary-fixed">SYSTEM READY</span>
+<div class="flex gap-4">
+<a class="font-code-sm text-code-sm text-on-surface-variant hover:text-primary-fixed-dim cursor-default" href="#">SCORE: 88/100</a>
+<a class="font-code-sm text-code-sm text-on-surface-variant hover:text-primary-fixed-dim cursor-default" href="#">Press ? for Help</a>
+</div>
+</footer>
+</body></html>
