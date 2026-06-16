@@ -34,6 +34,7 @@ var (
 	useBaseline    bool
 	diffRef        string
 	stagedOnly     bool
+	noSummary      bool
 )
 
 var scanCmd = &cobra.Command{
@@ -407,7 +408,9 @@ var scanCmd = &cobra.Command{
 		// ── GitHub Actions integration ────────────────────────────────
 		if os.Getenv("GITHUB_ACTIONS") == "true" {
 			printGitHubActionsAnnotations(report)
-			writeGitHubActionsSummary(report)
+			if !noSummary {
+				writeGitHubActionsSummary(report)
+			}
 		}
 
 		if shouldFail {
@@ -525,4 +528,5 @@ func init() {
 	scanCmd.Flags().BoolVar(&useBaseline, "baseline", false, "Report only NEW findings not in the baseline")
 	scanCmd.Flags().StringVar(&diffRef, "diff", "", "Scan only files changed vs a git ref (e.g., HEAD~1, origin/main)")
 	scanCmd.Flags().BoolVar(&stagedOnly, "staged", false, "Scan only git-staged files (for pre-commit hooks)")
+	scanCmd.Flags().BoolVar(&noSummary, "no-summary", false, "Disable writing to GITHUB_STEP_SUMMARY")
 }
