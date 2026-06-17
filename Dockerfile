@@ -69,7 +69,9 @@ RUN groupadd -g 1000 aitriage && \
     useradd -u 1000 -g aitriage -s /bin/bash -m aitriage && \
     mkdir -p /project && chown -R aitriage:aitriage /project
 
-USER aitriage
+# Note: For GitHub Actions compatibility (writing to host-mounted GITHUB_WORKSPACE),
+# we run as root by default. You can run as non-root locally using `docker run --user 1000`.
+# USER aitriage
 WORKDIR /project
 
 # Health check for web mode
