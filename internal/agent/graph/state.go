@@ -29,6 +29,11 @@ type AgentState struct {
 	Batches          [][]EnrichedFinding
 	TriagedResults   []string
 
+	// SecureCoder-enhanced fields
+	ThreatModel         *ThreatModel         // Structured threat model analysis
+	FindingDispositions []FindingDisposition  // TP/FP/NR classification per finding
+	PoCResults          []PoCResult           // PoC verification results
+
 	// Outputs
 	ReportMarkdown string
 	AIFixSpec      string
@@ -44,4 +49,72 @@ type EnrichedFinding struct {
 	Message   string `json:"message"`
 	Snippet   string `json:"code_snippet,omitempty"`
 	ExtraData string `json:"extra_data,omitempty"`
+	VulnID    string `json:"vuln_id,omitempty"` // CS-XXX-NNN format
+}
+
+// ── SecureCoder Threat Model Types ───────────────────────────────────────────
+
+// ThreatModel holds the structured output from the LLM threat model step.
+type ThreatModel struct {
+	ComponentOverview  string       `json:"component_overview"`
+	EntryPoints        []EntryPoint `json:"entry_points"`
+	TrustBoundaries    TrustBounds  `json:"trust_boundaries"`
+	SensitiveDataPaths []DataPath   `json:"sensitive_data_paths"`
+	PrivilegedActions  []PrivAction `json:"privileged_actions"`
+	PriorityAreas      []string     `json:"priority_areas"`
+}
+
+// EntryPoint describes a point where external data enters the system.
+type EntryPoint struct {
+	Endpoint   string `json:"endpoint"`
+	Type       string `json:"type"`
+	Trusted    bool   `json:"trusted"`
+	Validation string `json:"validation"`
+}
+
+// TrustBounds describes authentication/authorization assumptions.
+type TrustBounds struct {
+	Authentication string `json:"authentication"`
+	Authorization  string `json:"authorization"`
+	ImplicitTrust  string `json:"implicit_trust"`
+}
+
+// DataPath describes a flow of sensitive data through the system.
+type DataPath struct {
+	DataType    string `json:"data_type"`
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
+	Protection  string `json:"protection"`
+}
+
+// PrivAction describes a privileged operation.
+type PrivAction struct {
+	Action   string `json:"action"`
+	Location string `json:"location"`
+	Guard    string `json:"guard"`
+}
+
+// FindingDisposition records the TP/FP/NR classification for a single finding.
+type FindingDisposition struct {
+	FindingIndex int    `json:"finding_index"`
+	FindingID    string `json:"finding_id"`
+	Disposition  string `json:"disposition"` // "True Positive", "False Positive", "Needs Manual Review"
+	Rationale    string `json:"rationale"`
+}
+
+// PoCResult holds reasoning-based PoC verification for a finding.
+type PoCResult struct {
+	VulnerabilityType string    `json:"vulnerability_type"`
+	Severity          string    `json:"severity"`
+	AffectedFile      string    `json:"affected_file"`
+	ReasoningSteps    []PoCStep `json:"reasoning_steps"`
+	Conclusion        string    `json:"conclusion"`     // "Fix verified", "Fix incomplete", "Needs Manual Review"
+	ExploitBlocked    *bool     `json:"exploit_blocked"` // nil = unknown
+}
+
+// PoCStep is one reasoning step in the PoC verification chain.
+type PoCStep struct {
+	Step        int    `json:"step"`
+	Description string `json:"description"`
+	Result      string `json:"result"`
 }

@@ -14,17 +14,34 @@ import (
 	"github.com/cybertortuga/aitriage/internal/agent/prompts"
 )
 
-// Run Orchestrates the map-reduce pipeline.
+// Run Orchestrates the full SecureCoder-enhanced pipeline:
+//
+//	enrichFindings → buildThreatModel → runWorkers (Map-Reduce) →
+//	runPoCVerification → generateReport → generateAIFixSpec
 func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	fmt.Fprintf(os.Stderr, "🤖 Context Enrichment...\n")
 	enrichFindings(state)
+
+	// SecureCoder Step 1: Threat Model
+	fmt.Fprintf(os.Stderr, "🏗️ Building Threat Model (SecureCoder)...\n")
+	if err := buildThreatModel(ctx, state, llmClient); err != nil {
+		// Non-fatal: continue without threat model
+		fmt.Fprintf(os.Stderr, "⚠️ Threat model step failed (continuing): %v\n", err)
+	}
 
 	fmt.Fprintf(os.Stderr, "🤖 Map-Reduce Triaging (%d batches)...\n", len(state.Batches))
 	if err := runWorkers(ctx, state, llmClient); err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, "🤖 Generating Security Report...\n")
+	// SecureCoder Step 2: PoC Verification
+	fmt.Fprintf(os.Stderr, "🧪 PoC Verification (SecureCoder)...\n")
+	if err := runPoCVerification(ctx, state, llmClient); err != nil {
+		// Non-fatal: continue without PoC
+		fmt.Fprintf(os.Stderr, "⚠️ PoC verification step failed (continuing): %v\n", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "🤖 Generating Security Report (CS-XXX-NNN format)...\n")
 	if err := generateReport(ctx, state, llmClient); err != nil {
 		return err
 	}
@@ -89,6 +106,9 @@ func enrichFindings(state *AgentState) {
 		})
 	}
 
+	// Assign CS-XXX-NNN vulnerability IDs
+	assignVulnIDs(enriched)
+
 	state.EnrichedFindings = enriched
 
 	// Map into batches of 5
@@ -113,10 +133,154 @@ func enrichFindings(state *AgentState) {
 	}
 }
 
+// assignVulnIDs generates CS-XXX-NNN identifiers for each finding.
+func assignVulnIDs(findings []EnrichedFinding) {
+	counters := make(map[string]int)
+	for i := range findings {
+		code := classifyVulnCode(findings[i].Message)
+		counters[code]++
+		findings[i].VulnID = fmt.Sprintf("CS-%s-%03d", code, counters[code])
+	}
+}
+
+// classifyVulnCode maps a finding message to a short vulnerability class code.
+func classifyVulnCode(message string) string {
+	lower := strings.ToLower(message)
+	for key, code := range prompts.VulnClassCodes {
+		if strings.Contains(lower, key) {
+			return code
+		}
+	}
+	return "MISC"
+}
+
+// ── Threat Model Step ────────────────────────────────────────────────────────
+
+func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Client) error {
+	if len(state.EnrichedFindings) == 0 {
+		fmt.Fprintf(os.Stderr, "   ℹ️ No findings — skipping threat model\n")
+		return nil
+	}
+
+	// Serialize findings for the prompt (cap at 20 to stay within token limits)
+	findingsToSend := state.EnrichedFindings
+	if len(findingsToSend) > 20 {
+		findingsToSend = findingsToSend[:20]
+	}
+	findingsJSON, _ := json.MarshalIndent(findingsToSend, "", "  ")
+
+	userPrompt := fmt.Sprintf(prompts.ThreatModelUserPromptTemplate,
+		state.ProjectPath,
+		len(state.EnrichedFindings),
+		string(findingsJSON),
+	)
+
+	messages := []llm.Message{
+		{Role: "system", Content: prompts.ThreatModelSystemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
+
+	response, _, err := llmClient.Chat(ctx, messages)
+	if err != nil {
+		return fmt.Errorf("threat model LLM call failed: %w", err)
+	}
+
+	// Parse JSON from response (handle markdown code fences)
+	jsonText := extractJSON(response)
+
+	var rawResult struct {
+		ComponentOverview  string `json:"component_overview"`
+		EntryPoints        []EntryPoint `json:"entry_points"`
+		TrustBoundaries    TrustBounds  `json:"trust_boundaries"`
+		SensitiveDataPaths []DataPath   `json:"sensitive_data_paths"`
+		PrivilegedActions  []PrivAction `json:"privileged_actions"`
+		PriorityAreas      []string     `json:"priority_areas"`
+		FindingDispositions []struct {
+			FindingIndex int    `json:"finding_index"`
+			Disposition  string `json:"disposition"`
+			Rationale    string `json:"rationale"`
+		} `json:"finding_dispositions"`
+	}
+
+	if err := json.Unmarshal([]byte(jsonText), &rawResult); err != nil {
+		// Fallback: mark all as True Positive if we can't parse
+		fmt.Fprintf(os.Stderr, "   ⚠️ Could not parse threat model JSON: %v (defaulting all to True Positive)\n", err)
+		for i, f := range state.EnrichedFindings {
+			state.FindingDispositions = append(state.FindingDispositions, FindingDisposition{
+				FindingIndex: i,
+				FindingID:    f.VulnID,
+				Disposition:  "True Positive",
+				Rationale:    "Could not build threat model; defaulting to True Positive.",
+			})
+		}
+		return nil
+	}
+
+	state.ThreatModel = &ThreatModel{
+		ComponentOverview:  rawResult.ComponentOverview,
+		EntryPoints:        rawResult.EntryPoints,
+		TrustBoundaries:    rawResult.TrustBoundaries,
+		SensitiveDataPaths: rawResult.SensitiveDataPaths,
+		PrivilegedActions:  rawResult.PrivilegedActions,
+		PriorityAreas:      rawResult.PriorityAreas,
+	}
+
+	for _, d := range rawResult.FindingDispositions {
+		findingID := ""
+		if d.FindingIndex < len(state.EnrichedFindings) {
+			findingID = state.EnrichedFindings[d.FindingIndex].VulnID
+		}
+		state.FindingDispositions = append(state.FindingDispositions, FindingDisposition{
+			FindingIndex: d.FindingIndex,
+			FindingID:    findingID,
+			Disposition:  d.Disposition,
+			Rationale:    d.Rationale,
+		})
+	}
+
+	tp := 0
+	fp := 0
+	nr := 0
+	for _, d := range state.FindingDispositions {
+		switch d.Disposition {
+		case "True Positive":
+			tp++
+		case "False Positive":
+			fp++
+		default:
+			nr++
+		}
+	}
+	fmt.Fprintf(os.Stderr, "   ✅ Threat model: %d True Positives, %d False Positives, %d Needs Review\n", tp, fp, nr)
+
+	return nil
+}
+
 func runWorkers(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	errChan := make(chan error, len(state.Batches))
+
+	// Build threat model context summary (if available)
+	threatContext := ""
+	if state.ThreatModel != nil {
+		tmSummary, _ := json.MarshalIndent(struct {
+			ComponentOverview string   `json:"component_overview"`
+			PriorityAreas     []string `json:"priority_areas"`
+		}{
+			ComponentOverview: state.ThreatModel.ComponentOverview,
+			PriorityAreas:     state.ThreatModel.PriorityAreas,
+		}, "", "  ")
+		threatContext = string(tmSummary)
+	}
+
+	// Build disposition lookup for enriching batch context
+	dispositionMap := make(map[string]string) // VulnID → Disposition
+	for _, d := range state.FindingDispositions {
+		if d.FindingID != "" {
+			dispositionMap[d.FindingID] = d.Disposition
+		}
+	}
 
 	for i, batch := range state.Batches {
 		wg.Add(1)
@@ -124,7 +288,14 @@ func runWorkers(ctx context.Context, state *AgentState, llmClient llm.Client) er
 			defer wg.Done()
 
 			batchJSON, _ := json.MarshalIndent(b, "", "  ")
-			userPrompt := fmt.Sprintf(prompts.TriageUserPromptTemplate, string(batchJSON))
+
+			var userPrompt string
+			if threatContext != "" {
+				userPrompt = fmt.Sprintf(prompts.TriageUserPromptWithThreatModelTemplate,
+					threatContext, string(batchJSON))
+			} else {
+				userPrompt = fmt.Sprintf(prompts.TriageUserPromptTemplate, string(batchJSON))
+			}
 
 			messages := []llm.Message{
 				{Role: "system", Content: prompts.TriageSystemPrompt},
@@ -157,6 +328,87 @@ func runWorkers(ctx context.Context, state *AgentState, llmClient llm.Client) er
 	return nil
 }
 
+// ── PoC Verification Step ────────────────────────────────────────────────────
+
+func runPoCVerification(ctx context.Context, state *AgentState, llmClient llm.Client) error {
+	// Collect True Positive findings for PoC
+	var tpFindings []EnrichedFinding
+	tpSet := make(map[string]bool)
+	for _, d := range state.FindingDispositions {
+		if d.Disposition == "True Positive" {
+			tpSet[d.FindingID] = true
+		}
+	}
+
+	for _, f := range state.EnrichedFindings {
+		if tpSet[f.VulnID] {
+			tpFindings = append(tpFindings, f)
+		}
+	}
+
+	// If no dispositions yet (threat model failed), use all HIGH/CRITICAL
+	if len(tpFindings) == 0 && len(state.FindingDispositions) == 0 {
+		for _, f := range state.EnrichedFindings {
+			sev := strings.ToUpper(f.Severity)
+			if sev == "CRITICAL" || sev == "HIGH" {
+				tpFindings = append(tpFindings, f)
+			}
+		}
+	}
+
+	if len(tpFindings) == 0 {
+		fmt.Fprintf(os.Stderr, "   ℹ️ No True Positives — skipping PoC verification\n")
+		return nil
+	}
+
+	// Cap at 15 findings for PoC to stay within token limits
+	if len(tpFindings) > 15 {
+		tpFindings = tpFindings[:15]
+	}
+
+	findingsJSON, _ := json.MarshalIndent(tpFindings, "", "  ")
+	userPrompt := fmt.Sprintf(prompts.PoCUserPromptTemplate, len(tpFindings), string(findingsJSON))
+
+	messages := []llm.Message{
+		{Role: "system", Content: prompts.PoCSystemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
+
+	response, _, err := llmClient.Chat(ctx, messages)
+	if err != nil {
+		return fmt.Errorf("PoC verification LLM call failed: %w", err)
+	}
+
+	// Parse JSON response
+	jsonText := extractJSON(response)
+	var pocResults []PoCResult
+	if err := json.Unmarshal([]byte(jsonText), &pocResults); err != nil {
+		// If we can't parse as array, try single object
+		var single PoCResult
+		if err2 := json.Unmarshal([]byte(jsonText), &single); err2 == nil {
+			pocResults = []PoCResult{single}
+		} else {
+			fmt.Fprintf(os.Stderr, "   ⚠️ Could not parse PoC JSON: %v\n", err)
+			return nil // Non-fatal
+		}
+	}
+
+	state.PoCResults = pocResults
+
+	verified := 0
+	incomplete := 0
+	for _, p := range pocResults {
+		if p.ExploitBlocked != nil && !*p.ExploitBlocked {
+			verified++
+		} else {
+			incomplete++
+		}
+	}
+	fmt.Fprintf(os.Stderr, "   ✅ PoC: %d exploitable, %d blocked/unknown\n", verified, incomplete)
+
+	return nil
+}
+
 func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	combinedTriage := strings.Join(state.TriagedResults, "\n\n")
 
@@ -164,21 +416,85 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 		combinedTriage = combinedTriage[:30000] + "\n...[TRUNCATED — too many findings]"
 	}
 
-	// Generate lookup table for original findings
+	// Generate lookup table for original findings (now with CS-XXX-NNN IDs)
 	var lookupLines []string
-	lookupLines = append(lookupLines, "| Rule ID | Severity | File | Line |")
-	lookupLines = append(lookupLines, "|---|---|---|---|")
+	lookupLines = append(lookupLines, "| Vulnerability ID | Rule ID | Severity | File | Line |")
+	lookupLines = append(lookupLines, "|---|---|---|---|---|")
 	for _, f := range state.EnrichedFindings {
 		file := f.File
 		if file == "" {
 			file = "N/A"
 		}
-		lookupLines = append(lookupLines, fmt.Sprintf("| %s | %s | %s | %d |", f.ID, f.Severity, file, f.Line))
+		lookupLines = append(lookupLines, fmt.Sprintf("| %s | %s | %s | %s | %d |", f.VulnID, f.ID, f.Severity, file, f.Line))
 	}
 	lookupTable := strings.Join(lookupLines, "\n")
 
-	metadataBlock := fmt.Sprintf("## AITriage Core Engine Summary\n- **Date**: %s\n- **Security Score**: %d/100 (%s)\n- **Total raw findings**: %d\n\n### Original Findings Reference Table (CRITICAL: Use these File/Line mappings for your output):\n%s\n\n",
-		time.Now().Format("January 2, 2006"), state.SecurityScore, state.SecurityGrade, len(state.EnrichedFindings), lookupTable)
+	// Build threat model summary block
+	threatModelBlock := ""
+	if state.ThreatModel != nil {
+		threatModelBlock = fmt.Sprintf("\n## Threat Model Summary\n- **Component**: %s\n- **Priority Areas**: %s\n",
+			state.ThreatModel.ComponentOverview,
+			strings.Join(state.ThreatModel.PriorityAreas, ", "))
+
+		if len(state.ThreatModel.EntryPoints) > 0 {
+			threatModelBlock += "\n### Entry Points\n"
+			for _, ep := range state.ThreatModel.EntryPoints {
+				trusted := "untrusted"
+				if ep.Trusted {
+					trusted = "trusted"
+				}
+				threatModelBlock += fmt.Sprintf("- **%s** (%s, %s) — validation: %s\n", ep.Endpoint, ep.Type, trusted, ep.Validation)
+			}
+		}
+	}
+
+	// Build disposition summary block
+	dispositionBlock := ""
+	if len(state.FindingDispositions) > 0 {
+		tp, fp, nr := 0, 0, 0
+		for _, d := range state.FindingDispositions {
+			switch d.Disposition {
+			case "True Positive":
+				tp++
+			case "False Positive":
+				fp++
+			default:
+				nr++
+			}
+		}
+		dispositionBlock = fmt.Sprintf("\n## Finding Dispositions (Threat Model)\n- True Positives: %d\n- False Positives: %d\n- Needs Manual Review: %d\n", tp, fp, nr)
+
+		// Include False Positive rationales
+		var fpLines []string
+		for _, d := range state.FindingDispositions {
+			if d.Disposition == "False Positive" {
+				fpLines = append(fpLines, fmt.Sprintf("- **%s**: %s", d.FindingID, d.Rationale))
+			}
+		}
+		if len(fpLines) > 0 {
+			dispositionBlock += "\n### False Positive Rationales\n" + strings.Join(fpLines, "\n") + "\n"
+		}
+	}
+
+	// Build PoC summary block
+	pocBlock := ""
+	if len(state.PoCResults) > 0 {
+		pocBlock = "\n## PoC Verification Results\n"
+		for _, poc := range state.PoCResults {
+			pocBlock += fmt.Sprintf("\n### %s (%s)\n- **File**: %s\n- **Conclusion**: %s\n",
+				poc.VulnerabilityType, poc.Severity, poc.AffectedFile, poc.Conclusion)
+			if len(poc.ReasoningSteps) > 0 {
+				pocBlock += "\n| Step | Description | Result |\n|---|---|---|\n"
+				for _, step := range poc.ReasoningSteps {
+					pocBlock += fmt.Sprintf("| %d | %s | %s |\n", step.Step, step.Description, step.Result)
+				}
+			}
+		}
+	}
+
+	metadataBlock := fmt.Sprintf("## AITriage + SecureCoder Engine Summary\n- **Date**: %s\n- **Security Score**: %d/100 (%s)\n- **Total raw findings**: %d\n%s%s\n### Original Findings Reference Table (CRITICAL: Use these Vulnerability ID/File/Line mappings for your output):\n%s\n%s\n",
+		time.Now().Format("January 2, 2006"), state.SecurityScore, state.SecurityGrade, len(state.EnrichedFindings),
+		threatModelBlock, dispositionBlock, lookupTable, pocBlock)
 
 	userPrompt := fmt.Sprintf(prompts.ReportUserPromptTemplate, metadataBlock+combinedTriage)
 
@@ -213,6 +529,8 @@ func generateAIFixSpec(ctx context.Context, state *AgentState, llmClient llm.Cli
 	return nil
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 func readSnippet(projectPath, file string, line int) string {
 	if file == "" || line <= 0 {
 		return "Snippet not available."
@@ -240,4 +558,30 @@ func readSnippet(projectPath, file string, line int) string {
 	}
 
 	return strings.Join(lines[start:end], "\n")
+}
+
+// extractJSON extracts a JSON block from an LLM response that may contain
+// markdown code fences or other text around the JSON.
+func extractJSON(text string) string {
+	// Try ```json ... ``` first
+	if idx := strings.Index(text, "```json"); idx >= 0 {
+		rest := text[idx+7:]
+		if endIdx := strings.Index(rest, "```"); endIdx >= 0 {
+			return strings.TrimSpace(rest[:endIdx])
+		}
+	}
+	// Try ``` ... ```
+	if idx := strings.Index(text, "```"); idx >= 0 {
+		rest := text[idx+3:]
+		if endIdx := strings.Index(rest, "```"); endIdx >= 0 {
+			return strings.TrimSpace(rest[:endIdx])
+		}
+	}
+	// Try to find raw JSON (starts with { or [)
+	for i, ch := range text {
+		if ch == '{' || ch == '[' {
+			return strings.TrimSpace(text[i:])
+		}
+	}
+	return text
 }
