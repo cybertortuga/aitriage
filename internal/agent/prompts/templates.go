@@ -32,7 +32,8 @@ Crucial formatting rules:
    - Do not wrap table cells across multiple lines using literal newlines.
    - Every column in every row must be properly aligned with matching pipe ("|") characters.
    - Do not place raw, unescaped pipe characters inside table cells (use "\|" if a pipe character is needed).
-   - Ensure all sentences in the table columns are fully completed, grammatically correct, and never truncated. Do not end sentences with incomplete text or dangling delimiters.`
+   - Ensure all sentences in the table columns are fully completed, grammatically correct, and never truncated. Do not end sentences with incomplete text or dangling delimiters.
+4. You MUST match the "Rule ID" of every finding to its corresponding original "File" and "Line" from the provided "Original Findings Reference Table". Do NOT write "N/A" for File or Line if they are present in the reference table.`
 
 const ReportUserPromptTemplate = `Here is the core engine summary and the aggregated triaged results:
 

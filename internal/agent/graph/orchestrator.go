@@ -164,8 +164,21 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 		combinedTriage = combinedTriage[:30000] + "\n...[TRUNCATED — too many findings]"
 	}
 
-	metadataBlock := fmt.Sprintf("## AITriage Core Engine Summary\n- **Date**: %s\n- **Security Score**: %d/100 (%s)\n- **Total raw findings**: %d\n\n",
-		time.Now().Format("January 2, 2006"), state.SecurityScore, state.SecurityGrade, len(state.EnrichedFindings))
+	// Generate lookup table for original findings
+	var lookupLines []string
+	lookupLines = append(lookupLines, "| Rule ID | Severity | File | Line |")
+	lookupLines = append(lookupLines, "|---|---|---|---|")
+	for _, f := range state.EnrichedFindings {
+		file := f.File
+		if file == "" {
+			file = "N/A"
+		}
+		lookupLines = append(lookupLines, fmt.Sprintf("| %s | %s | %s | %d |", f.ID, f.Severity, file, f.Line))
+	}
+	lookupTable := strings.Join(lookupLines, "\n")
+
+	metadataBlock := fmt.Sprintf("## AITriage Core Engine Summary\n- **Date**: %s\n- **Security Score**: %d/100 (%s)\n- **Total raw findings**: %d\n\n### Original Findings Reference Table (CRITICAL: Use these File/Line mappings for your output):\n%s\n\n",
+		time.Now().Format("January 2, 2006"), state.SecurityScore, state.SecurityGrade, len(state.EnrichedFindings), lookupTable)
 
 	userPrompt := fmt.Sprintf(prompts.ReportUserPromptTemplate, metadataBlock+combinedTriage)
 
