@@ -1,8 +1,10 @@
 package graph
 
 import (
+	agentcontext "github.com/cybertortuga/aitriage/internal/agent/context"
 	"github.com/cybertortuga/aitriage/internal/engine/core"
 	"github.com/cybertortuga/aitriage/internal/scanner/deployaudit"
+	"github.com/cybertortuga/aitriage/internal/scanner/entropy"
 	"github.com/cybertortuga/aitriage/internal/scanner/external"
 	"github.com/cybertortuga/aitriage/internal/scanner/network"
 	"github.com/cybertortuga/aitriage/internal/scanner/nfr"
@@ -22,6 +24,13 @@ type AgentState struct {
 
 	SecurityScore int
 	SecurityGrade string
+
+	// Repository context (gathered by gatherRepoContext)
+	RepoContext *agentcontext.RepoContext
+
+	// Data from scanners that was previously lost
+	CriticalFiles []entropy.CriticalFile
+	HistoryLeaks  []entropy.HistoryLeak
 	Diagram       string
 
 	// Map-Reduce state

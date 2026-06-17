@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	agentcontext "github.com/cybertortuga/aitriage/internal/agent/context"
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
 	"github.com/cybertortuga/aitriage/internal/agent/prompts"
 )
@@ -19,6 +20,10 @@ import (
 //	enrichFindings → buildThreatModel → runWorkers (Map-Reduce) →
 //	runPoCVerification → generateReport → generateAIFixSpec
 func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
+	// Step 0: Gather repository context (reads files from disk, no LLM)
+	fmt.Fprintf(os.Stderr, "📂 Gathering Repository Context...\n")
+	gatherRepoContext(state)
+
 	fmt.Fprintf(os.Stderr, "🤖 Context Enrichment...\n")
 	enrichFindings(state)
 
@@ -54,6 +59,18 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	return nil
 }
 
+// gatherRepoContext reads the repository from disk and builds structured context.
+func gatherRepoContext(state *AgentState) {
+	state.RepoContext = agentcontext.BuildRepoContext(state.ProjectPath)
+
+	keyCount := 0
+	if state.RepoContext != nil {
+		keyCount = len(state.RepoContext.KeyFiles)
+	}
+	fmt.Fprintf(os.Stderr, "   ✅ Tree built, %d key files read, stack: %s\n",
+		keyCount, state.RepoContext.Stack)
+}
+
 func enrichFindings(state *AgentState) {
 	var enriched []EnrichedFinding
 
@@ -65,7 +82,7 @@ func enrichFindings(state *AgentState) {
 			File:     f.File,
 			Line:     f.Line,
 			Message:  fmt.Sprintf("%s: %s", f.Name, f.Evidence),
-			Snippet:  readSnippet(state.ProjectPath, f.File, f.Line),
+			Snippet:  extractFullContext(state.ProjectPath, f.File, f.Line),
 		})
 	}
 	for _, f := range state.ExternalFindings {
@@ -76,7 +93,7 @@ func enrichFindings(state *AgentState) {
 			File:     f.File,
 			Line:     f.Line,
 			Message:  fmt.Sprintf("[%s] %s", f.Source, f.Message),
-			Snippet:  readSnippet(state.ProjectPath, f.File, f.Line),
+			Snippet:  extractFullContext(state.ProjectPath, f.File, f.Line),
 		})
 	}
 	// Add other findings without snippets or with basic info
@@ -95,7 +112,7 @@ func enrichFindings(state *AgentState) {
 			File:     f.File,
 			Line:     f.Line,
 			Message:  fmt.Sprintf("%s. Advice: %s", f.Issue, f.Advice),
-			Snippet:  readSnippet(state.ProjectPath, f.File, f.Line),
+			Snippet:  extractFullContext(state.ProjectPath, f.File, f.Line),
 		})
 	}
 	for _, f := range state.NetworkFindings {
@@ -169,7 +186,14 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 	}
 	findingsJSON, _ := json.MarshalIndent(findingsToSend, "", "  ")
 
+	// Build repo context summary for the prompt.
+	repoContextText := ""
+	if state.RepoContext != nil {
+		repoContextText = state.RepoContext.FormatForLLM(5000) // ~5K tokens for threat model
+	}
+
 	userPrompt := fmt.Sprintf(prompts.ThreatModelUserPromptTemplate,
+		repoContextText,
 		state.ProjectPath,
 		len(state.EnrichedFindings),
 		string(findingsJSON),
@@ -531,9 +555,11 @@ func generateAIFixSpec(ctx context.Context, state *AgentState, llmClient llm.Cli
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-func readSnippet(projectPath, file string, line int) string {
+// extractFullContext extracts the full function body + imports for a finding.
+// Uses tree-sitter AST when possible, falls back to ±30 lines.
+func extractFullContext(projectPath, file string, line int) string {
 	if file == "" || line <= 0 {
-		return "Snippet not available."
+		return "Context not available."
 	}
 	cleanPath := strings.TrimPrefix(file, "/src/")
 	fullPath := cleanPath
@@ -541,23 +567,20 @@ func readSnippet(projectPath, file string, line int) string {
 		fullPath = filepath.Join(projectPath, cleanPath)
 	}
 
-	content, err := os.ReadFile(fullPath)
+	fc, err := agentcontext.ExtractFunction(fullPath, line)
 	if err != nil {
-		return "Snippet not available."
+		return "Context not available."
 	}
 
-	lines := strings.Split(string(content), "\n")
-	idx := line - 1
-	start := idx - 3
-	if start < 0 {
-		start = 0
+	var sb strings.Builder
+	if fc.Imports != "" {
+		sb.WriteString("// Imports:\n")
+		sb.WriteString(fc.Imports)
+		sb.WriteString("\n\n")
 	}
-	end := idx + 8
-	if end > len(lines) {
-		end = len(lines)
-	}
-
-	return strings.Join(lines[start:end], "\n")
+	sb.WriteString(fmt.Sprintf("// Function: %s (lines %d-%d)\n", fc.Name, fc.StartLine, fc.EndLine))
+	sb.WriteString(fc.Body)
+	return sb.String()
 }
 
 // extractJSON extracts a JSON block from an LLM response that may contain

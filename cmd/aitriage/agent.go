@@ -162,6 +162,8 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		SecurityScore:    richResult.Report.SecurityScore,
 		SecurityGrade:    richResult.Report.SecurityGrade,
 		Diagram:          richResult.Diagram,
+		CriticalFiles:    richResult.CriticalFiles,
+		HistoryLeaks:     richResult.HistoryLeaks,
 	}
 
 	if err := graph.Run(ctx, state, client); err != nil {
