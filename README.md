@@ -197,59 +197,84 @@ AITriage uses a **Two-Layer Pipeline Model** for GitHub Actions. It is published
 Create `.github/workflows/aitriage.yml` in your repository:
 
 ```yaml
-name: AITriage Security Guard
-on: [push, pull_request]
+name: AITriage Security Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
-  security-events: write   # Upload SARIF findings to the Security tab
-  pull-requests: write     # Write comments on Pull Requests (AI Advisor)
 
 jobs:
-  # ── Layer 1: Deterministic Gate (Blocks Merges) ──
-  gate:
+  static-scan:
+    name: Static Security Scan
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # Essential for baseline and diff analysis
+          fetch-depth: 0
 
       - name: Run AITriage Scanner
         uses: cybertortuga/aitriage@v1
         with:
-          health-profile: standard   # baseline (default) | standard | strict
-          fail-on: critical          # critical | any | never
-          fail-score: 70             # Fail if Health Check score falls below this number
-          baseline: 'true'           # Legacy baseline debt won't block; checks new changes only
-          format: sarif
-          output-file: aitriage-results.sarif
+          command: 'scan'
+          args: '--no-summary'
+          format: 'html'
+          output-file: 'report.html'
+          fail-on: never
 
-      - name: Upload SARIF to GitHub Security Dashboard
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()                 # Upload reports even if the scan failed
+      - name: Upload HTML Security Report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: aitriage-results.sarif
+          name: aitriage-security-report
+          path: report.html
 
-  # ── Layer 2: AI Advisor (Non-blocking PR Triage) ──
-  ai-advisor:
-    if: github.event_name == 'pull_request'
-    needs: gate
-    continue-on-error: true          # Do not block pull requests on AI analysis errors
+  ai-triage:
+    name: AI Triage & Fix Specs
+    needs: static-scan
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Run AITriage Agent
-        uses: cybertortuga/aitriage@v1
         with:
-          command: agent
-          args: '--no-chat --report-out report.md --fixspec-out FIXSPEC.md'
+          fetch-depth: 0
+
+      - name: Run AI Triage Agent (SecureCoder Rules)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        uses: cybertortuga/aitriage@v1
+        with:
+          command: 'agent'
+          args: '--no-chat --report-out report.md --fixspec-out fixspec.md'
 
-      # You can post report.md or FIXSPEC.md to the PR using standard action scripts
+      - name: Publish AI Triage Report & Fix Specs to GitHub Summary
+        if: always()
+        run: |
+          if [ -f report.md ]; then
+            echo "### AITriage AI Audit Report" >> $GITHUB_STEP_SUMMARY
+            cat report.md >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -f fixspec.md ]; then
+            echo "### AI IDE Fix Prompt" >> $GITHUB_STEP_SUMMARY
+            echo '```markdown' >> $GITHUB_STEP_SUMMARY
+            cat fixspec.md >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload AI Triage Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aitriage-ai-triage-results
+          path: |
+            report.md
+            fixspec.md
 ```
 
 > [!IMPORTANT]
