@@ -18,6 +18,6 @@ Security is a top priority for AITriage. If you discover a vulnerability, we wou
 Instead, please report them to the maintainers privately:
 
 1. Open a **GitHub Security Advisory** draft from the [Security tab](https://github.com/cybertortuga/aitriage/security/advisories/new) of this repository.
-2. Alternatively, email the maintainers at `security@cybertortuga.io` (placeholder - replace with actual email if different).
+2. Alternatively, email the maintainers at `security@cybertortuga.io`.
 
 You should receive a reply within 48 hours acknowledging receipt of your vulnerability report.
