@@ -16,8 +16,8 @@ We need to fix rendering, formatting, and date bugs in the AI triage agent repor
 ### Описание
 Provide the current date dynamically from Go to the LLM agent metadata so it does not hallucinate the date "October 26, 2023".
 ### Затронутые файлы
-- [triage-report-fixes.md](file:///Users/afedotov/Documents/GitHub/aitriage/triage-report-fixes.md)
-- [orchestrator.go](file:///Users/afedotov/Documents/GitHub/aitriage/internal/agent/graph/orchestrator.go)
+- [triage-report-fixes.md](triage-report-fixes.md)
+- [orchestrator.go](../../../internal/agent/graph/orchestrator.go)
 ### Подзадачи
 - [x] Импортировать пакет "time" в `orchestrator.go`
 - [x] Внедрить форматированную текущую дату (`time.Now().Format("January 2, 2006")`) в блок метаданных `metadataBlock`
@@ -30,7 +30,7 @@ Provide the current date dynamically from Go to the LLM agent metadata so it doe
 ### Описание
 Instruct the LLM to strictly format tables with GFM alignment separators, escape pipes, write full sentences, and completely ban emojis.
 ### Затронутые файлы
-- [templates.go](file:///Users/afedotov/Documents/GitHub/aitriage/internal/agent/prompts/templates.go)
+- [templates.go](../../../internal/agent/prompts/templates.go)
 ### Подзадачи
 - [x] Добавить правила генерации таблиц GFM (обязательная строка разделителей `|---|`) в `ReportSystemPrompt` и `FixSpecSystemPrompt`
 - [x] Добавить запрет на неполные/обрезанные предложения в ячейках таблиц

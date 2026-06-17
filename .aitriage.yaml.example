@@ -1,9 +1,9 @@
-# ============================================================
-# AITRIAGE CONFIGURATION
+# AITriage Configuration Template
 # Copy this file to '.aitriage.yaml' in your project root.
 # Environment variables are supported using $VAR or ${VAR} syntax.
-# ============================================================
+# Docs: https://github.com/cybertortuga/aitriage
 
+# ─── LLM Integration (optional, for aitriage agent/fix) ───────────────────────
 llm:
   # Supported providers: gemini | openai | anthropic | ollama
   provider: gemini
@@ -14,31 +14,55 @@ llm:
   # NEVER hardcode keys here. Always use environment variables.
   api_key: $GEMINI_API_KEY
 
+# ─── Ignore Rules ─────────────────────────────────────────────────────────────
 ignore:
   # Rule IDs that the scanner should completely ignore (e.g., ["ENTR-04"])
   rules: []
   
-  # Paths the scanner should skip (you can also use .aitriageignore)
+  # Paths the scanner should skip (supports glob-style prefix matching / you can also use .aitriageignore)
   paths:
-    - "/vendor"
-    - "/node_modules"
-    - "/.git"
+    - "node_modules/"
+    - ".git/"
+    - "vendor/"
+    - "dist/"
 
-# ============================================================
-# CUSTOM RULES ENGINE (OPTIONAL)
-# Uncomment to write your own presence/absence security checks.
-# ============================================================
+# ─── Information Security Policy Gate ────────────────────────────────────────
+# This is the CI/CD answer to: can this project pass IB requirements?
+health_check:
+  # profile: baseline | standard | strict
+  #   - baseline: compatible default; blocks active CRITICAL/HIGH by fail_on
+  #   - standard: for sensitive/business apps; also enforces minimum_score 70
+  #   - strict: for high-assurance systems; blocks any active finding
+  profile: baseline
+  
+  # When to exit non-zero (blocks the CI/CD job): critical | any | never
+  fail_on: critical
+  
+  # Fail if the Health Check score is below this threshold (0 disables score gating)
+  minimum_score: 0
+  
+  # Specific threshold overrides (-1 = unlimited, 0 = block any active finding of this severity)
+  max_critical: -1
+  max_high: -1
+  max_medium: -1
+  
+  # Expose block lists for specific rules/classes/sources
+  block_sources: []  # e.g., ["gitleaks"]
+  block_classes: []  # e.g., ["hardcoded-secret"]
+
+# ─── Legacy Failure Thresholds (fallback) ─────────────────────────────────────
+# Still supported when the health_check block is not configured.
+strict_mode: false   # Set true to fail on ANY finding
+fail_score: 0        # Fail if Health Check score < this (0 = disabled)
+
+# ─── Custom Rules Engine (optional) ───────────────────────────────────────────
+# Add your own project-specific rules here.
 # rules:
-#   - id: CUSTOM-NO-CONSOLE
-#     name: "Ban Console Logs"
-#     stack: universal
-#     extensions: [".ts", ".js"]
+#   - id: CUSTOM-NO-CONSOLE-LOG
+#     name: "Direct console.log in production code"
+#     stack: nextjs
+#     extensions: [".ts", ".tsx"]
 #     target: code
-#     pattern: 'console\.log'
-#     suggestion: "LOW: Remove debugging logs before creating a PR."
-
-# ============================================================
-# CI/CD STRICT MODE (OPTIONAL)
-# ============================================================
-# strict_mode: false        # Fail the build (exit 1) if ANY issue is found.
-# fail_score: 80            # Fail the build if the SecurityScore drops below this number.
+#     pattern: 'console\.log\('
+#     suggestion: "Use a structured logger instead of console.log in production."
+#     severity: "LOW"
