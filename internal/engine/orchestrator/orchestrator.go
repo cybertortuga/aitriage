@@ -2,8 +2,10 @@ package orchestrator
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/cybertortuga/aitriage/internal/agent/architect"
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
@@ -56,43 +58,55 @@ func RunAllScanners(ctx context.Context, opts Options) llm.RichScanResult {
 				swg.Add(1)
 				go func() {
 					defer swg.Done()
+					start := time.Now()
 					findings, err := external.RunSemgrep(ctx, opts.ProjectPath, "auto")
 					if err == nil {
 						mu.Lock()
 						scanners = append(scanners, findings)
 						mu.Unlock()
+						fmt.Fprintf(os.Stderr, "   ▶ Semgrep ✓ %d findings (%.1fs)\n", len(findings), time.Since(start).Seconds())
+					} else {
+						fmt.Fprintf(os.Stderr, "   ▶ Semgrep ✗ error: %v\n", err)
 					}
 				}()
 			} else {
-				slog.Debug("Semgrep not installed, skipping")
+				fmt.Fprintf(os.Stderr, "   ▶ Semgrep — not installed, skipping\n")
 			}
 			if external.IsInstalled("gitleaks") {
 				swg.Add(1)
 				go func() {
 					defer swg.Done()
+					start := time.Now()
 					findings, err := external.RunGitleaks(ctx, opts.ProjectPath)
 					if err == nil {
 						mu.Lock()
 						scanners = append(scanners, findings)
 						mu.Unlock()
+						fmt.Fprintf(os.Stderr, "   ▶ Gitleaks ✓ %d findings (%.1fs)\n", len(findings), time.Since(start).Seconds())
+					} else {
+						fmt.Fprintf(os.Stderr, "   ▶ Gitleaks ✗ error: %v\n", err)
 					}
 				}()
 			} else {
-				slog.Debug("Gitleaks not installed, skipping")
+				fmt.Fprintf(os.Stderr, "   ▶ Gitleaks — not installed, skipping\n")
 			}
 			if external.IsInstalled("bandit") {
 				swg.Add(1)
 				go func() {
 					defer swg.Done()
+					start := time.Now()
 					findings, err := external.RunBandit(ctx, opts.ProjectPath)
 					if err == nil {
 						mu.Lock()
 						scanners = append(scanners, findings)
 						mu.Unlock()
+						fmt.Fprintf(os.Stderr, "   ▶ Bandit ✓ %d findings (%.1fs)\n", len(findings), time.Since(start).Seconds())
+					} else {
+						fmt.Fprintf(os.Stderr, "   ▶ Bandit ✗ error: %v\n", err)
 					}
 				}()
 			} else {
-				slog.Debug("Bandit not installed, skipping")
+				fmt.Fprintf(os.Stderr, "   ▶ Bandit — not installed, skipping\n")
 			}
 			if external.IsInstalled("trivy") {
 				for _, scanType := range []string{"fs", "config"} {
@@ -100,16 +114,20 @@ func RunAllScanners(ctx context.Context, opts Options) llm.RichScanResult {
 					swg.Add(1)
 					go func() {
 						defer swg.Done()
+						start := time.Now()
 						findings, err := external.RunTrivy(ctx, opts.ProjectPath, st)
 						if err == nil {
 							mu.Lock()
 							scanners = append(scanners, findings)
 							mu.Unlock()
+							fmt.Fprintf(os.Stderr, "   ▶ Trivy (%s) ✓ %d findings (%.1fs)\n", st, len(findings), time.Since(start).Seconds())
+						} else {
+							fmt.Fprintf(os.Stderr, "   ▶ Trivy (%s) ✗ error: %v\n", st, err)
 						}
 					}()
 				}
 			} else {
-				slog.Debug("Trivy not installed, skipping")
+				fmt.Fprintf(os.Stderr, "   ▶ Trivy — not installed, skipping\n")
 			}
 
 			swg.Wait()
