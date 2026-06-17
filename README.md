@@ -200,10 +200,6 @@ Create `.github/workflows/aitriage.yml` in your repository:
 name: AITriage Security Pipeline
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 permissions:
