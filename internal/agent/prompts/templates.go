@@ -256,25 +256,66 @@ Please synthesize this into a single, cohesive Markdown security report followin
 
 const FixSpecSystemPrompt = SecureCoderFramework + `
 
-## Current Task: Generate Fix Specification
+## Current Task: Generate AI IDE Fix Plan
 
-Based on the final security report provided, generate an actionable "AI Fix Specification".
-This specification should provide concrete steps, code diffs, or architecture recommendations to remediate the identified True Positives.
-Be precise and provide drop-in code replacements where possible.
+Based on the security report provided, generate a structured fix plan that another AI coding assistant (Cursor, Copilot, Windsurf, etc.) can execute task by task.
 
-For each True Positive finding:
-1. Reference the CS-XXX-NNN vulnerability ID.
-2. Show the vulnerable code snippet.
-3. Show the fixed code snippet (drop-in replacement).
-4. Explain which MUST/MUST NOT rule the fix addresses.
-5. Note any architectural changes needed.
+IMPORTANT RULES:
+- Do NOT write full code solutions or diffs. Describe the PROBLEM clearly — the AI IDE will figure out the fix.
+- Each task = one file or one logical fix. Keep tasks atomic.
+- Group related findings into a single task when they affect the same file.
+- If a component is intentionally vulnerable (test/demo app), mark it as "[DEMO/TEST - optional fix]".
+- Be specific: exact file paths, line numbers, function names.
 
-If PoC verification data is available, reference it to validate that the proposed fix would block the exploit.
+OUTPUT FORMAT:
+
+Start with a summary table:
+
+### Fix Plan Summary
+
+| # | Priority | File | Issue | Vuln IDs |
+|---|----------|------|-------|----------|
+| 1 | CRITICAL | path/to/file.py:14 | SSTI via string concat in template | CS-SSTI-001 |
+| 2 | HIGH | path/to/app.py:17 | Debug mode enabled in production | CS-DEBUG-001 |
+...
+
+Then for each task:
+
+---
+
+### Task 1: [Short description]
+
+**Priority**: CRITICAL / HIGH / MEDIUM
+**Vuln IDs**: CS-SSTI-001, CS-XSS-001
+**File**: thirdparty/PythonSSTI/main.py
+**Line**: 14
+**Function**: read_root()
+
+**Problem**: User input from query parameter "username" is concatenated directly into a Jinja2 template string via "Welcome " + username + "!". This allows Server-Side Template Injection. An attacker can inject {{config.__class__.__init__.__globals__['os'].popen('id').read()}} to achieve Remote Code Execution.
+
+**Security rules violated**:
+- MUST use context variables instead of string concatenation in templates
+- MUST enable Jinja2 autoescape for HTML output
+
+**Context**: The function receives username from a GET query parameter with no validation. The Jinja2 Environment is created without autoescape.
+
+---
+
+After all tasks, add:
+
+### Execution Order
+1. Fix critical vulnerabilities first (SSTI, RCE, debug mode)
+2. Then authentication and authorization gaps
+3. Then input validation and security headers
+4. Then logging, rate limiting, and hardening
 
 Every Markdown table MUST strictly follow the GitHub Flavored Markdown (GFM) specification, including the mandatory separator row.`
 
-const FixSpecUserPromptTemplate = `Based on the following security report, generate the AI Fix Specification:
+const FixSpecUserPromptTemplate = `Based on the following security report, generate the AI IDE Fix Plan.
 
+Remember: describe problems, not solutions. The AI IDE will write the code.
+
+Security Report:
 %s`
 
 // ── Vulnerability ID Generation ──────────────────────────────────────────────
