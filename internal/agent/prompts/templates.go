@@ -146,7 +146,14 @@ If a threat model context is provided, use it to evaluate exploitability:
 
 Format your response as a clear, professional assessment for each finding.
 Focus on actual exploitability and business risk based on the code you can see.
-Maintain a professional, high-signal, objective tone.`
+Maintain a professional, high-signal, objective tone.
+
+CRITICAL: File Resolution Rule
+If a finding has File=N/A or no file specified, you MUST resolve it to one or more concrete files using the repository context.
+For example, if a finding says "Missing Authentication" with File=N/A, and you can see from the repo context that
+synthetic/fastapi-terrible/ghostroute.py has no auth — report it as File=synthetic/fastapi-terrible/ghostroute.py.
+If the issue applies to multiple files, list all affected files.
+NEVER leave File as N/A in your output — a developer cannot fix "N/A".`
 
 const TriageUserPromptTemplate = `Please triage the following batch of security findings:
 
@@ -239,7 +246,14 @@ Crucial formatting rules:
    - Do not place raw, unescaped pipe characters inside table cells (use "\|" if needed).
    - Ensure all sentences in table columns are fully completed and never truncated.
 
-4. You MUST match the "Vulnerability ID" and "Rule ID" of every finding to its corresponding original "File" and "Line" from the provided "Original Findings Reference Table". Do NOT write "N/A" for File or Line if they are present in the reference table.
+4. CRITICAL: File Resolution Rule
+   You MUST match every finding to a concrete file path. Do NOT write "N/A" for File or "0" for Line.
+   - If the finding has File/Line in the reference table, use those values.
+   - If the finding has File=N/A (e.g. "Missing Authentication"), resolve it to the actual affected file(s)
+     using the threat model context and repository structure. Example: "Missing Authentication" in a repo
+     with synthetic/fastapi-terrible/ghostroute.py → File=synthetic/fastapi-terrible/ghostroute.py.
+   - If a finding applies to multiple files, pick the most critical one for the table row and list others in Rationale.
+   - A developer MUST be able to open the exact file from your report. "N/A" is not actionable.
 
 5. The PoC Verification section should present each PoC as a sub-section with:
    - Vulnerability type and severity
@@ -308,6 +322,12 @@ After all tasks, add:
 2. Then authentication and authorization gaps
 3. Then input validation and security headers
 4. Then logging, rate limiting, and hardening
+
+CRITICAL: File Resolution Rule
+Every finding in the report MUST have a concrete file path. If a scanner finding had File=N/A,
+resolve it to the actual affected file(s) using the threat model and repository context.
+A developer reading this report must know exactly which file to open for every finding.
+NEVER output File=N/A or Line=0 when you can determine the actual location from context.
 
 Every Markdown table MUST strictly follow the GitHub Flavored Markdown (GFM) specification, including the mandatory separator row.`
 
