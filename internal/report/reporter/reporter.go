@@ -44,13 +44,16 @@ func PrintTerminal(report scanner.ScanReport) {
 	filled := (report.SecurityScore * barWidth) / 100
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 
-	fmt.Printf(" [SEC] Security Score: ")
+	fmt.Printf(" [HC] Health Check: ")
 	if _, err := color.New(scoreColor, color.Bold).Printf("%d/100 [%s]\n", report.SecurityScore, report.SecurityGrade); err != nil {
 		fmt.Printf("%d/100 [%s]\n", report.SecurityScore, report.SecurityGrade)
 	}
 	if _, err := color.New(scoreColor).Printf("       [%s]\n", bar); err != nil {
 		fmt.Printf("       [%s]\n", bar)
 	}
+	hb := report.HealthCheck.Breakdown
+	fmt.Printf("       %d active · %d ignored (FP) · %d deduped · penalty %d · bonus %d\n",
+		hb.ActiveFindings, hb.IgnoredFindings, hb.DedupedFindings, hb.Penalty, hb.Bonus)
 	fmt.Println("----------------------------------------")
 
 	for _, r := range report.Results {
@@ -155,64 +158,12 @@ type Message struct {
 
 // PrintSARIF outputs the ScanReport in SARIF format.
 func PrintSARIF(report scanner.ScanReport, w io.Writer) {
-	sarif := SarifReport{
-		Version: "2.1.0",
-		Schema:  "https://json.schemastore.org/sarif-2.1.0.json",
-		Runs: []Run{
-			{
-				Tool: Tool{
-					Driver: Driver{
-						Name:    "AITriage",
-						Version: "1.5.0",
-					},
-				},
-				Results: []Result{},
-			},
-		},
+	data, err := report.ToSARIF()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to generate SARIF JSON: %v\n", err)
+		return
 	}
-
-	for _, r := range report.Results {
-		if r.Status == core.Absent {
-			level := "warning"
-			switch strings.ToUpper(r.Severity) {
-			case "CRITICAL", "HIGH":
-				level = "error"
-			case "MEDIUM":
-				level = "warning"
-			case "LOW":
-				level = "note"
-			}
-
-			result := Result{
-				RuleID: r.ID,
-				Message: Message{
-					Text: fmt.Sprintf("%s. %s", r.Name, r.Suggestion),
-				},
-				Level: level,
-			}
-			if r.File != "" {
-				uri := r.File
-				// Ensure relative path for SARIF
-				result.Locations = []Location{
-					{
-						PhysicalLocation: PhysicalLocation{
-							ArtifactLocation: ArtifactLocation{
-								URI: uri,
-							},
-							Region: Region{
-								StartLine: r.Line,
-							},
-						},
-					},
-				}
-			}
-			sarif.Runs[0].Results = append(sarif.Runs[0].Results, result)
-		}
-	}
-
-	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(sarif); err != nil {
-		fmt.Printf("failed to encode SARIF JSON: %v\n", err)
+	if _, err := w.Write(append(data, '\n')); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to write SARIF JSON: %v\n", err)
 	}
 }

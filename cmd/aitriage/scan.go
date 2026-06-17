@@ -9,15 +9,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/engine/core"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/cybertortuga/aitriage/internal/engine/baseline"
+	"github.com/cybertortuga/aitriage/internal/engine/core"
 	"github.com/cybertortuga/aitriage/internal/engine/history"
+	"github.com/cybertortuga/aitriage/internal/healthpolicy"
+	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
 	"github.com/cybertortuga/aitriage/internal/report/reporter"
 	"github.com/cybertortuga/aitriage/internal/scanner"
 	"github.com/cybertortuga/aitriage/internal/scanner/diff"
 	"github.com/cybertortuga/aitriage/internal/ui/tui"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -29,6 +31,7 @@ var (
 	universalOnly  bool
 	failOn         string
 	failScore      int
+	healthProfile  string
 	noHistory      bool
 	interactive    bool
 	useBaseline    bool
@@ -290,6 +293,7 @@ var scanCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("scan failed: %w", err)
 		}
+		policy := scanPolicyFromFlags(cmd, report)
 
 		// ── Baseline filtering ─────────────────────────────────────────
 		if useBaseline {
@@ -306,6 +310,7 @@ var scanCmd = &cobra.Command{
 				}
 			}
 		}
+		refreshScanHealthCheck(&report, policy)
 
 		var outWriter io.Writer = os.Stdout
 		if scanOutputFile != "" {
@@ -378,33 +383,6 @@ var scanCmd = &cobra.Command{
 			}
 		}
 
-		// Determine exit condition
-		shouldFail := false
-		switch failOn {
-		case "any":
-			shouldFail = len(report.Results) > 0
-		case "never":
-			shouldFail = false
-		default: // "critical" is the default
-			shouldFail = report.HasCriticalFailures
-		}
-		// Config file can also enforce strict mode and score threshold
-		if report.Config != nil {
-			if report.Config.StrictMode && len(report.Results) > 0 {
-				shouldFail = true
-			}
-			cfgScore := report.Config.FailScore
-			if cfgScore == 0 {
-				cfgScore = failScore // CLI flag takes precedence if config missing
-			}
-			if cfgScore > 0 && report.SecurityScore < cfgScore {
-				shouldFail = true
-				fmt.Fprintf(os.Stderr, "\nFAIL: Security Score %d is below required threshold %d\n", report.SecurityScore, cfgScore)
-			}
-		} else if failScore > 0 && report.SecurityScore < failScore {
-			shouldFail = true
-			fmt.Fprintf(os.Stderr, "\nFAIL: Security Score %d is below required threshold %d\n", report.SecurityScore, failScore)
-		}
 		// ── GitHub Actions integration ────────────────────────────────
 		if os.Getenv("GITHUB_ACTIONS") == "true" {
 			printGitHubActionsAnnotations(report)
@@ -413,15 +391,62 @@ var scanCmd = &cobra.Command{
 			}
 		}
 
-		if shouldFail {
+		if !report.HealthCheck.Verdict.Passed {
+			printPolicyFailure(os.Stderr, report.HealthCheck.Verdict)
 			os.Exit(1)
 		}
 		return nil
 	},
 }
 
+func scanPolicyFromFlags(cmd *cobra.Command, report scanner.ScanReport) healthcheck.Policy {
+	policy := healthpolicy.FromConfig(report.Config)
+	return healthpolicy.ApplyOverrides(policy, healthpolicy.Overrides{
+		Profile:         healthProfile,
+		ProfileSet:      cmd.Flags().Changed("health-profile"),
+		FailOn:          failOn,
+		FailOnSet:       cmd.Flags().Changed("fail-on"),
+		MinimumScore:    failScore,
+		MinimumScoreSet: cmd.Flags().Changed("fail-score"),
+	})
+}
+
+func refreshScanHealthCheck(report *scanner.ScanReport, policy healthcheck.Policy) {
+	hc := healthcheck.ApplyPolicy(
+		healthcheck.Evaluate(healthcheck.FromCoreResults(report.Results)),
+		policy,
+	)
+	report.HealthCheck = hc
+	report.HasCriticalFailures = hc.HasCriticalFailures
+	report.SecurityScore = hc.Score
+	report.SecurityGrade = hc.Grade
+}
+
+func printPolicyFailure(w io.Writer, verdict healthcheck.Verdict) {
+	fmt.Fprintf(w, "\nFAIL: %s\n", verdict.Summary)
+	for _, reason := range verdict.BlockingReasons {
+		fmt.Fprintf(w, "- %s", reason.Code)
+		if reason.Severity != "" {
+			fmt.Fprintf(w, " severity=%s", reason.Severity)
+		}
+		if reason.Source != "" {
+			fmt.Fprintf(w, " source=%s", reason.Source)
+		}
+		if reason.Class != "" {
+			fmt.Fprintf(w, " class=%s", reason.Class)
+		}
+		if reason.Threshold != 0 || reason.Count != 0 {
+			fmt.Fprintf(w, " count=%d threshold=%d", reason.Count, reason.Threshold)
+		}
+		fmt.Fprintf(w, " - %s\n", reason.Message)
+	}
+}
+
 func printGitHubActionsAnnotations(report scanner.ScanReport) {
 	for _, r := range report.Results {
+		if isSuppressedResult(r) {
+			continue
+		}
 		relPath := r.File
 		if relPath != "" && filepath.IsAbs(relPath) {
 			if rel, err := filepath.Rel(report.ProjectPath, relPath); err == nil {
@@ -446,6 +471,10 @@ func printGitHubActionsAnnotations(report scanner.ScanReport) {
 	}
 }
 
+func isSuppressedResult(r core.CheckResult) bool {
+	return r.AuditStatus == core.AuditStatusIgnored || r.AuditStatus == core.AuditStatusTriage
+}
+
 func writeGitHubActionsSummary(report scanner.ScanReport) {
 	summaryFile := os.Getenv("GITHUB_STEP_SUMMARY")
 	if summaryFile == "" {
@@ -459,10 +488,25 @@ func writeGitHubActionsSummary(report scanner.ScanReport) {
 	defer f.Close()
 
 	f.WriteString("## AITriage Security Scan Summary\n\n")
-	fmt.Fprintf(f, "**Security Grade:** %s | **Security Score:** %d/100\n\n", report.SecurityGrade, report.SecurityScore)
+	fmt.Fprintf(f, "**IB Gate:** %s\n\n", strings.ToUpper(report.HealthCheck.Verdict.Status))
+	fmt.Fprintf(f, "**Policy:** `%s` (`fail_on=%s`)\n\n", report.HealthCheck.Policy.Profile, report.HealthCheck.Policy.FailOn)
+	fmt.Fprintf(f, "**Health Check:** %d/100 (%s)\n\n", report.SecurityScore, report.SecurityGrade)
+	hb := report.HealthCheck.Breakdown
+	fmt.Fprintf(f, "_%d active findings · %d ignored (false positives) · %d deduplicated · penalty %d · bonus %d_\n\n", hb.ActiveFindings, hb.IgnoredFindings, hb.DedupedFindings, hb.Penalty, hb.Bonus)
+	if len(report.HealthCheck.Verdict.BlockingReasons) > 0 {
+		f.WriteString("### Blocking Reasons\n\n")
+		for _, reason := range report.HealthCheck.Verdict.BlockingReasons {
+			fmt.Fprintf(f, "- `%s`: %s", reason.Code, reason.Message)
+			if reason.Count != 0 || reason.Threshold != 0 {
+				fmt.Fprintf(f, " (count %d, threshold %d)", reason.Count, reason.Threshold)
+			}
+			f.WriteString("\n")
+		}
+		f.WriteString("\n")
+	}
 
-	if len(report.Results) == 0 {
-		f.WriteString("No security issues found.\n")
+	if report.HealthCheck.Breakdown.ActiveFindings == 0 {
+		f.WriteString("No active security issues found.\n")
 		return
 	}
 
@@ -470,6 +514,9 @@ func writeGitHubActionsSummary(report scanner.ScanReport) {
 	var archFindings []core.CheckResult
 
 	for _, r := range report.Results {
+		if isSuppressedResult(r) {
+			continue
+		}
 		if r.File == "" {
 			archFindings = append(archFindings, r)
 		} else {
@@ -522,7 +569,8 @@ func init() {
 	scanCmd.Flags().StringVarP(&scanOutputFile, "out", "o", "", "Write formatted output to a file (and display terminal output on stdout)")
 	scanCmd.Flags().BoolVar(&universalOnly, "universal-only", false, "Run only universal checks (no stack-specific)")
 	scanCmd.Flags().StringVar(&failOn, "fail-on", "critical", "When to exit with code 1: critical (default), any, never")
-	scanCmd.Flags().IntVar(&failScore, "fail-score", 0, "Fail if SecurityScore is below this threshold (0 = disabled)")
+	scanCmd.Flags().IntVar(&failScore, "fail-score", 0, "Fail if Health Check score is below this threshold (0 = disabled)")
+	scanCmd.Flags().StringVar(&healthProfile, "health-profile", "", "Health Check policy profile: baseline, standard, strict")
 	scanCmd.Flags().BoolVar(&noHistory, "no-history", false, "Skip saving scan results to history (disables diff)")
 	scanCmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Launch interactive TUI dashboard")
 	scanCmd.Flags().BoolVar(&useBaseline, "baseline", false, "Report only NEW findings not in the baseline")

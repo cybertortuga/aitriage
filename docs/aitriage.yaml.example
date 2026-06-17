@@ -2,12 +2,30 @@
 # Place this file as aitriage.yaml in your project root.
 # Docs: https://github.com/cybertortuga/aitriage
 
-# ─── Failure Thresholds ───────────────────────────────────────────────────────
+# ─── Legacy Failure Thresholds ────────────────────────────────────────────────
+# Still supported when health_check is not set.
 # Fail the scan (exit code 1) if ANY issue is found (default: only critical)
 strict_mode: false
 
-# Fail the scan if Security Score drops below this value (0 = disabled)
+# Fail the scan if Health Check score drops below this value (0 = disabled)
 fail_score: 70
+
+# ─── Information Security Policy Gate ────────────────────────────────────────
+# This is the CI/CD answer to: can this project pass IB requirements?
+health_check:
+  # baseline: compatible default; blocks active CRITICAL/HIGH by fail_on
+  # standard: for sensitive/business apps; also enforces minimum_score 70
+  # strict: for high-assurance systems; blocks any active finding
+  profile: baseline
+  fail_on: critical       # critical | any | never
+  minimum_score: 70       # 0 = disabled
+  max_critical: -1        # -1 = unlimited; 0 = block any active finding
+  max_high: -1
+  max_medium: -1
+  block_sources:
+    # - gitleaks
+  block_classes:
+    # - hardcoded-secret
 
 # ─── Ignore Rules ─────────────────────────────────────────────────────────────
 # Suppress specific rule IDs from results

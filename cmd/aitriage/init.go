@@ -274,8 +274,19 @@ func generateAitrageConfig(stacks []detectedStack) string {
 
 	// CI section
 	sb.WriteString("# CI/CD settings\n")
+	sb.WriteString("# Legacy compatibility: still supported when health_check is not set\n")
 	sb.WriteString("strict_mode: false   # Set true to fail on ANY finding\n")
-	sb.WriteString("fail_score: 0        # Fail if SecurityScore < this (0 = disabled)\n")
+	sb.WriteString("fail_score: 0        # Fail if Health Check score < this (0 = disabled)\n\n")
+	sb.WriteString("# Information Security policy gate for CI/CD\n")
+	sb.WriteString("health_check:\n")
+	sb.WriteString("  profile: baseline  # baseline | standard | strict\n")
+	sb.WriteString("  fail_on: critical  # critical | any | never\n")
+	sb.WriteString("  minimum_score: 0   # 0 = score is informational only\n")
+	sb.WriteString("  max_critical: -1   # -1 = unlimited; 0 = block any active finding\n")
+	sb.WriteString("  max_high: -1\n")
+	sb.WriteString("  max_medium: -1\n")
+	sb.WriteString("  block_sources: []  # e.g. [gitleaks]\n")
+	sb.WriteString("  block_classes: []  # e.g. [hardcoded-secret]\n")
 
 	// Detected stacks comment
 	if len(stacks) > 0 {

@@ -11,22 +11,27 @@ import (
 	"github.com/cybertortuga/aitriage/internal/config"
 	"github.com/cybertortuga/aitriage/internal/engine/core"
 	"github.com/cybertortuga/aitriage/internal/engine/orchestrator"
+	"github.com/cybertortuga/aitriage/internal/healthpolicy"
+	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
 	"github.com/spf13/cobra"
 )
 
 var (
-	agentProvider   string
-	agentModel      string
-	agentAPIKey     string
-	agentNoChat     bool
-	agentOutput     string
-	agentProbe      string
-	agentFullScan   bool
-	agentRuleID     string
-	agentTargetFile string
-	agentTargetLine int
-	agentReportOut  string
-	agentFixSpecOut string
+	agentProvider      string
+	agentModel         string
+	agentAPIKey        string
+	agentNoChat        bool
+	agentOutput        string
+	agentProbe         string
+	agentFullScan      bool
+	agentRuleID        string
+	agentTargetFile    string
+	agentTargetLine    int
+	agentReportOut     string
+	agentFixSpecOut    string
+	agentFailOn        string
+	agentFailScore     int
+	agentHealthProfile string
 )
 
 var agentCmd = &cobra.Command{
@@ -64,6 +69,9 @@ func init() {
 	agentCmd.Flags().IntVar(&agentTargetLine, "line", 0, "Target a specific line to fix (used with --rule-id)")
 	agentCmd.Flags().StringVar(&agentReportOut, "report-out", "", "Write the final Markdown triage report to this file (for CI/CD)")
 	agentCmd.Flags().StringVar(&agentFixSpecOut, "fixspec-out", "", "Write the AI fix specification to this file (for CI/CD)")
+	agentCmd.Flags().StringVar(&agentFailOn, "fail-on", "never", "CI gate: exit 1 when 'critical' (active CRITICAL/HIGH after AI triage), 'any' finding, or 'never'")
+	agentCmd.Flags().IntVar(&agentFailScore, "fail-score", 0, "CI gate: exit 1 if the post-AI Health Check score is below this threshold (0 = disabled)")
+	agentCmd.Flags().StringVar(&agentHealthProfile, "health-profile", "", "Health Check policy profile: baseline, standard, strict")
 }
 
 func runAgent(cmd *cobra.Command, args []string) error {
@@ -75,6 +83,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Load config
 	cfg := config.LoadConfig(projectPath)
+	policy := agentPolicyFromFlags(cmd, cfg)
 
 	// CLI flags override config file values
 	llmCfg := cfg.LLM
@@ -121,7 +130,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	if agentProbe != "" {
 		fmt.Fprintf(os.Stderr, "   ✓ Network: %d ports open\n", len(richResult.Network))
 	}
-	fmt.Fprintf(os.Stderr, "   SecurityGrade: %s (%d/100)\n\n", richResult.Report.SecurityGrade, richResult.Report.SecurityScore)
+	fmt.Fprintf(os.Stderr, "   Health Check (pre-AI, core-only): %s (%d/100)\n\n", richResult.Report.SecurityGrade, richResult.Report.SecurityScore)
 
 	// Filter results if target flags are provided
 	if agentRuleID != "" {
@@ -161,6 +170,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		NetworkFindings:  richResult.Network,
 		SecurityScore:    richResult.Report.SecurityScore,
 		SecurityGrade:    richResult.Report.SecurityGrade,
+		Policy:           policy,
 		Diagram:          richResult.Diagram,
 		CriticalFiles:    richResult.CriticalFiles,
 		HistoryLeaks:     richResult.HistoryLeaks,
@@ -187,6 +197,11 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "   ✓ Fix spec written to %s\n", agentFixSpecOut)
 	}
 
+	// CI/CD GATE: decide the exit code from the post-AI Health Check verdict.
+	// False Positives are already excluded from state.HealthCheck, so the gate
+	// only trips on findings the AI triage considered real.
+	shouldFail := !state.HealthCheck.Verdict.Passed
+
 	// STEP 3: INTERACTIVE CONSULTATION
 	if !agentNoChat {
 		fmt.Fprintf(os.Stderr, "💬 Step 3/3: Consultation mode (type 'exit' to quit)\n")
@@ -200,7 +215,34 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		runConsultation(ctx, client, messages)
 	}
 
+	if shouldFail {
+		printPolicyFailure(os.Stderr, state.HealthCheck.Verdict)
+		os.Exit(1)
+	}
 	return nil
+}
+
+func agentPolicyFromFlags(cmd *cobra.Command, cfg *config.Config) healthcheck.Policy {
+	policy := healthpolicy.FromConfig(cfg)
+	if !healthpolicy.HasConfiguredGate(cfg) {
+		policy.FailOn = healthcheck.FailOnNever
+		policy.MinimumScore = 0
+	}
+
+	failOnSet := cmd.Flags().Changed("fail-on")
+	failScoreSet := cmd.Flags().Changed("fail-score")
+	policy = healthpolicy.ApplyOverrides(policy, healthpolicy.Overrides{
+		Profile:         agentHealthProfile,
+		ProfileSet:      cmd.Flags().Changed("health-profile"),
+		FailOn:          agentFailOn,
+		FailOnSet:       failOnSet,
+		MinimumScore:    agentFailScore,
+		MinimumScoreSet: failScoreSet,
+	})
+	if failScoreSet && !failOnSet && policy.FailOn == healthcheck.FailOnNever {
+		policy.FailOn = healthcheck.FailOnCritical
+	}
+	return healthcheck.NormalizePolicy(policy)
 }
 
 func runConsultation(ctx context.Context, client llm.Client, history []llm.Message) {

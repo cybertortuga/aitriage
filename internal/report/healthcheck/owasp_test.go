@@ -1,4 +1,4 @@
-package scorer
+package healthcheck
 
 import "testing"
 

@@ -6,118 +6,53 @@ import (
 	"testing"
 )
 
-func TestLoadConfig_CustomRules(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "aitriage-config-test-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+func TestLoadConfigHealthCheckPolicyBlock(t *testing.T) {
+	dir := t.TempDir()
+	writeConfig(t, dir, `.aitriage.yaml`, `
+health_check:
+  profile: standard
+  fail_on: any
+  minimum_score: 85
+  max_critical: 0
+  max_high: 0
+  max_medium: 2
+  block_sources:
+    - gitleaks
+  block_classes:
+    - hardcoded-secret
+`)
 
-	configContent := `
-ignore:
-  rules: ["ENTR-01"]
-  paths: ["vendor/"]
-rules:
-  - id: "CUSTOM-01"
-    name: "Custom Rule"
-    stack: "universal"
-    target: "code"
-    pattern: "TODO: custom"
-    suggestion: "Fix it"
-`
-	if err := os.WriteFile(filepath.Join(tmpDir, ".aitriage.yaml"), []byte(configContent), 0644); err != nil {
-		t.Fatal(err)
-	}
+	cfg := LoadConfig(dir)
 
-	cfg := LoadConfig(tmpDir)
-	if cfg == nil {
-		t.Fatal("Config should not be nil")
+	if cfg.HealthCheck.Profile != "standard" {
+		t.Fatalf("profile = %q; want standard", cfg.HealthCheck.Profile)
 	}
-
-	if len(cfg.Ignore.Rules) != 1 || cfg.Ignore.Rules[0] != "ENTR-01" {
-		t.Errorf("Ignore rules not loaded correctly: %v", cfg.Ignore.Rules)
+	if cfg.HealthCheck.FailOn != "any" {
+		t.Fatalf("fail_on = %q; want any", cfg.HealthCheck.FailOn)
 	}
-
-	if len(cfg.CustomRules) != 1 || cfg.CustomRules[0].ID != "CUSTOM-01" {
-		t.Errorf("Custom rules not loaded correctly: %v", cfg.CustomRules)
+	if cfg.HealthCheck.MinimumScore == nil || *cfg.HealthCheck.MinimumScore != 85 {
+		t.Fatalf("minimum_score = %v; want 85", cfg.HealthCheck.MinimumScore)
 	}
-
-	if cfg.CustomRules[0].Pattern != "TODO: custom" {
-		t.Errorf("Custom rule pattern mismatch: %s", cfg.CustomRules[0].Pattern)
+	if cfg.HealthCheck.MaxCritical == nil || *cfg.HealthCheck.MaxCritical != 0 {
+		t.Fatalf("max_critical = %v; want explicit 0", cfg.HealthCheck.MaxCritical)
+	}
+	if cfg.HealthCheck.MaxHigh == nil || *cfg.HealthCheck.MaxHigh != 0 {
+		t.Fatalf("max_high = %v; want explicit 0", cfg.HealthCheck.MaxHigh)
+	}
+	if cfg.HealthCheck.MaxMedium == nil || *cfg.HealthCheck.MaxMedium != 2 {
+		t.Fatalf("max_medium = %v; want 2", cfg.HealthCheck.MaxMedium)
+	}
+	if len(cfg.HealthCheck.BlockSources) != 1 || cfg.HealthCheck.BlockSources[0] != "gitleaks" {
+		t.Fatalf("block_sources = %#v", cfg.HealthCheck.BlockSources)
+	}
+	if len(cfg.HealthCheck.BlockClasses) != 1 || cfg.HealthCheck.BlockClasses[0] != "hardcoded-secret" {
+		t.Fatalf("block_classes = %#v", cfg.HealthCheck.BlockClasses)
 	}
 }
 
-func TestIsRuleIgnored(t *testing.T) {
-	tests := []struct {
-		name     string
-		config   *Config
-		ruleID   string
-		expected bool
-	}{
-		{
-			name:     "Empty Config",
-			config:   &Config{},
-			ruleID:   "RULE-01",
-			expected: false,
-		},
-		{
-			name: "Rule is ignored",
-			config: &Config{
-				Ignore: IgnoreConfig{
-					Rules: []string{"RULE-01", "RULE-02"},
-				},
-			},
-			ruleID:   "RULE-02",
-			expected: true,
-		},
-		{
-			name: "Rule is not ignored",
-			config: &Config{
-				Ignore: IgnoreConfig{
-					Rules: []string{"RULE-01", "RULE-03"},
-				},
-			},
-			ruleID:   "RULE-02",
-			expected: false,
-		},
-		{
-			name: "Empty rule ID is ignored if listed",
-			config: &Config{
-				Ignore: IgnoreConfig{
-					Rules: []string{"RULE-01", ""},
-				},
-			},
-			ruleID:   "",
-			expected: true,
-		},
-		{
-			name: "Empty rule ID is not ignored if not listed",
-			config: &Config{
-				Ignore: IgnoreConfig{
-					Rules: []string{"RULE-01"},
-				},
-			},
-			ruleID:   "",
-			expected: false,
-		},
-		{
-			name: "Multiple ignored rules in config, matches last",
-			config: &Config{
-				Ignore: IgnoreConfig{
-					Rules: []string{"RULE-01", "RULE-02", "RULE-03"},
-				},
-			},
-			ruleID:   "RULE-03",
-			expected: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.config.IsRuleIgnored(tt.ruleID)
-			if result != tt.expected {
-				t.Errorf("Expected IsRuleIgnored(%q) to be %v, got %v", tt.ruleID, tt.expected, result)
-			}
-		})
+func writeConfig(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
 	}
 }

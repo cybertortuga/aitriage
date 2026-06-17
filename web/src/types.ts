@@ -88,8 +88,60 @@ export interface ScanReport {
   stacks: string[];
   security_score: number;
   security_grade: string;
+  health_check?: HealthCheckResult;
   duration: string;
   error?: string;
+}
+
+export interface HealthCheckResult {
+  score: number;
+  grade: string;
+  has_critical_failures: boolean;
+  breakdown: HealthCheckBreakdown;
+  policy?: HealthCheckPolicy;
+  verdict?: HealthCheckVerdict;
+}
+
+export interface HealthCheckBreakdown {
+  base_score: number;
+  penalty: number;
+  bonus: number;
+  raw_weight: number;
+  active_findings: number;
+  ignored_findings: number;
+  deduped_findings: number;
+  penalty_by_source: Record<string, number>;
+  count_by_severity: Record<string, number>;
+  count_by_source?: Record<string, number>;
+  count_by_class?: Record<string, number>;
+}
+
+export interface HealthCheckPolicy {
+  profile: string;
+  fail_on: string;
+  minimum_score: number;
+  max_critical: number;
+  max_high: number;
+  max_medium: number;
+  block_sources?: string[];
+  block_classes?: string[];
+}
+
+export interface HealthCheckVerdict {
+  passed: boolean;
+  status: string;
+  summary: string;
+  blocking_reasons?: HealthCheckBlockingReason[];
+}
+
+export interface HealthCheckBlockingReason {
+  code: string;
+  message: string;
+  severity?: string;
+  source?: string;
+  class?: string;
+  count?: number;
+  threshold?: number;
 }
 
 // Aligned with Go deps.Dependency

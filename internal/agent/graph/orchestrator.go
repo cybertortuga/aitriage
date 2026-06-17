@@ -13,6 +13,8 @@ import (
 	agentcontext "github.com/cybertortuga/aitriage/internal/agent/context"
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
 	"github.com/cybertortuga/aitriage/internal/agent/prompts"
+	"github.com/cybertortuga/aitriage/internal/engine/core"
+	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
 )
 
 // Run Orchestrates the full SecureCoder-enhanced pipeline:
@@ -33,6 +35,17 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 		// Non-fatal: continue without threat model
 		fmt.Fprintf(os.Stderr, "⚠️ Threat model step failed (continuing): %v\n", err)
 	}
+
+	// Health Check: recompute the authoritative IB posture score across ALL
+	// sources now that AI dispositions (TP/FP) are available. False Positives
+	// no longer penalise the repository.
+	fmt.Fprintf(os.Stderr, "🩺 Computing Security Health Check (all sources, FP-aware)...\n")
+	computeHealthCheck(state)
+	fmt.Fprintf(os.Stderr, "   ✅ Health Check: %d/100 (%s) — %d active, %d ignored (FP), %d deduped\n",
+		state.HealthCheck.Score, state.HealthCheck.Grade,
+		state.HealthCheck.Breakdown.ActiveFindings,
+		state.HealthCheck.Breakdown.IgnoredFindings,
+		state.HealthCheck.Breakdown.DedupedFindings)
 
 	fmt.Fprintf(os.Stderr, "🤖 Map-Reduce Triaging (%d batches)...\n", len(state.Batches))
 	if err := runWorkers(ctx, state, llmClient); err != nil {
@@ -107,6 +120,7 @@ func enrichFindings(state *AgentState) {
 	}
 	for _, f := range state.DeployFindings {
 		enriched = append(enriched, EnrichedFinding{
+			ID:       f.Issue,
 			Type:     "deploy",
 			Severity: f.Severity,
 			File:     f.File,
@@ -117,6 +131,7 @@ func enrichFindings(state *AgentState) {
 	}
 	for _, f := range state.NetworkFindings {
 		enriched = append(enriched, EnrichedFinding{
+			ID:       fmt.Sprintf("port-%d", f.Port),
 			Type:     "network",
 			Severity: f.Severity,
 			Message:  fmt.Sprintf("Port %d (%s): %s", f.Port, f.Service, f.Message),
@@ -148,6 +163,92 @@ func enrichFindings(state *AgentState) {
 		}
 		state.Batches = append(state.Batches, targetFindings[i:end])
 	}
+}
+
+// computeHealthCheck recomputes the authoritative IB Health Check across ALL
+// scanner sources (core, external, NFR, deploy, network) and applies AI triage
+// dispositions: findings classified as False Positive are excluded from the
+// penalty. The result becomes the canonical SecurityScore/SecurityGrade.
+func computeHealthCheck(state *AgentState) {
+	// Build the set of False-Positive locations from AI dispositions.
+	fp := make(map[string]bool)
+	for _, d := range state.FindingDispositions {
+		if d.Disposition != "False Positive" {
+			continue
+		}
+		if d.FindingIndex >= 0 && d.FindingIndex < len(state.EnrichedFindings) {
+			ef := state.EnrichedFindings[d.FindingIndex]
+			fp[hcKey(ef.ID, ef.File, ef.Line)] = true
+		}
+	}
+
+	in := healthcheck.Input{}
+
+	for _, r := range state.CoreFindings {
+		switch r.Status {
+		case core.Present:
+			in.Positives = append(in.Positives, healthcheck.Positive{ID: r.ID})
+		case core.Absent:
+			ignored := r.AuditStatus == core.AuditStatusIgnored ||
+				r.AuditStatus == core.AuditStatusTriage ||
+				fp[hcKey(r.ID, r.File, r.Line)]
+			in.Findings = append(in.Findings, healthcheck.Finding{
+				Source:   "core",
+				Class:    r.ID,
+				Severity: r.Severity,
+				File:     r.File,
+				Line:     r.Line,
+				Ignored:  ignored,
+			})
+		}
+	}
+	for _, f := range state.ExternalFindings {
+		in.Findings = append(in.Findings, healthcheck.Finding{
+			Source:   f.Source,
+			Class:    f.RuleID,
+			Severity: f.Severity,
+			File:     f.File,
+			Line:     f.Line,
+			Ignored:  fp[hcKey(f.RuleID, f.File, f.Line)],
+		})
+	}
+	for _, f := range state.NFRFindings {
+		in.Findings = append(in.Findings, healthcheck.Finding{
+			Source:   "nfr",
+			Class:    f.RuleID,
+			Severity: f.Severity,
+			Ignored:  fp[hcKey(f.RuleID, "", 0)],
+		})
+	}
+	for _, f := range state.DeployFindings {
+		in.Findings = append(in.Findings, healthcheck.Finding{
+			Source:   "deploy",
+			Class:    f.Issue,
+			Severity: f.Severity,
+			File:     f.File,
+			Line:     f.Line,
+			Ignored:  fp[hcKey(f.Issue, f.File, f.Line)],
+		})
+	}
+	for _, f := range state.NetworkFindings {
+		class := fmt.Sprintf("port-%d", f.Port)
+		in.Findings = append(in.Findings, healthcheck.Finding{
+			Source:   "network",
+			Class:    class,
+			Severity: f.Severity,
+			Ignored:  fp[hcKey(class, "", 0)],
+		})
+	}
+
+	res := healthcheck.ApplyPolicy(healthcheck.Evaluate(in), state.Policy)
+	state.HealthCheck = res
+	state.SecurityScore = res.Score
+	state.SecurityGrade = res.Grade
+}
+
+// hcKey builds a location key used to match AI dispositions to findings.
+func hcKey(id, file string, line int) string {
+	return fmt.Sprintf("%s|%s|%d", strings.ToLower(id), strings.ToLower(file), line)
 }
 
 // assignVulnIDs generates CS-XXX-NNN identifiers for each finding.
@@ -213,12 +314,12 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 	jsonText := extractJSON(response)
 
 	var rawResult struct {
-		ComponentOverview  string `json:"component_overview"`
-		EntryPoints        []EntryPoint `json:"entry_points"`
-		TrustBoundaries    TrustBounds  `json:"trust_boundaries"`
-		SensitiveDataPaths []DataPath   `json:"sensitive_data_paths"`
-		PrivilegedActions  []PrivAction `json:"privileged_actions"`
-		PriorityAreas      []string     `json:"priority_areas"`
+		ComponentOverview   string       `json:"component_overview"`
+		EntryPoints         []EntryPoint `json:"entry_points"`
+		TrustBoundaries     TrustBounds  `json:"trust_boundaries"`
+		SensitiveDataPaths  []DataPath   `json:"sensitive_data_paths"`
+		PrivilegedActions   []PrivAction `json:"privileged_actions"`
+		PriorityAreas       []string     `json:"priority_areas"`
 		FindingDispositions []struct {
 			FindingIndex int    `json:"finding_index"`
 			Disposition  string `json:"disposition"`
@@ -516,8 +617,22 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 		}
 	}
 
-	metadataBlock := fmt.Sprintf("## AITriage + SecureCoder Engine Summary\n- **Date**: %s\n- **Security Score**: %d/100 (%s)\n- **Total raw findings**: %d\n%s%s\n### Original Findings Reference Table (CRITICAL: Use these Vulnerability ID/File/Line mappings for your output):\n%s\n%s\n",
-		time.Now().Format("January 2, 2006"), state.SecurityScore, state.SecurityGrade, len(state.EnrichedFindings),
+	hc := state.HealthCheck
+	healthBlock := fmt.Sprintf("- **Health Check**: %d/100 (%s) — the authoritative IB posture score\n- **IB Gate Verdict**: %s under `%s` policy (`fail_on=%s`)\n- **Health Check Breakdown**: %d active findings, %d ignored (False Positives), %d deduplicated; penalty %d, bonus %d\n",
+		hc.Score, hc.Grade,
+		strings.ToUpper(hc.Verdict.Status), hc.Policy.Profile, hc.Policy.FailOn,
+		hc.Breakdown.ActiveFindings, hc.Breakdown.IgnoredFindings, hc.Breakdown.DedupedFindings,
+		hc.Breakdown.Penalty, hc.Breakdown.Bonus)
+	if len(hc.Verdict.BlockingReasons) > 0 {
+		var reasonLines []string
+		for _, reason := range hc.Verdict.BlockingReasons {
+			reasonLines = append(reasonLines, fmt.Sprintf("  - `%s`: %s", reason.Code, reason.Message))
+		}
+		healthBlock += "- **IB Gate Blocking Reasons**:\n" + strings.Join(reasonLines, "\n") + "\n"
+	}
+
+	metadataBlock := fmt.Sprintf("## AITriage + SecureCoder Engine Summary\n- **Date**: %s\n%s- **Total raw findings**: %d\n%s%s\n### Original Findings Reference Table (CRITICAL: Use these Vulnerability ID/File/Line mappings for your output):\n%s\n%s\n",
+		time.Now().Format("January 2, 2006"), healthBlock, len(state.EnrichedFindings),
 		threatModelBlock, dispositionBlock, lookupTable, pocBlock)
 
 	userPrompt := fmt.Sprintf(prompts.ReportUserPromptTemplate, metadataBlock+combinedTriage)

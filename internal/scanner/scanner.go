@@ -12,7 +12,8 @@ import (
 	"github.com/cybertortuga/aitriage/internal/config"
 	"github.com/cybertortuga/aitriage/internal/engine"
 	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/report/scorer"
+	"github.com/cybertortuga/aitriage/internal/healthpolicy"
+	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
 	"github.com/cybertortuga/aitriage/internal/scanner/deps"
 	"github.com/cybertortuga/aitriage/internal/scanner/detector"
 )
@@ -30,6 +31,7 @@ type ScanReport struct {
 	HasCriticalFailures bool                 `json:"has_critical_failures"`
 	SecurityScore       int                  `json:"security_score"`
 	SecurityGrade       string               `json:"security_grade"`
+	HealthCheck         healthcheck.Result   `json:"health_check"`
 	Dependencies        []deps.Dependency    `json:"dependencies"`
 	DependencyGraph     deps.DependencyGraph `json:"dependency_graph"`
 	AISummary           string               `json:"ai_summary,omitempty"`
@@ -168,23 +170,16 @@ func Scan(ctx context.Context, projectPath string, opts ScanOptions) (ScanReport
 		results[i].AuditStatus = status
 	}
 
-	hasCritical, securityScore := scorer.Calculate(results)
-	securityGrade := "A+"
-	switch {
-	case securityScore < 50:
-		securityGrade = "F"
-	case securityScore < 65:
-		securityGrade = "D"
-	case securityScore < 80:
-		securityGrade = "C"
-	case securityScore < 90:
-		securityGrade = "B"
-	case securityScore < 100:
-		securityGrade = "A"
-	}
+	healthResult := healthcheck.ApplyPolicy(
+		healthcheck.Evaluate(healthcheck.FromCoreResults(results)),
+		healthpolicy.FromConfig(ws.Config),
+	)
+	hasCritical := healthResult.HasCriticalFailures
+	securityScore := healthResult.Score
+	securityGrade := healthResult.Grade
 
 	for i := range results {
-		results[i].OWASPMapping = scorer.GetOWASP(results[i].ID)
+		results[i].OWASPMapping = healthcheck.GetOWASP(results[i].ID)
 	}
 
 	projectGraph := deps.GenerateGraph(ws)
@@ -196,6 +191,7 @@ func Scan(ctx context.Context, projectPath string, opts ScanOptions) (ScanReport
 		HasCriticalFailures: hasCritical,
 		SecurityScore:       securityScore,
 		SecurityGrade:       securityGrade,
+		HealthCheck:         healthResult,
 		Dependencies:        projectGraph.Nodes,
 		DependencyGraph:     projectGraph,
 		TotalFiles:          len(ws.Files),

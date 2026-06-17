@@ -17,6 +17,8 @@ if [ "$CMD" = "scan" ]; then
   [ -n "$AITRIAGE_FORMAT" ]      && set -- "$@" --format "$AITRIAGE_FORMAT"
   [ -n "$AITRIAGE_OUTPUT_FILE" ] && set -- "$@" --out "$AITRIAGE_OUTPUT_FILE"
   [ -n "$AITRIAGE_FAIL_ON" ]     && set -- "$@" --fail-on "$AITRIAGE_FAIL_ON"
+  [ -n "$AITRIAGE_FAIL_SCORE" ]  && set -- "$@" --fail-score "$AITRIAGE_FAIL_SCORE"
+  [ -n "$AITRIAGE_HEALTH_PROFILE" ] && set -- "$@" --health-profile "$AITRIAGE_HEALTH_PROFILE"
   [ -n "$AITRIAGE_STACK" ]       && set -- "$@" --stack "$AITRIAGE_STACK"
   [ -n "$AITRIAGE_DIFF" ]        && set -- "$@" --diff "$AITRIAGE_DIFF"
   [ "$AITRIAGE_BASELINE" = "true" ] && set -- "$@" --baseline

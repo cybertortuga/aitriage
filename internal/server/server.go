@@ -19,6 +19,7 @@ import (
 	"github.com/cybertortuga/aitriage/internal/engine/core"
 	"github.com/cybertortuga/aitriage/internal/engine/orchestrator"
 	"github.com/cybertortuga/aitriage/internal/models"
+	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
 	"github.com/cybertortuga/aitriage/internal/scanner/deps"
 	"github.com/cybertortuga/aitriage/internal/scanner/external"
 	"github.com/cybertortuga/aitriage/internal/server/handlers"
@@ -231,10 +232,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	mux.Handle("/api/analyze", middleware.PermissionMiddleware("admin", "manager")(http.HandlerFunc(s.handleAnalyze)))
 	mux.Handle("/api/file", middleware.PermissionMiddleware("admin", "manager", "viewer")(http.HandlerFunc(s.handleFile)))
-	
+
 	topologyHandler := handlers.NewTopologyHandler(s.topologyRepo)
 	mux.Handle("/api/topology", middleware.PermissionMiddleware("admin", "manager", "viewer")(http.HandlerFunc(topologyHandler.HandleGetTopology)))
-	
+
 	apiKeyHandler := handlers.NewAPIKeyHandler(s.apiKeyRepo)
 	mux.Handle("/api/admin/keys", middleware.PermissionMiddleware("admin")(http.HandlerFunc(apiKeyHandler.HandleListKeys)))
 	mux.Handle("/api/admin/keys/create", middleware.PermissionMiddleware("admin")(http.HandlerFunc(apiKeyHandler.HandleCreateKey)))
@@ -282,8 +283,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	handler.ServeHTTP(w, r)
 }
 
-
-
 func (s *Server) limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !globalLimiter.Allow() {
@@ -315,15 +314,16 @@ type findingDTO struct {
 }
 
 type scanResponse struct {
-	Ok            bool              `json:"ok"`
-	ScanID        string            `json:"scan_id"`
-	Findings      []findingDTO      `json:"findings"`
-	Dependencies  []deps.Dependency `json:"dependencies"`
-	Stacks        []string          `json:"stacks"`
-	SecurityScore int               `json:"security_score"`
-	SecurityGrade string            `json:"security_grade"`
-	Duration      string            `json:"duration"`
-	Error         string            `json:"error,omitempty"`
+	Ok            bool               `json:"ok"`
+	ScanID        string             `json:"scan_id"`
+	Findings      []findingDTO       `json:"findings"`
+	Dependencies  []deps.Dependency  `json:"dependencies"`
+	Stacks        []string           `json:"stacks"`
+	SecurityScore int                `json:"security_score"`
+	SecurityGrade string             `json:"security_grade"`
+	HealthCheck   healthcheck.Result `json:"health_check"`
+	Duration      string             `json:"duration"`
+	Error         string             `json:"error,omitempty"`
 }
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
@@ -445,13 +445,13 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		}
 
 		findings = append(findings, findingDTO{
-			ID:       ext.RuleID,
-			Name:     name,
-			Severity: strings.ToLower(sev),
-			File:     ext.File,
-			Line:     ext.Line,
+			ID:         ext.RuleID,
+			Name:       name,
+			Severity:   strings.ToLower(sev),
+			File:       ext.File,
+			Line:       ext.Line,
 			Suggestion: ext.Message,
-			Stack:    ext.Source,
+			Stack:      ext.Source,
 		})
 		dbFindings = append(dbFindings, models.Finding{
 			EngagementID:  engagementID,
@@ -478,11 +478,11 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		desc := n.Message
 		zeroLine := 0
 		findings = append(findings, findingDTO{
-			ID:       n.RuleID,
-			Name:     n.Name,
-			Severity: strings.ToLower(sev),
+			ID:         n.RuleID,
+			Name:       n.Name,
+			Severity:   strings.ToLower(sev),
 			Suggestion: n.Message,
-			Stack:    "nfr",
+			Stack:      "nfr",
 		})
 		dbFindings = append(dbFindings, models.Finding{
 			EngagementID:  engagementID,
@@ -510,13 +510,13 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		desc := d.Issue
 		advice := d.Advice
 		findings = append(findings, findingDTO{
-			ID:       fmt.Sprintf("deploy-%s-%d", filepath.Base(d.File), d.Line),
-			Name:     d.Issue,
-			Severity: strings.ToLower(sev),
-			File:     d.File,
-			Line:     d.Line,
+			ID:         fmt.Sprintf("deploy-%s-%d", filepath.Base(d.File), d.Line),
+			Name:       d.Issue,
+			Severity:   strings.ToLower(sev),
+			File:       d.File,
+			Line:       d.Line,
 			Suggestion: d.Advice,
-			Stack:    "deploy",
+			Stack:      "deploy",
 		})
 		dbFindings = append(dbFindings, models.Finding{
 			EngagementID:  engagementID,
@@ -545,11 +545,11 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		zeroLine := 0
 		name := fmt.Sprintf("Open port %d (%s) on %s", n.Port, n.Service, n.Target)
 		findings = append(findings, findingDTO{
-			ID:       fmt.Sprintf("net-%s-%d", n.Target, n.Port),
-			Name:     name,
-			Severity: strings.ToLower(sev),
+			ID:         fmt.Sprintf("net-%s-%d", n.Target, n.Port),
+			Name:       name,
+			Severity:   strings.ToLower(sev),
 			Suggestion: n.Message,
-			Stack:    "network",
+			Stack:      "network",
 		})
 		dbFindings = append(dbFindings, models.Finding{
 			EngagementID:  engagementID,
@@ -573,12 +573,12 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		zeroLine := 0
 		desc := fmt.Sprintf("Pattern '%s' found in commit %s by %s: %s", hl.Pattern, hl.CommitHash, hl.Author, hl.LinePreview)
 		findings = append(findings, findingDTO{
-			ID:       fmt.Sprintf("gitleak-%s", hl.CommitHash[:8]),
-			Name:     fmt.Sprintf("Secret leak: %s in %s", hl.Pattern, hl.FilePath),
-			Severity: "high",
-			File:     hl.FilePath,
+			ID:         fmt.Sprintf("gitleak-%s", hl.CommitHash[:8]),
+			Name:       fmt.Sprintf("Secret leak: %s in %s", hl.Pattern, hl.FilePath),
+			Severity:   "high",
+			File:       hl.FilePath,
 			Suggestion: desc,
-			Stack:    "git-history",
+			Stack:      "git-history",
 		})
 		dbFindings = append(dbFindings, models.Finding{
 			EngagementID:  engagementID,
@@ -692,7 +692,6 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		_ = s.topologyRepo.UpsertLink(repositories.TopologyLink{Source: appNodeID, Target: compNodeID})
 	}
 
-
 	// 4. Mark engagement completed
 	if err := s.engagementRepo.UpdateStatus(ctx, engagementID, "completed"); err != nil {
 		slog.Error("Failed to update engagement status", "error", err)
@@ -715,6 +714,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		Stacks:        stacks,
 		SecurityScore: rich.Report.SecurityScore,
 		SecurityGrade: rich.Report.SecurityGrade,
+		HealthCheck:   rich.Report.HealthCheck,
 		Duration:      duration,
 	})
 }
@@ -798,7 +798,7 @@ func (s *Server) handleClearCache(w http.ResponseWriter, r *http.Request) {
 	_, _ = s.db.Exec("DELETE FROM engagements")
 	_, _ = s.db.Exec("DELETE FROM topology_links")
 	_, _ = s.db.Exec("DELETE FROM topology_nodes")
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
@@ -809,10 +809,10 @@ func (s *Server) handlePurgeDatabase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Warn("Admin requested to PURGE ALL DATA")
-	
+
 	tables := []string{
-		"finding_notes", "findings", "engagements", "product_members", 
-		"products", "product_types", "topology_links", "topology_nodes", 
+		"finding_notes", "findings", "engagements", "product_members",
+		"products", "product_types", "topology_links", "topology_nodes",
 		"reports", "chat_messages", "chat_sessions", "audit_log", "notifications",
 	}
 	for _, table := range tables {
@@ -821,7 +821,7 @@ func (s *Server) handlePurgeDatabase(w http.ResponseWriter, r *http.Request) {
 			slog.Error("Failed to purge table", "table", table, "error", err)
 		}
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
@@ -832,10 +832,10 @@ func (s *Server) handleRebuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Warn("Admin requested to REBUILD container - server will restart")
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-	
+
 	go func() {
 		time.Sleep(1 * time.Second)
 		os.Exit(0)
@@ -2024,4 +2024,3 @@ func (s *Server) handleRunwayExport(w http.ResponseWriter, r *http.Request) {
 		"saved_to": savedPath,
 	})
 }
-

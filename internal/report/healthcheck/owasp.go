@@ -1,4 +1,4 @@
-package scorer
+package healthcheck
 
 // OWASPMap — маппинг Rule ID → OWASP Top 10 2021 категория
 var OWASPMap = map[string]string{

@@ -3,6 +3,7 @@ package graph
 import (
 	agentcontext "github.com/cybertortuga/aitriage/internal/agent/context"
 	"github.com/cybertortuga/aitriage/internal/engine/core"
+	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
 	"github.com/cybertortuga/aitriage/internal/scanner/deployaudit"
 	"github.com/cybertortuga/aitriage/internal/scanner/entropy"
 	"github.com/cybertortuga/aitriage/internal/scanner/external"
@@ -25,6 +26,12 @@ type AgentState struct {
 	SecurityScore int
 	SecurityGrade string
 
+	// HealthCheck holds the unified, multi-source IB Health Check result.
+	// It is the authoritative security posture score, recomputed after AI
+	// triage so that False Positives no longer penalise the repository.
+	HealthCheck healthcheck.Result
+	Policy      healthcheck.Policy
+
 	// Repository context (gathered by gatherRepoContext)
 	RepoContext *agentcontext.RepoContext
 
@@ -40,8 +47,8 @@ type AgentState struct {
 
 	// SecureCoder-enhanced fields
 	ThreatModel         *ThreatModel         // Structured threat model analysis
-	FindingDispositions []FindingDisposition  // TP/FP/NR classification per finding
-	PoCResults          []PoCResult           // PoC verification results
+	FindingDispositions []FindingDisposition // TP/FP/NR classification per finding
+	PoCResults          []PoCResult          // PoC verification results
 
 	// Outputs
 	ReportMarkdown string
@@ -117,7 +124,7 @@ type PoCResult struct {
 	Severity          string    `json:"severity"`
 	AffectedFile      string    `json:"affected_file"`
 	ReasoningSteps    []PoCStep `json:"reasoning_steps"`
-	Conclusion        string    `json:"conclusion"`     // "Fix verified", "Fix incomplete", "Needs Manual Review"
+	Conclusion        string    `json:"conclusion"`      // "Fix verified", "Fix incomplete", "Needs Manual Review"
 	ExploitBlocked    *bool     `json:"exploit_blocked"` // nil = unknown
 }
 

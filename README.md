@@ -162,7 +162,9 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: cybertortuga/aitriage@v1
         with:
+          health-profile: standard   # baseline | standard | strict
           fail-on: critical
+          fail-score: 70            # optional minimum Health Check score
           baseline: 'true'          # legacy debt does not block; only new regressions
           format: sarif
           output-file: aitriage-results.sarif
@@ -188,7 +190,14 @@ jobs:
       # → post report.md / FIXSPEC.md as a PR comment or upload as an artifact
 ```
 
-**Action inputs:** `command`, `project-dir`, `format`, `output-file`, `fail-on`, `stack`, `diff`, `baseline`, `args`.
+**Action inputs:** `command`, `project-dir`, `format`, `output-file`, `fail-on`, `fail-score`, `health-profile`, `stack`, `diff`, `baseline`, `args`.
+
+**Health Check gate:** `security_score` and `security_grade` stay in JSON for
+compatibility. The CI/CD pass/fail decision is `health_check.verdict.passed`.
+Use `health-profile` or `.aitriage.yaml` `health_check:` to choose the IB policy:
+`baseline` keeps the compatible default, `standard` enforces a score threshold
+for sensitive/business apps, and `strict` blocks any active finding. Legacy
+`strict_mode` and `fail_score` still work when `health_check` is not configured.
 
 ### Docker
 

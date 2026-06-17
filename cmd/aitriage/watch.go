@@ -276,7 +276,7 @@ func printWatchSummary(report scanner.ScanReport, absPath, cyan, green, yellow, 
 	}
 
 	fmt.Fprintf(os.Stderr, "%s  ┌─────────────────────────────────────────┐%s\n", dim, reset)
-	fmt.Fprintf(os.Stderr, "%s  │ %sSecurityScore: %s%d/100 %s(%s)%s             │%s\n",
+	fmt.Fprintf(os.Stderr, "%s  │ %sHealth Check: %s%d/100 %s(%s)%s              │%s\n",
 		dim, bold, scoreColor, report.SecurityScore, dim, report.SecurityGrade, dim, reset)
 	fmt.Fprintf(os.Stderr, "%s  │ %sFindings: %s%dC %s%dH %s%dM %s%dL%s              │%s\n",
 		dim, bold, red, critCount, red, highCount, yellow, medCount, dim, lowCount, dim, reset)

@@ -77,7 +77,7 @@ type SarifRegion struct {
 	EndColumn   int `json:"endColumn,omitempty"`
 }
 
-// ToSARIF converts the ScanReport to the SARIF format required by GitHub Advanced Security
+// ToSARIF converts the ScanReport to the SARIF format required by GitHub code scanning.
 func (r ScanReport) ToSARIF() ([]byte, error) {
 	run := SarifRun{
 		Tool: SarifTool{
@@ -94,86 +94,84 @@ func (r ScanReport) ToSARIF() ([]byte, error) {
 	seenRules := make(map[string]bool)
 
 	for _, res := range r.Results {
-		if res.Status != core.Absent && res.Status != core.Unknown {
-			// In AITriage, a "Present" status for a vulnerability rule implies a finding.
-			// However, sometimes it's missing security controls (Absent).
-			// We only want to export actual findings to SARIF.
-			if res.AuditStatus == core.AuditStatusIgnored || res.AuditStatus == core.AuditStatusTriage {
-				continue // Skip ignored or triaged rules
-			}
+		if res.Status != core.Absent {
+			continue
+		}
+		if res.AuditStatus == core.AuditStatusIgnored || res.AuditStatus == core.AuditStatusTriage {
+			continue
+		}
+		if res.File == "" {
+			// GitHub code scanning requires a location to display a result. Keep
+			// project-level issues in terminal/JSON/summary output instead of
+			// uploading location-less SARIF alerts.
+			continue
+		}
 
-			// Add Rule to Driver if not seen
-			if !seenRules[res.ID] {
-				rule := SarifRule{
-					ID:   res.ID,
-					Name: res.Name,
-					ShortDescription: SarifMessage{
-						Text: res.Name,
-					},
-					Help: SarifMessage{
-						Text:     fmt.Sprintf("%s\n\nSuggestion: %s", res.Evidence, res.Suggestion),
-						Markdown: fmt.Sprintf("%s\n\n**Suggestion:** %s", res.Evidence, res.Suggestion),
-					},
-					Properties: &SarifProperties{
-						SecuritySeverity: convertSeverity(res.Severity),
-					},
-				}
-				run.Tool.Driver.Rules = append(run.Tool.Driver.Rules, rule)
-				seenRules[res.ID] = true
-			}
-
-			// Format level for SARIF
-			level := "warning"
-			switch strings.ToUpper(res.Severity) {
-			case "CRITICAL", "HIGH":
-				level = "error"
-			case "LOW":
-				level = "note"
-			}
-
-			// Relative path mapping
-			relPath := res.File
-			if filepath.IsAbs(res.File) {
-				if r, err := filepath.Rel(r.ProjectPath, res.File); err == nil {
-					relPath = r
-				}
-			}
-
-			// Convert backslashes for SARIF (URIs use forward slashes)
-			relPath = filepath.ToSlash(relPath)
-
-			// Determine line number
-			line := res.Line
-			if line <= 0 {
-				line = 1 // SARIF requires line > 0
-			}
-
-			result := SarifResult{
-				RuleID: res.ID,
-				Message: SarifMessage{
-					Text: fmt.Sprintf("[%s] %s: %s", res.Severity, res.Name, res.Suggestion),
+		if !seenRules[res.ID] {
+			rule := SarifRule{
+				ID:   res.ID,
+				Name: res.Name,
+				ShortDescription: SarifMessage{
+					Text: res.Name,
 				},
-				Level: level,
-				Locations: []SarifLocation{
-					{
-						PhysicalLocation: SarifPhysicalLocation{
-							ArtifactLocation: SarifArtifactLocation{
-								Uri: relPath,
-							},
-							Region: SarifRegion{
-								StartLine: line,
-							},
+				Help: SarifMessage{
+					Text:     fmt.Sprintf("%s\n\nSuggestion: %s", res.Evidence, res.Suggestion),
+					Markdown: fmt.Sprintf("%s\n\n**Suggestion:** %s", res.Evidence, res.Suggestion),
+				},
+				Properties: &SarifProperties{
+					SecuritySeverity: convertSeverity(res.Severity),
+				},
+			}
+			run.Tool.Driver.Rules = append(run.Tool.Driver.Rules, rule)
+			seenRules[res.ID] = true
+		}
+
+		level := "warning"
+		switch strings.ToUpper(res.Severity) {
+		case "CRITICAL", "HIGH":
+			level = "error"
+		case "LOW":
+			level = "note"
+		}
+
+		relPath := res.File
+		if filepath.IsAbs(res.File) {
+			if r, err := filepath.Rel(r.ProjectPath, res.File); err == nil {
+				relPath = r
+			}
+		}
+		relPath = filepath.ToSlash(relPath)
+
+		line := res.Line
+		if line <= 0 {
+			line = 1 // SARIF requires line > 0
+		}
+
+		result := SarifResult{
+			RuleID: res.ID,
+			Message: SarifMessage{
+				Text: fmt.Sprintf("[%s] %s: %s", res.Severity, res.Name, res.Suggestion),
+			},
+			Level: level,
+			Locations: []SarifLocation{
+				{
+					PhysicalLocation: SarifPhysicalLocation{
+						ArtifactLocation: SarifArtifactLocation{
+							Uri: relPath,
+						},
+						Region: SarifRegion{
+							StartLine: line,
 						},
 					},
 				},
-			}
-			run.Results = append(run.Results, result)
+			},
 		}
+		run.Results = append(run.Results, result)
 	}
 
 	log := SarifLog{
 		Version: "2.1.0",
-		Schema:  "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+		Schema:  "https://json.schemastore.org/sarif-2.1.0.json",
 		Runs:    []SarifRun{run},
 	}
 

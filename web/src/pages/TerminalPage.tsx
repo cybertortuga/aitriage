@@ -275,8 +275,19 @@ export const TerminalPage: React.FC = () => {
                 span('/100 ', C.gray),
                 span(' ' + res.security_grade + ' ', C.surface, true),
               ),
-              emptyLine(),
             );
+            if (res.health_check?.verdict) {
+              const gateColor = res.health_check.verdict.passed ? C.primaryDim : C.error;
+              addLines(
+                line(
+                  span('IB Gate: ', C.gray, true),
+                  span(res.health_check.verdict.status.toUpperCase(), gateColor, true),
+                  span(' · ', C.gray),
+                  span(res.health_check.policy?.profile || 'baseline', C.textVariant),
+                ),
+              );
+            }
+            addLines(emptyLine());
 
             const sev: Record<string, number> = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
             res.findings.forEach((f) => {

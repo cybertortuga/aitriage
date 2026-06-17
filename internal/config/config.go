@@ -9,11 +9,23 @@ import (
 )
 
 type Config struct {
-	Ignore      IgnoreConfig `yaml:"ignore,omitempty"`
-	CustomRules []CustomRule `yaml:"rules,omitempty"`
-	LLM         LLMConfig    `yaml:"llm,omitempty"`
-	StrictMode  bool         `yaml:"strict_mode,omitempty"` // Fail on ANY finding
-	FailScore   int          `yaml:"fail_score,omitempty"`  // Fail if SecurityScore < this value
+	Ignore      IgnoreConfig            `yaml:"ignore,omitempty"`
+	CustomRules []CustomRule            `yaml:"rules,omitempty"`
+	LLM         LLMConfig               `yaml:"llm,omitempty"`
+	StrictMode  bool                    `yaml:"strict_mode,omitempty"` // Legacy: fail on ANY finding
+	FailScore   int                     `yaml:"fail_score,omitempty"`  // Legacy: fail if Health Check score < this value
+	HealthCheck HealthCheckPolicyConfig `yaml:"health_check,omitempty"`
+}
+
+type HealthCheckPolicyConfig struct {
+	Profile      string   `yaml:"profile,omitempty"`
+	FailOn       string   `yaml:"fail_on,omitempty"`
+	MinimumScore *int     `yaml:"minimum_score,omitempty"`
+	MaxCritical  *int     `yaml:"max_critical,omitempty"`
+	MaxHigh      *int     `yaml:"max_high,omitempty"`
+	MaxMedium    *int     `yaml:"max_medium,omitempty"`
+	BlockSources []string `yaml:"block_sources,omitempty"`
+	BlockClasses []string `yaml:"block_classes,omitempty"`
 }
 
 type LLMConfig struct {

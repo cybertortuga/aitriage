@@ -23,6 +23,14 @@ inputs:
     description: 'When to exit non-zero (blocks the job): critical, any, never.'
     required: false
     default: 'critical'
+  fail-score:
+    description: 'Fail if the Health Check score is below this threshold (0 disables score gating).'
+    required: false
+    default: '0'
+  health-profile:
+    description: 'Health Check policy profile for the IB gate: baseline, standard, strict.'
+    required: false
+    default: ''
   stack:
     description: 'Force a specific stack (e.g. nextjs, fastapi) instead of auto-detection.'
     required: false
@@ -52,6 +60,8 @@ runs:
     AITRIAGE_FORMAT: ${{ inputs.format }}
     AITRIAGE_OUTPUT_FILE: ${{ inputs.output-file }}
     AITRIAGE_FAIL_ON: ${{ inputs.fail-on }}
+    AITRIAGE_FAIL_SCORE: ${{ inputs.fail-score }}
+    AITRIAGE_HEALTH_PROFILE: ${{ inputs.health-profile }}
     AITRIAGE_STACK: ${{ inputs.stack }}
     AITRIAGE_DIFF: ${{ inputs.diff }}
     AITRIAGE_BASELINE: ${{ inputs.baseline }}
