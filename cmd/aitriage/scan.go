@@ -524,9 +524,9 @@ func writeGitHubActionsSummary(report scanner.ScanReport) {
 	}
 
 	if len(codeFindings) > 0 {
-		f.WriteString("### Code-Level Vulnerabilities\n\n")
-		f.WriteString("| Severity | Rule ID | File | Line | Recommendation |\n")
-		f.WriteString("|----------|---------|------|------|----------------|\n")
+		_, _ = f.WriteString("### Code-Level Vulnerabilities\n\n")
+		_, _ = f.WriteString("| Severity | Rule ID | File | Line | Recommendation |\n")
+		_, _ = f.WriteString("|----------|---------|------|------|----------------|\n")
 		for _, r := range codeFindings {
 			relPath := r.File
 			if relPath != "" && filepath.IsAbs(relPath) {
@@ -540,13 +540,13 @@ func writeGitHubActionsSummary(report scanner.ScanReport) {
 
 			fmt.Fprintf(f, "| %s | %s | %s | %d | %s |\n", r.Severity, r.ID, relPath, r.Line, msg)
 		}
-		f.WriteString("\n")
+		_, _ = f.WriteString("\n")
 	}
 
 	if len(archFindings) > 0 {
-		f.WriteString("### Project-Level & Architectural Issues\n\n")
-		f.WriteString("| Severity | Rule ID | Issue | Recommendation |\n")
-		f.WriteString("|----------|---------|-------|----------------|\n")
+		_, _ = f.WriteString("### Project-Level & Architectural Issues\n\n")
+		_, _ = f.WriteString("| Severity | Rule ID | Issue | Recommendation |\n")
+		_, _ = f.WriteString("|----------|---------|-------|----------------|\n")
 		for _, r := range archFindings {
 			msg := strings.ReplaceAll(r.Suggestion, "|", "\\|")
 			msg = strings.ReplaceAll(msg, "\n", " ")
@@ -556,7 +556,7 @@ func writeGitHubActionsSummary(report scanner.ScanReport) {
 
 			fmt.Fprintf(f, "| %s | %s | %s | %s |\n", r.Severity, r.ID, name, msg)
 		}
-		f.WriteString("\n")
+		_, _ = f.WriteString("\n")
 	}
 }
 

@@ -27,7 +27,7 @@ func (h *EngagementHandler) HandleListEngagements(w http.ResponseWriter, r *http
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(engagements)
+		_ = json.NewEncoder(w).Encode(engagements)
 		return
 	}
 
@@ -43,7 +43,7 @@ func (h *EngagementHandler) HandleListEngagements(w http.ResponseWriter, r *http
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(engagements)
+	_ = json.NewEncoder(w).Encode(engagements)
 }
 
 func (h *EngagementHandler) HandleCreateEngagement(w http.ResponseWriter, r *http.Request) {
@@ -57,5 +57,5 @@ func (h *EngagementHandler) HandleCreateEngagement(w http.ResponseWriter, r *htt
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(e)
+	_ = json.NewEncoder(w).Encode(e)
 }

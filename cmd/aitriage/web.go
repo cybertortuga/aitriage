@@ -3,9 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 
 	"github.com/cybertortuga/aitriage/internal/server"
 	"github.com/spf13/cobra"
@@ -73,22 +71,7 @@ Flags:
 	},
 }
 
-func openBrowser(url string) {
-	var err error
-	switch runtime.GOOS {
-	case "linux":
-		err = exec.Command("xdg-open", url).Start()
-	case "windows":
-		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
-	case "darwin":
-		err = exec.Command("open", url).Start()
-	default:
-		err = fmt.Errorf("unsupported platform")
-	}
-	if err != nil {
-		fmt.Printf("  (Could not automatically open browser: %v)\n", err)
-	}
-}
+
 
 func init() {
 	webCmd.Flags().IntVar(&webPort, "port", 8080, "Port to listen on")

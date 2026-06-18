@@ -112,6 +112,8 @@ var (
 			Background(colorBG).
 			Foreground(colorText)
 
+	_ = panelStyle
+
 	// Severity styles per DESIGN.md semantic palette:
 	// CRITICAL = error (#ffb4ab), HIGH = tertiary-container/amber (#ffdb3f)
 	// MEDIUM = secondary/cobalt (#b8c3ff), LOW = outline/gray (#849495)
@@ -132,7 +134,6 @@ const (
 // lipgloss may combine Bold+FG+BG into a single \x1b[1;38;...;48;2;R;G;Bm sequence.
 // Matching the param substring works regardless of how lipgloss formats the escape.
 var bgANSI string
-var selBgParam string // core SGR param, e.g. "48;2;0;245;255"
 var bgANSIOnce sync.Once
 
 func ensureBgANSI() {
@@ -148,10 +149,7 @@ func ensureBgANSI() {
 		renderedSel := lipgloss.NewStyle().Background(colorPrimaryCont).Render(" ")
 		// The full sequence is \x1b[48;2;0;245;255m — extract between \x1b[ and m
 		if start := strings.Index(renderedSel, "\x1b["); start >= 0 {
-			rest := renderedSel[start+2:]
-			if end := strings.Index(rest, "m"); end >= 0 {
-				selBgParam = rest[:end] // e.g. "48;2;0;245;255"
-			}
+			_ = renderedSel[start+2:]
 		}
 	})
 }
@@ -2227,10 +2225,7 @@ func (m DashboardModel) renderGraph(w, h int) string {
 			arrow = "  "
 		}
 
-		label := node.Name
-		if node.Version != "" {
-			label += " " + lipgloss.NewStyle().Foreground(colorGray).Render("@"+node.Version)
-		}
+
 
 		var line string
 		if isSel {
