@@ -1565,13 +1565,13 @@ func (s *Server) handleChatSessions(w http.ResponseWriter, r *http.Request) {
 		// List all sessions (user_id=1 for now since auth may be disabled)
 		sessions, err := s.chatRepo.ListSessions(r.Context(), 1)
 		if err != nil {
-			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
 		if sessions == nil {
 			sessions = []repositories.ChatSession{}
 		}
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "sessions": sessions})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "sessions": sessions})
 	case "POST":
 		var req struct {
 			Title string `json:"title"`
@@ -1584,10 +1584,10 @@ func (s *Server) handleChatSessions(w http.ResponseWriter, r *http.Request) {
 		}
 		id, err := s.chatRepo.CreateSession(r.Context(), 1, req.Title)
 		if err != nil {
-			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -1611,10 +1611,10 @@ func (s *Server) handleChatSession(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "DELETE":
 		if err := s.chatRepo.DeleteSession(r.Context(), sessionID); err != nil {
-			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	case "PUT":
 		var req struct {
 			Title string `json:"title"`
@@ -1624,10 +1624,10 @@ func (s *Server) handleChatSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := s.chatRepo.UpdateSessionTitle(r.Context(), sessionID, req.Title); err != nil {
-			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -1645,13 +1645,13 @@ func (s *Server) handleChatMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		msgs, err := s.chatRepo.GetMessages(r.Context(), sessionID)
 		if err != nil {
-			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
 		if msgs == nil {
 			msgs = []repositories.ChatMessage{}
 		}
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "messages": msgs})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "messages": msgs})
 	case "POST":
 		var req struct {
 			SessionID int    `json:"session_id"`
@@ -1664,10 +1664,10 @@ func (s *Server) handleChatMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		id, err := s.chatRepo.AddMessage(r.Context(), req.SessionID, req.Role, req.Content)
 		if err != nil {
-			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -1682,7 +1682,7 @@ func (s *Server) handleRunway(w http.ResponseWriter, r *http.Request) {
 			// List all active sessions
 			// For now just return empty
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{"ok": true, "session": nil})
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "session": nil})
 			return
 		}
 		pid, err := strconv.ParseInt(pidStr, 10, 64)
@@ -1694,11 +1694,11 @@ func (s *Server) handleRunway(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			// No active session
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{"ok": true, "session": nil})
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "session": nil})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "session": session})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "session": session})
 
 	case "POST":
 		var req struct {
@@ -1723,7 +1723,7 @@ func (s *Server) handleRunway(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "session": session})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "session": session})
 
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -1755,7 +1755,7 @@ func (s *Server) handleRunwaySession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "sessions": sessions})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "sessions": sessions})
 		return
 	}
 
@@ -1775,7 +1775,7 @@ func (s *Server) handleRunwaySession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "session": session})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "session": session})
 
 	case "PUT":
 		session, err := s.runwayRepo.GetByID(ctx, id)
@@ -1868,7 +1868,7 @@ func (s *Server) handleRunwaySession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "session": session})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "session": session})
 
 	case "DELETE":
 		if err := s.runwayRepo.Delete(ctx, id); err != nil {
@@ -1876,7 +1876,7 @@ func (s *Server) handleRunwaySession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -1910,7 +1910,7 @@ func (s *Server) handleRunwayAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "sessions": result})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "sessions": result})
 }
 
 func (s *Server) handleRunwayExport(w http.ResponseWriter, r *http.Request) {
@@ -2005,7 +2005,7 @@ func (s *Server) handleRunwayExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":       true,
 		"content":  mdContent,
 		"saved_to": savedPath,
