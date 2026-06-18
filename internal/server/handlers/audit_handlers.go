@@ -26,5 +26,5 @@ func (h *AuditHandler) HandleListAuditLogs(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "audit_logs": logs})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "audit_logs": logs})
 }

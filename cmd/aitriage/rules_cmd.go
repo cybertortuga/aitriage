@@ -248,14 +248,14 @@ func runRulesInstall(cmd *cobra.Command, args []string) error {
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			os.MkdirAll(target, 0755)
+			_ = os.MkdirAll(target, 0755)
 		case tar.TypeReg:
-			os.MkdirAll(filepath.Dir(target), 0755)
+			_ = os.MkdirAll(filepath.Dir(target), 0755)
 			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY, os.FileMode(header.Mode))
 			if err != nil {
 				continue
 			}
-			io.Copy(f, tr)
+			_, _ = io.Copy(f, tr)
 			f.Close()
 			fileCount++
 		}
@@ -272,7 +272,7 @@ func runRulesInstall(cmd *cobra.Command, args []string) error {
 			Source:      regPack.URL,
 		}
 		data, _ := json.MarshalIndent(manifest, "", "  ")
-		os.WriteFile(manifestPath, data, 0644)
+		_ = os.WriteFile(manifestPath, data, 0644)
 	}
 
 	fmt.Fprintf(os.Stderr, "\n%s%s  ✅ Installed: %s (%d files)%s\n", green, bold, packName, fileCount, reset)
@@ -295,7 +295,7 @@ func installFromLocal(localPath, packsDir, cyan, green, dim, bold, reset string)
 
 	// Copy YAML files
 	fileCount := 0
-	filepath.WalkDir(absPath, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(absPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}
@@ -304,13 +304,13 @@ func installFromLocal(localPath, packsDir, cyan, green, dim, bold, reset string)
 		}
 		rel, _ := filepath.Rel(absPath, path)
 		dst := filepath.Join(packDir, rel)
-		os.MkdirAll(filepath.Dir(dst), 0755)
+		_ = os.MkdirAll(filepath.Dir(dst), 0755)
 
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil
 		}
-		os.WriteFile(dst, data, 0644)
+		_ = os.WriteFile(dst, data, 0644)
 		fileCount++
 		return nil
 	})
@@ -323,7 +323,7 @@ func installFromLocal(localPath, packsDir, cyan, green, dim, bold, reset string)
 		RuleCount: fileCount,
 	}
 	data, _ := json.MarshalIndent(manifest, "", "  ")
-	os.WriteFile(filepath.Join(packDir, "manifest.json"), data, 0644)
+	_ = os.WriteFile(filepath.Join(packDir, "manifest.json"), data, 0644)
 
 	fmt.Fprintf(os.Stderr, "%s%s  ✅ Installed: %s (%d rule files)%s\n\n", green, bold, packName, fileCount, reset)
 	return nil

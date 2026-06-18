@@ -2309,7 +2309,7 @@ func (m *DashboardModel) contextExportCmd() tea.Cmd {
 			prompt.WriteString(fmt.Sprintf("- [%s] %s in %s:%d — %s\n", r.Severity, r.Name, r.File, r.Line, r.Evidence))
 		}
 		prompt.WriteString("\nProvide prioritized remediation with code fixes.\n")
-		os.WriteFile(filepath.Join(baseDir, "prompt.txt"), []byte(prompt.String()), 0644)
+		_ = os.WriteFile(filepath.Join(baseDir, "prompt.txt"), []byte(prompt.String()), 0644)
 
 		return contextExportMsg{content: fmt.Sprintf(
 			"Context exported to %s/ (4 files: findings.json, severity_map.json, summary.md, prompt.txt)",
@@ -2395,7 +2395,7 @@ func (m *DashboardModel) saveConfig() tea.Cmd {
 
 	strictMode := m.ConfigInputs[0].Value() == "true"
 	failScore := 0
-	fmt.Sscanf(m.ConfigInputs[1].Value(), "%d", &failScore)
+	_, _ = fmt.Sscanf(m.ConfigInputs[1].Value(), "%d", &failScore)
 
 	yamlContent := fmt.Sprintf(`strict_mode: %t
 fail_score: %d

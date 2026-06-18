@@ -120,7 +120,7 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 	})
 
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":       true,
 		"user_id":  user.ID,
 		"username": user.Username,
@@ -134,7 +134,7 @@ func (h *AuthHandler) HandleMe(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie("token")
 	if err != nil {
 		// Auth disabled — return default admin user
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"ok":          true,
 			"id":          1,
 			"username":    "admin",
