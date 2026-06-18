@@ -159,7 +159,7 @@ func runRulesList(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "%s  Available from Registry:%s\n", bold, reset)
 	for name, pack := range registryPacks {
-		status := "  "
+		var status string
 		if _, ok := installed[name]; ok {
 			status = green + "✓ " + reset
 		} else {

@@ -1085,15 +1085,13 @@ func (s *Server) handleAITriage(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("AI Triage: could not read source file", "path", fullPath, "error", err)
 		} else {
 			lines := strings.Split(string(data), "\n")
-			start := 0
-			end := len(lines)
 			if finding.LineNumber != nil && *finding.LineNumber > 0 {
 				lineIdx := *finding.LineNumber - 1
-				start = lineIdx - 40
+				start := lineIdx - 40
 				if start < 0 {
 					start = 0
 				}
-				end = lineIdx + 40
+				end := lineIdx + 40
 				if end > len(lines) {
 					end = len(lines)
 				}

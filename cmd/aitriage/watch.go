@@ -219,6 +219,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 						if relFile == "" {
 							relFile = r.File
 						}
+						_ = relFile
 
 						lineStr := ""
 						if r.Line > 0 {

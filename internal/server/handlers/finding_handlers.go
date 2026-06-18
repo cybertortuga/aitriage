@@ -32,7 +32,7 @@ func (h *FindingHandler) HandleListFindings(w http.ResponseWriter, r *http.Reque
 		if findings == nil {
 			findings = []models.Finding{}
 		}
-		json.NewEncoder(w).Encode(map[string]any{"findings": findings, "ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"findings": findings, "ok": true})
 		return
 	}
 
@@ -50,7 +50,7 @@ func (h *FindingHandler) HandleListFindings(w http.ResponseWriter, r *http.Reque
 	if findings == nil {
 		findings = []models.Finding{}
 	}
-	json.NewEncoder(w).Encode(map[string]any{"findings": findings, "ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"findings": findings, "ok": true})
 }
 
 func (h *FindingHandler) HandleUpdateFinding(w http.ResponseWriter, r *http.Request) {
@@ -91,5 +91,5 @@ func (h *FindingHandler) HandleUpdateFinding(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
