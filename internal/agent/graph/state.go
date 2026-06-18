@@ -64,6 +64,7 @@ type AgentState struct {
 type EnrichedFinding struct {
 	ID        string `json:"id"`
 	Type      string `json:"type"` // "core", "external", "nfr", "deploy", "network"
+	Source    string `json:"source,omitempty"`
 	Severity  string `json:"severity"`
 	File      string `json:"file,omitempty"`
 	Line      int    `json:"line,omitempty"`

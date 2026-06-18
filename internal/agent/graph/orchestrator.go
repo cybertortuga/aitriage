@@ -98,6 +98,7 @@ func enrichFindings(state *AgentState) {
 		enriched = append(enriched, EnrichedFinding{
 			ID:       f.ID,
 			Type:     "core",
+			Source:   "aitriage",
 			Severity: f.Severity,
 			File:     f.File,
 			Line:     f.Line,
@@ -109,6 +110,7 @@ func enrichFindings(state *AgentState) {
 		enriched = append(enriched, EnrichedFinding{
 			ID:       f.RuleID,
 			Type:     "external",
+			Source:   f.Source,
 			Severity: f.Severity,
 			File:     f.File,
 			Line:     f.Line,
@@ -121,6 +123,7 @@ func enrichFindings(state *AgentState) {
 		enriched = append(enriched, EnrichedFinding{
 			ID:       f.RuleID,
 			Type:     "nfr",
+			Source:   "aitriage",
 			Severity: f.Severity,
 			Message:  fmt.Sprintf("%s: %s", f.Name, f.Message),
 		})
@@ -129,6 +132,7 @@ func enrichFindings(state *AgentState) {
 		enriched = append(enriched, EnrichedFinding{
 			ID:       f.Issue,
 			Type:     "deploy",
+			Source:   "aitriage",
 			Severity: f.Severity,
 			File:     f.File,
 			Line:     f.Line,
@@ -140,6 +144,7 @@ func enrichFindings(state *AgentState) {
 		enriched = append(enriched, EnrichedFinding{
 			ID:       fmt.Sprintf("port-%d", f.Port),
 			Type:     "network",
+			Source:   "aitriage",
 			Severity: f.Severity,
 			Message:  fmt.Sprintf("Port %d (%s): %s", f.Port, f.Service, f.Message),
 		})
@@ -646,6 +651,7 @@ func generateSummary(state *AgentState) {
 	// ── Actionable Findings Table (TP + NR only) ──────────────────────────
 	type actionableFinding struct {
 		vulnID      string
+		source      string
 		severity    string
 		file        string
 		line        int
@@ -673,6 +679,7 @@ func generateSummary(state *AgentState) {
 
 		actionable = append(actionable, actionableFinding{
 			vulnID:      ef.VulnID,
+			source:      ef.Source,
 			severity:    ef.Severity,
 			file:        ef.File,
 			line:        ef.Line,
@@ -683,15 +690,19 @@ func generateSummary(state *AgentState) {
 
 	if len(actionable) > 0 {
 		sb.WriteString("### Actionable Findings\n\n")
-		sb.WriteString("| Vulnerability ID | Severity | File | Line | Issue | Status |\n")
-		sb.WriteString("|---|---|---|---|---|---|\n")
+		sb.WriteString("| Vulnerability ID | Source | Severity | File | Line | Issue | Status |\n")
+		sb.WriteString("|---|---|---|---|---|---|---|\n")
 		for _, f := range actionable {
 			file := f.file
 			if file == "" {
 				file = "N/A"
 			}
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %d | %s | %s |\n",
-				f.vulnID, f.severity, file, f.line, f.message, f.disposition))
+			source := f.source
+			if source == "" {
+				source = "aitriage"
+			}
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %d | %s | %s |\n",
+				f.vulnID, source, f.severity, file, f.line, f.message, f.disposition))
 		}
 		sb.WriteString("\n")
 	} else {
