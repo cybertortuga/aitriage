@@ -27,7 +27,7 @@ func (h *ProductHandler) HandleListProductTypes(w http.ResponseWriter, r *http.R
 		utils.JSONError(w, "Failed to list product types", http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(pts)
+	_ = json.NewEncoder(w).Encode(pts)
 }
 
 func (h *ProductHandler) HandleCreateProductType(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +48,7 @@ func (h *ProductHandler) HandleCreateProductType(w http.ResponseWriter, r *http.
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
 }
 
 func (h *ProductHandler) HandleUpdateProductType(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +67,7 @@ func (h *ProductHandler) HandleUpdateProductType(w http.ResponseWriter, r *http.
 		utils.JSONError(w, "Failed to update product type", http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
 
 func (h *ProductHandler) HandleDeleteProductType(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +79,7 @@ func (h *ProductHandler) HandleDeleteProductType(w http.ResponseWriter, r *http.
 		utils.JSONError(w, "Failed to delete product type", http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
 
 // --- Products ---
@@ -96,7 +96,7 @@ func (h *ProductHandler) HandleListProducts(w http.ResponseWriter, r *http.Reque
 		utils.JSONError(w, "Failed to list products", http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(products)
+	_ = json.NewEncoder(w).Encode(products)
 }
 
 func (h *ProductHandler) HandleCreateProduct(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +123,7 @@ func (h *ProductHandler) HandleCreateProduct(w http.ResponseWriter, r *http.Requ
 	// Make the creator an owner of the product
 	_ = h.repo.AddMember(r.Context(), id, claims.UserID, "owner")
 
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
 }
 
 func (h *ProductHandler) HandleGetProduct(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +135,7 @@ func (h *ProductHandler) HandleGetProduct(w http.ResponseWriter, r *http.Request
 		utils.JSONError(w, "Product not found", http.StatusNotFound)
 		return
 	}
-	json.NewEncoder(w).Encode(product)
+	_ = json.NewEncoder(w).Encode(product)
 }
 
 func (h *ProductHandler) HandleUpdateProduct(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +154,7 @@ func (h *ProductHandler) HandleUpdateProduct(w http.ResponseWriter, r *http.Requ
 		utils.JSONError(w, "Failed to update product", http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
 
 func (h *ProductHandler) HandleDeleteProduct(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +166,7 @@ func (h *ProductHandler) HandleDeleteProduct(w http.ResponseWriter, r *http.Requ
 		utils.JSONError(w, "Failed to delete product", http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
 
 func (h *ProductHandler) HandleUpdateProductSLA(w http.ResponseWriter, r *http.Request) {
@@ -200,7 +200,7 @@ func (h *ProductHandler) HandleUpdateProductSLA(w http.ResponseWriter, r *http.R
 		utils.JSONError(w, "Failed to update product SLA", http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
 
 func (h *ProductHandler) HandleGetProductMembers(w http.ResponseWriter, r *http.Request) {
@@ -212,7 +212,7 @@ func (h *ProductHandler) HandleGetProductMembers(w http.ResponseWriter, r *http.
 		utils.JSONError(w, "Failed to get members", http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(members)
+	_ = json.NewEncoder(w).Encode(members)
 }
 
 func (h *ProductHandler) HandleAddProductMember(w http.ResponseWriter, r *http.Request) {
@@ -233,7 +233,7 @@ func (h *ProductHandler) HandleAddProductMember(w http.ResponseWriter, r *http.R
 		utils.JSONError(w, "Failed to add member", http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
 
 func (h *ProductHandler) HandleRemoveProductMember(w http.ResponseWriter, r *http.Request) {
@@ -248,5 +248,5 @@ func (h *ProductHandler) HandleRemoveProductMember(w http.ResponseWriter, r *htt
 		utils.JSONError(w, "Failed to remove member", http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }

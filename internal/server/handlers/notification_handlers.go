@@ -35,7 +35,7 @@ func (h *NotificationHandler) HandleListNotifications(w http.ResponseWriter, r *
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "notifications": notifs})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "notifications": notifs})
 }
 
 func (h *NotificationHandler) HandleMarkAsRead(w http.ResponseWriter, r *http.Request) {

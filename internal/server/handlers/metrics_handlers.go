@@ -24,5 +24,5 @@ func (h *MetricsHandler) HandleGetDashboardMetrics(w http.ResponseWriter, r *htt
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "metrics": metrics})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "metrics": metrics})
 }
