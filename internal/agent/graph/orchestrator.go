@@ -287,10 +287,10 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 		return nil
 	}
 
-	// Serialize findings for the prompt (cap at 20 to stay within token limits)
+	// Serialize findings for the prompt (cap at 150 to stay within token limits)
 	findingsToSend := state.EnrichedFindings
-	if len(findingsToSend) > 20 {
-		findingsToSend = findingsToSend[:20]
+	if len(findingsToSend) > 150 {
+		findingsToSend = findingsToSend[:150]
 	}
 	findingsJSON, _ := json.MarshalIndent(findingsToSend, "", "  ")
 
@@ -428,9 +428,9 @@ func runPoCVerification(ctx context.Context, state *AgentState, llmClient llm.Cl
 		return nil
 	}
 
-	// Cap at 15 findings for PoC to stay within token limits
-	if len(tpFindings) > 15 {
-		tpFindings = tpFindings[:15]
+	// Cap at 75 findings for PoC to stay within token limits
+	if len(tpFindings) > 75 {
+		tpFindings = tpFindings[:75]
 	}
 
 	findingsJSON, _ := json.MarshalIndent(tpFindings, "", "  ")

@@ -1,4 +1,4 @@
-# Design Standards: Premium AAA Aesthetics
+# Design Standards: Premium Aesthetics
 
 This document defines the visual and UX language for the AITriage Dashboard. We aim for a "High-Utility, High-Hype" interface that impresses at first glance while remaining technically rigorous.
 

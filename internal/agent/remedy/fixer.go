@@ -27,7 +27,7 @@ func ApplyEdits(original string, edits []Edit) (string, error) {
 		}
 
 		// This is a naive implementation that doesn't handle overlapping very well yet.
-		// For AAA Premium, we should detect overlaps.
+		// We should detect overlaps.
 
 		prefix := result[:e.StartByte]
 		suffix := result[e.EndByte:]
@@ -42,7 +42,7 @@ func ApplyEdits(original string, edits []Edit) (string, error) {
 }
 
 // GenerateFix generates a suggested fix for a given Rule ID.
-// In a real AAA tool, this would be powered by LLM or specialized Codemods.
+// In a production-ready tool, this would be powered by LLM or specialized Codemods.
 func GenerateFix(ruleID string, originalText string) (string, bool) {
 	switch ruleID {
 	case "ENTR-02": // Missing lockfile -> No simple code fix

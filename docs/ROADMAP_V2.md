@@ -27,7 +27,7 @@ Originally, AITriage was a **Presence Checker** ("Is this practice missing?"). T
 
 ### 🟢 Solid Foundations (Adult-Level Architecture)
 1.  **Parallel Execution:** The `Engine.Run` with `sync.WaitGroup` prevents IO-blocking and is horizontally scalable.
-2.  **Reporting Aesthetics:** The HTML/CSS in `dashboard.go` perfectly matches the AAA premium specification defined in `DESIGN.md`.
+2.  **Reporting Aesthetics:** The HTML/CSS in `dashboard.go` perfectly matches the premium specification defined in `DESIGN.md`.
 3.  **Caching:** `FileInfo` caches `rawCache`, `strippedCache`, and `docsCache` safely with mutexes.
 
 ---

@@ -39,5 +39,5 @@ Based on the original `task.md`, mapped against the current implementation state
 - [x] Rename `SecurityGrade` -> `SecurityGrade`.
 - [x] Replace `HYPE KILLED` with `AUDIT FAILED (CRITICAL)`.
 - [x] Replace `VIBE CHECK PASSED` with `AUDIT PASSED (CLEAN)`.
-- [x] Redesign HTML Report (`dashboard.go`) to "Silent Luxury" / Premium AAA Vogue style.
+- [x] Redesign HTML Report (`dashboard.go`) to "Silent Luxury" / Premium Vogue style.
 - [x] Rename package `internal/entropy` to `internal/entropy`.

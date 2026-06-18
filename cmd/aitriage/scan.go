@@ -354,7 +354,7 @@ var scanCmd = &cobra.Command{
 			if err != nil {
 				_, _ = os.Stderr.WriteString("Failed to generate HTML report: " + err.Error() + "\n")
 			} else {
-				_, _ = os.Stderr.WriteString(fmt.Sprintf("Premium AAA Report generated: %s\n", outName))
+				_, _ = os.Stderr.WriteString(fmt.Sprintf("Report generated: %s\n", outName))
 			}
 		default:
 			// If they didn't specify a file, or if they specified a file but asked for terminal format

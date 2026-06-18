@@ -106,7 +106,7 @@
 | **2** | LLM в agent видит внешние сканеры (semgrep/bandit/gitleaks) | 🔴 CRITICAL | ✅ СДЕЛАНО СЕЙЧАС |
 | **3** | Генерация спеки агента и авто-сохранение в директорию проекта (`CLAUDE.md`) | 🔴 HIGH | ✅ СДЕЛАНО СЕЙЧАС |
 | **4** | NFR интегрировано в единый пайплайн через `orchestrator.go` | 🔴 HIGH | ✅ СДЕЛАНО СЕЙЧАС |
-| **5** | GUI: Native Zero-Dependency AAA Premium JS/CSS UI | 🟡 MEDIUM | ✅ СДЕЛАНО СЕЙЧАС |
+| **5** | GUI: Native Zero-Dependency Premium JS/CSS UI | 🟡 MEDIUM | ✅ СДЕЛАНО СЕЙЧАС |
 | **6** | `deployaudit` проверяет k8s YAML, Makefile, nginx.conf | 🟡 MEDIUM | ✅ СДЕЛАНО СЕЙЧАС |
 | **7** | git-анализ читает энтропию содержимого | 🟡 MEDIUM | ✅ СДЕЛАНО СЕЙЧАС |
 | **8** | Network probe + DNS lookup | 🟢 LOW | ✅ СДЕЛАНО СЕЙЧАС |
