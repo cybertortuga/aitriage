@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -140,7 +141,7 @@ func NewClient(cfg Config) (Client, error) {
 	switch cfg.Provider {
 	case "anthropic":
 		if cfg.APIKey == "" {
-			return nil, fmt.Errorf(noLLMConfiguredMsg)
+			return nil, errors.New(noLLMConfiguredMsg)
 		}
 		opts := []option.RequestOption{option.WithAPIKey(cfg.APIKey)}
 		if cfg.Timeout > 0 {
@@ -155,7 +156,7 @@ func NewClient(cfg Config) (Client, error) {
 		// Gemini uses the OpenAI-compatible API.
 		// API key is resolved by config.LoadConfig() from env vars (GEMINI_API_KEY / GOOGLE_API_KEY).
 		if cfg.APIKey == "" {
-			return nil, fmt.Errorf(noLLMConfiguredMsg)
+			return nil, errors.New(noLLMConfiguredMsg)
 		}
 		baseURL := geminiBaseURL
 		if cfg.BaseURL != "" {
@@ -179,7 +180,7 @@ func NewClient(cfg Config) (Client, error) {
 
 	case "openai", "ollama", "groq":
 		if cfg.APIKey == "" && cfg.Provider == "openai" {
-			return nil, fmt.Errorf(noLLMConfiguredMsg)
+			return nil, errors.New(noLLMConfiguredMsg)
 		}
 		opts := []openai_option.RequestOption{}
 		if cfg.APIKey != "" {
@@ -197,7 +198,7 @@ func NewClient(cfg Config) (Client, error) {
 		}
 
 	case "":
-		return nil, fmt.Errorf(noLLMConfiguredMsg)
+		return nil, errors.New(noLLMConfiguredMsg)
 
 	default:
 		return nil, fmt.Errorf("unknown LLM provider: %q\nSupported: gemini, anthropic, openai, ollama, groq", cfg.Provider)

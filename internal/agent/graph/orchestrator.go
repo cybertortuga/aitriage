@@ -624,7 +624,7 @@ func generateSummary(state *AgentState) {
 		hc.Score, hc.Grade, verdictEmoji))
 	sb.WriteString(fmt.Sprintf("**Policy**: `%s` (`fail_on=%s`)\n\n",
 		hc.Policy.Profile, hc.Policy.FailOn))
-	sb.WriteString(fmt.Sprintf("| Metric | Count |\n|---|---|\n"))
+	sb.WriteString("| Metric | Count |\n|---|---|\n")
 	sb.WriteString(fmt.Sprintf("| True Positives | %d |\n", tp))
 	sb.WriteString(fmt.Sprintf("| Needs Manual Review | %d |\n", nr))
 	sb.WriteString(fmt.Sprintf("| False Positives (suppressed) | %d |\n", fp))
