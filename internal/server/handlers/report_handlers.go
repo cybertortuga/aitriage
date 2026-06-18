@@ -65,7 +65,7 @@ func (h *ReportHandler) HandleExecutiveReport(w http.ResponseWriter, r *http.Req
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(summary)
+	_ = json.NewEncoder(w).Encode(summary)
 }
 
 func (h *ReportHandler) HandleEngagementReport(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +142,7 @@ func (h *ReportHandler) HandleEngagementReport(w http.ResponseWriter, r *http.Re
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(report)
+	_ = json.NewEncoder(w).Encode(report)
 }
 
 func (h *ReportHandler) HandleListReportHistory(w http.ResponseWriter, r *http.Request) {
@@ -153,7 +153,7 @@ func (h *ReportHandler) HandleListReportHistory(w http.ResponseWriter, r *http.R
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":      true,
 		"reports": reports,
 	})
@@ -190,7 +190,7 @@ func (h *ReportHandler) HandleGenerateReport(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":     true,
 		"format": req.Format,
 		"scope":  req.Scope,
