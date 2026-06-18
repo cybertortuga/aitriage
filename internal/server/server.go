@@ -1025,11 +1025,11 @@ Your task is to:
 	analysis, _, err := s.llmClient.Chat(r.Context(), messages)
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
-		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":       true,
 		"analysis": analysis,
 	})
@@ -1368,7 +1368,7 @@ Return ONLY a valid JSON object with no other text:
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":      true,
 		"status":  triageRes.Status,
 		"summary": triageRes.Summary,
