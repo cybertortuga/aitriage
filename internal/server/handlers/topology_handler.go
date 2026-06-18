@@ -54,7 +54,7 @@ func (h *TopologyHandler) HandleGetTopology(w http.ResponseWriter, r *http.Reque
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(TopologyResponse{
+	_ = json.NewEncoder(w).Encode(TopologyResponse{
 		Ok:    true,
 		Nodes: nodes,
 		Links: links,

@@ -949,11 +949,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	reply, _, err := s.llmClient.Chat(ctx, messages)
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
-		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":      true,
 		"content": reply,
 	})
