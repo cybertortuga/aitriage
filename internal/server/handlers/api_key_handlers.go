@@ -26,7 +26,7 @@ func (h *APIKeyHandler) HandleListKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "keys": keys})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "keys": keys})
 }
 
 func (h *APIKeyHandler) HandleCreateKey(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +40,10 @@ func (h *APIKeyHandler) HandleCreateKey(w http.ResponseWriter, r *http.Request) 
 
 	// Generate a random token
 	b := make([]byte, 24)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		http.Error(w, "failed to generate token", http.StatusInternalServerError)
+		return
+	}
 	token := "ait_" + hex.EncodeToString(b)
 	prefix := token[:8] + "..."
 
@@ -54,8 +57,8 @@ func (h *APIKeyHandler) HandleCreateKey(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"ok":    true, 
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":    true,
 		"token": token,
 		"name":  req.Name,
 	})
@@ -75,5 +78,5 @@ func (h *APIKeyHandler) HandleRevokeKey(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }

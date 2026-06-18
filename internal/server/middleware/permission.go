@@ -51,10 +51,8 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// RateLimiter holds the limiters per IP
-type RateLimiter struct {
-	limiters map[string]*rate.Limiter
-}
+// RateLimiter is a placeholder for per-IP rate limiting (currently using global limiter).
+type RateLimiter struct{}
 
 var globalLimiter = rate.NewLimiter(rate.Every(time.Second/10), 50) // 50 requests per second
 
@@ -94,10 +92,10 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
-		ctx = context.WithValue(ctx, "username", claims.Username)
-		ctx = context.WithValue(ctx, "role", claims.Role)
-		ctx = context.WithValue(ctx, "is_admin", claims.IsAdmin)
+		ctx := context.WithValue(r.Context(), ctxKeyUserID, claims.UserID)
+		ctx = context.WithValue(ctx, ctxKeyUsername, claims.Username)
+		ctx = context.WithValue(ctx, ctxKeyRole, claims.Role)
+		ctx = context.WithValue(ctx, ctxKeyIsAdmin, claims.IsAdmin)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -118,11 +116,21 @@ type RequestClaims struct {
 	IsAdmin    bool
 }
 
+// contextKey is a typed key for context.WithValue to satisfy SA1029.
+type contextKey string
+
+const (
+	ctxKeyUserID   contextKey = "user_id"
+	ctxKeyUsername contextKey = "username"
+	ctxKeyRole     contextKey = "role"
+	ctxKeyIsAdmin  contextKey = "is_admin"
+)
+
 func ExtractClaims(r *http.Request) (*RequestClaims, error) {
-	userID, ok1 := r.Context().Value("user_id").(int64)
-	username, ok2 := r.Context().Value("username").(string)
-	role, ok3 := r.Context().Value("role").(string)
-	isAdmin, ok4 := r.Context().Value("is_admin").(bool)
+	userID, ok1 := r.Context().Value(ctxKeyUserID).(int64)
+	username, ok2 := r.Context().Value(ctxKeyUsername).(string)
+	role, ok3 := r.Context().Value(ctxKeyRole).(string)
+	isAdmin, ok4 := r.Context().Value(ctxKeyIsAdmin).(bool)
 
 	if !ok1 || !ok2 || !ok3 || !ok4 {
 		// Auth disabled — return default admin claims

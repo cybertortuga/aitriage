@@ -867,14 +867,14 @@ func (s *Server) handleTriage(w http.ResponseWriter, r *http.Request) {
 		status = core.AuditStatusTriage
 	}
 
-	auditStore.SetStatus(req.ID, req.File, status, "Triage via Web UI")
+	_ = auditStore.SetStatus(req.ID, req.File, status, "Triage via Web UI")
 	err := auditStore.Save()
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
-		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {

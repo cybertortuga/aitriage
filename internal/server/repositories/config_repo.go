@@ -54,7 +54,7 @@ func (r *ConfigRepository) SetMany(ctx context.Context, config map[string]string
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for k, v := range config {
 		_, err := tx.ExecContext(ctx, `

@@ -188,7 +188,7 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if entry.Name != ".." {
 						cmd := exec.Command("git", "add", entry.Path)
 						cmd.Dir = m.BrowserDir
-						cmd.Run()
+						_ = cmd.Run()
 						m.loadBrowserDir(m.BrowserDir) // Refresh status
 					}
 				}
@@ -425,7 +425,7 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								if relPath != "" && filepath.IsAbs(relPath) {
 									relPath, _ = filepath.Rel(m.Report.ProjectPath, relPath)
 								}
-								m.AuditStore.SetStatus(r.ID, relPath, newStatus, "Toggled via TUI")
+								_ = m.AuditStore.SetStatus(r.ID, relPath, newStatus, "Toggled via TUI")
 							}
 							m.Report.Results[i].AuditStatus = newStatus
 							m.updateTriageTable()
@@ -2235,7 +2235,7 @@ func (m *DashboardModel) copyPromptCmd() tea.Cmd {
 
 		// Write to .aitriage/ to be visible in AI IDEs
 		exportDir := ".aitriage"
-		os.MkdirAll(exportDir, 0755)
+		_ = os.MkdirAll(exportDir, 0755)
 		filename := filepath.Join(exportDir, "prompt.txt")
 		if err := os.WriteFile(filename, []byte(prompt.String()), 0644); err != nil {
 			return copyPromptMsg{err: err}
@@ -2264,7 +2264,7 @@ func (m *DashboardModel) contextExportCmd() tea.Cmd {
 		if err != nil {
 			return contextExportMsg{err: err}
 		}
-		os.WriteFile(filepath.Join(baseDir, "findings.json"), findingsData, 0644)
+		_ = os.WriteFile(filepath.Join(baseDir, "findings.json"), findingsData, 0644)
 
 		// 2. severity_map.json
 		sevMap := map[string]int{}
@@ -2279,7 +2279,7 @@ func (m *DashboardModel) contextExportCmd() tea.Cmd {
 			"nfr_count":           len(m.NFRFindings),
 			"deploy_count":        len(m.DeployFindings),
 		}, "", "  ")
-		os.WriteFile(filepath.Join(baseDir, "severity_map.json"), sevData, 0644)
+		_ = os.WriteFile(filepath.Join(baseDir, "severity_map.json"), sevData, 0644)
 
 		// 3. summary.md
 		var summary strings.Builder
@@ -2298,7 +2298,7 @@ func (m *DashboardModel) contextExportCmd() tea.Cmd {
 			summary.WriteString("## AI Executive Summary\n\n")
 			summary.WriteString(m.DashboardSummary + "\n")
 		}
-		os.WriteFile(filepath.Join(baseDir, "summary.md"), []byte(summary.String()), 0644)
+		_ = os.WriteFile(filepath.Join(baseDir, "summary.md"), []byte(summary.String()), 0644)
 
 		// 4. prompt.txt — ready for AI IDE
 		var prompt strings.Builder

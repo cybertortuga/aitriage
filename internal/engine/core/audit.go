@@ -38,7 +38,7 @@ func NewAuditStore(workspaceRoot string) *AuditStore {
 		filePath: filepath.Join(workspaceRoot, ".aitriage-audit.json"),
 		Entries:  make(map[string]AuditEntry),
 	}
-	store.Load()
+	_ = store.Load() // Best-effort: missing file is not an error
 	return store
 }
 

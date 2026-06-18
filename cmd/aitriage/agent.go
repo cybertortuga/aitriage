@@ -302,6 +302,6 @@ func writeAgentGHASummary(state *graph.AgentState) {
 		return
 	}
 	defer f.Close()
-	f.WriteString(state.SummaryMarkdown)
+	_, _ = f.WriteString(state.SummaryMarkdown)
 	fmt.Fprintf(os.Stderr, "   ✓ GHA Step Summary written (actionable findings only)\n")
 }

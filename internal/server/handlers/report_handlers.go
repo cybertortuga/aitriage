@@ -56,9 +56,9 @@ func (h *ReportHandler) HandleExecutiveReport(w http.ResponseWriter, r *http.Req
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment;filename=executive_report.csv")
 		writer := csv.NewWriter(w)
-		writer.Write([]string{"Severity", "Count"})
+		_ = writer.Write([]string{"Severity", "Count"})
 		for sev, count := range summary.BySeverity {
-			writer.Write([]string{sev, strconv.Itoa(count)})
+			_ = writer.Write([]string{sev, strconv.Itoa(count)})
 		}
 		writer.Flush()
 		return
@@ -125,7 +125,7 @@ func (h *ReportHandler) HandleEngagementReport(w http.ResponseWriter, r *http.Re
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=engagement_%d_report.csv", engagementID))
 		writer := csv.NewWriter(w)
-		writer.Write([]string{"Title", "Severity", "File", "Line", "Status"})
+		_ = writer.Write([]string{"Title", "Severity", "File", "Line", "Status"})
 		for _, f := range findings {
 			filePath := ""
 			if f.FilePath != nil {
@@ -135,7 +135,7 @@ func (h *ReportHandler) HandleEngagementReport(w http.ResponseWriter, r *http.Re
 			if f.LineNumber != nil {
 				lineNum = strconv.Itoa(*f.LineNumber)
 			}
-			writer.Write([]string{f.Title, f.Severity, filePath, lineNum, f.Status})
+			_ = writer.Write([]string{f.Title, f.Severity, filePath, lineNum, f.Status})
 		}
 		writer.Flush()
 		return

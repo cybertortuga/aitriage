@@ -74,7 +74,7 @@ func FindTargets(projectPath string) []string {
 		".yaml": true, ".yml": true, ".env": true, ".conf": true, ".json": true, ".go": true,
 	}
 
-	filepath.WalkDir(projectPath, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(projectPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			if d != nil && d.IsDir() && (d.Name() == ".git" || d.Name() == "node_modules") {
 				return filepath.SkipDir

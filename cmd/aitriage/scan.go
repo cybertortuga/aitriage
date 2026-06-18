@@ -361,10 +361,8 @@ var scanCmd = &cobra.Command{
 			// (which makes no sense, but whatever), print it once.
 			if scanOutputFile == "" {
 				reporter.PrintTerminal(report)
-			} else {
-				// If scanOutputFile was given, we already printed it to stdout above.
-				// We don't write terminal format to the file.
 			}
+			// If scanOutputFile was given, terminal format is not written to it.
 		}
 
 		// Show diff against previous scan
@@ -488,14 +486,14 @@ func writeGitHubActionsSummary(report scanner.ScanReport) {
 	}
 	defer f.Close()
 
-	f.WriteString("## AITriage Security Scan Summary\n\n")
+	_, _ = f.WriteString("## AITriage Security Scan Summary\n\n")
 	fmt.Fprintf(f, "**IB Gate:** %s\n\n", strings.ToUpper(report.HealthCheck.Verdict.Status))
 	fmt.Fprintf(f, "**Policy:** `%s` (`fail_on=%s`)\n\n", report.HealthCheck.Policy.Profile, report.HealthCheck.Policy.FailOn)
 	fmt.Fprintf(f, "**Health Check:** %d/100 (%s)\n\n", report.SecurityScore, report.SecurityGrade)
 	hb := report.HealthCheck.Breakdown
 	fmt.Fprintf(f, "_%d active findings · %d ignored (false positives) · %d deduplicated · penalty %d · bonus %d_\n\n", hb.ActiveFindings, hb.IgnoredFindings, hb.DedupedFindings, hb.Penalty, hb.Bonus)
 	if len(report.HealthCheck.Verdict.BlockingReasons) > 0 {
-		f.WriteString("### Blocking Reasons\n\n")
+		_, _ = f.WriteString("### Blocking Reasons\n\n")
 		for _, reason := range report.HealthCheck.Verdict.BlockingReasons {
 			fmt.Fprintf(f, "- `%s`: %s", reason.Code, reason.Message)
 			if reason.Count != 0 || reason.Threshold != 0 {
