@@ -78,6 +78,8 @@ var (
 			Background(colorBG).
 			Foreground(colorText)
 
+	_ = appStyle
+
 	headerStyle = lipgloss.NewStyle().
 			Foreground(colorPrimary).
 			Background(colorBG)

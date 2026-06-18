@@ -921,18 +921,6 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case copyPromptMsg:
-		if msg.err != nil {
-			m.AddLog(LogError, "SYSTEM", fmt.Sprintf("Clipboard copy failed: %v", msg.err))
-			m.StatusMsg = "✗ Copy failed: " + msg.err.Error()
-			m.StatusTTL = 20 // ~3 seconds
-		} else {
-			m.AddLog(LogDebug, "SYSTEM", "Copied to clipboard")
-			m.StatusMsg = msg.content
-			m.StatusTTL = 30 // ~4.5 seconds
-		}
-		return m, nil
-
 	case contextExportMsg:
 		m.ExecutingAgent = false
 		if msg.err != nil {
@@ -2197,50 +2185,6 @@ Rules: Max 12 lines. Be terse. No filler. Focus on what to fix NOW.`},
 			return dashboardSummaryMsg{err: err}
 		}
 		return dashboardSummaryMsg{content: resp, tokens: usage.TotalTokens}
-	}
-}
-
-// --- Copy AI Prompt ---
-
-type copyPromptMsg struct {
-	content string
-	err     error
-}
-
-func (m *DashboardModel) copyPromptCmd() tea.Cmd {
-	return func() tea.Msg {
-		var prompt strings.Builder
-		prompt.WriteString("# AITriage Security Scan Context\n\n")
-		prompt.WriteString(fmt.Sprintf("Project: %s\n", m.Report.ProjectPath))
-		prompt.WriteString(fmt.Sprintf("SecurityScore: %d/100\n", m.Report.SecurityScore))
-		prompt.WriteString(fmt.Sprintf("Total Findings: %d\n\n", len(m.Report.Results)))
-
-		prompt.WriteString("## Findings\n\n")
-		for _, r := range m.Report.Results {
-			prompt.WriteString(fmt.Sprintf("- [%s] %s: %s\n  File: %s:%d\n  Fix: %s\n\n",
-				r.Severity, r.Name, r.Evidence, r.File, r.Line, r.Suggestion))
-		}
-
-		if len(m.ExternalFindings) > 0 {
-			prompt.WriteString("## External SAST Findings\n\n")
-			for _, f := range m.ExternalFindings {
-				prompt.WriteString(fmt.Sprintf("- [%s] %s/%s: %s\n  File: %s:%d\n\n",
-					f.Severity, f.Source, f.RuleID, f.Message, f.File, f.Line))
-			}
-		}
-
-		prompt.WriteString("\n## Instructions\n\n")
-		prompt.WriteString("Analyze these security findings and provide prioritized remediation steps. ")
-		prompt.WriteString("Focus on CRITICAL and HIGH severity items first. Include code fixes where possible.\n")
-
-		// Write to .aitriage/ to be visible in AI IDEs
-		exportDir := ".aitriage"
-		_ = os.MkdirAll(exportDir, 0755)
-		filename := filepath.Join(exportDir, "prompt.txt")
-		if err := os.WriteFile(filename, []byte(prompt.String()), 0644); err != nil {
-			return copyPromptMsg{err: err}
-		}
-		return copyPromptMsg{content: fmt.Sprintf("⚡ AI prompt saved → %s (%d bytes) — paste into any AI IDE", filename, prompt.Len())}
 	}
 }
 

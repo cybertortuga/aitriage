@@ -499,13 +499,13 @@ func writeGitHubActionsSummary(report scanner.ScanReport) {
 			if reason.Count != 0 || reason.Threshold != 0 {
 				fmt.Fprintf(f, " (count %d, threshold %d)", reason.Count, reason.Threshold)
 			}
-			f.WriteString("\n")
+			_, _ = f.WriteString("\n")
 		}
-		f.WriteString("\n")
+		_, _ = f.WriteString("\n")
 	}
 
 	if report.HealthCheck.Breakdown.ActiveFindings == 0 {
-		f.WriteString("No active security issues found.\n")
+		_, _ = f.WriteString("No active security issues found.\n")
 		return
 	}
 

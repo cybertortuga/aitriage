@@ -151,7 +151,7 @@ func (h *AuthHandler) HandleMe(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		// Invalid token — still return default admin (auth disabled)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"ok":          true,
 			"id":          1,
 			"username":    "admin",
@@ -161,7 +161,7 @@ func (h *AuthHandler) HandleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":          true,
 		"id":          claims.UserID,
 		"username":    claims.Username,
@@ -193,7 +193,7 @@ func (h *AuthHandler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{"users": res})
+	_ = json.NewEncoder(w).Encode(map[string]any{"users": res})
 }
 
 func (h *AuthHandler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
@@ -246,7 +246,7 @@ func (h *AuthHandler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
 }
 
 func (h *AuthHandler) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
@@ -279,5 +279,5 @@ func (h *AuthHandler) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }

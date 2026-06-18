@@ -25,10 +25,7 @@ import (
 	"github.com/cybertortuga/aitriage/internal/server/handlers"
 	"github.com/cybertortuga/aitriage/internal/server/middleware"
 	"github.com/cybertortuga/aitriage/internal/server/repositories"
-	"golang.org/x/time/rate"
 )
-
-var globalLimiter = rate.NewLimiter(rate.Every(100*time.Millisecond), 10)
 
 type Server struct {
 	hostPrefix     string
@@ -283,15 +280,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	handler.ServeHTTP(w, r)
 }
 
-func (s *Server) limit(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !globalLimiter.Allow() {
-			http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
+
 
 // ── API Handlers ─────────────────────────────────────────────────────────────
 
