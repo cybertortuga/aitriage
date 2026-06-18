@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	agentcontext "github.com/cybertortuga/aitriage/internal/agent/context"
@@ -19,8 +18,8 @@ import (
 
 // Run Orchestrates the full SecureCoder-enhanced pipeline:
 //
-//	enrichFindings → buildThreatModel → runWorkers (Map-Reduce) →
-//	runPoCVerification → generateReport → generateAIFixSpec
+//	enrichFindings → buildThreatModel → runPoCVerification →
+//	computeHealthCheck → generateReport → generateSummary → generateAIFixSpec
 func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	// Step 0: Gather repository context (reads files from disk, no LLM)
 	fmt.Fprintf(os.Stderr, "📂 Gathering Repository Context...\n")
@@ -29,16 +28,22 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	fmt.Fprintf(os.Stderr, "🤖 Context Enrichment...\n")
 	enrichFindings(state)
 
-	// SecureCoder Step 1: Threat Model
+	// SecureCoder Step 1: Threat Model (classifies each finding as TP/FP/NR)
 	fmt.Fprintf(os.Stderr, "🏗️ Building Threat Model (SecureCoder)...\n")
 	if err := buildThreatModel(ctx, state, llmClient); err != nil {
 		// Non-fatal: continue without threat model
 		fmt.Fprintf(os.Stderr, "⚠️ Threat model step failed (continuing): %v\n", err)
 	}
 
-	// Health Check: recompute the authoritative IB posture score across ALL
-	// sources now that AI dispositions (TP/FP) are available. False Positives
-	// no longer penalise the repository.
+	// SecureCoder Step 2: PoC Verification (proves exploitability of True Positives)
+	fmt.Fprintf(os.Stderr, "🧪 PoC Verification (SecureCoder)...\n")
+	if err := runPoCVerification(ctx, state, llmClient); err != nil {
+		// Non-fatal: continue without PoC
+		fmt.Fprintf(os.Stderr, "⚠️ PoC verification step failed (continuing): %v\n", err)
+	}
+
+	// Health Check: compute AFTER all triage is complete (Threat Model + PoC).
+	// This ensures the CI gate verdict uses the final, authoritative dispositions.
 	fmt.Fprintf(os.Stderr, "🩺 Computing Security Health Check (all sources, FP-aware)...\n")
 	computeHealthCheck(state)
 	fmt.Fprintf(os.Stderr, "   ✅ Health Check: %d/100 (%s) — %d active, %d ignored (FP), %d deduped\n",
@@ -47,26 +52,28 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 		state.HealthCheck.Breakdown.IgnoredFindings,
 		state.HealthCheck.Breakdown.DedupedFindings)
 
-	fmt.Fprintf(os.Stderr, "🤖 Map-Reduce Triaging (%d batches)...\n", len(state.Batches))
-	if err := runWorkers(ctx, state, llmClient); err != nil {
-		return err
-	}
-
-	// SecureCoder Step 2: PoC Verification
-	fmt.Fprintf(os.Stderr, "🧪 PoC Verification (SecureCoder)...\n")
-	if err := runPoCVerification(ctx, state, llmClient); err != nil {
-		// Non-fatal: continue without PoC
-		fmt.Fprintf(os.Stderr, "⚠️ PoC verification step failed (continuing): %v\n", err)
-	}
-
 	fmt.Fprintf(os.Stderr, "🤖 Generating Security Report (CS-XXX-NNN format)...\n")
 	if err := generateReport(ctx, state, llmClient); err != nil {
 		return err
 	}
 
+	// Deterministic actionable summary (no LLM) for GHA Step Summary.
+	// Contains only True Positives + Needs Review — False Positives are excluded.
+	fmt.Fprintf(os.Stderr, "📋 Generating Actionable Summary (TP/NR only)...\n")
+	generateSummary(state)
+
 	fmt.Fprintf(os.Stderr, "🤖 Generating AI Fix Specification...\n")
 	if err := generateAIFixSpec(ctx, state, llmClient); err != nil {
 		return err
+	}
+
+	// Print LLM usage summary
+	u := state.TotalUsage
+	if u.TotalTokens > 0 {
+		// Rough cost estimate (Gemini 2.5 Flash pricing: ~$0.15/1M input, ~$0.60/1M output)
+		estCost := float64(u.PromptTokens)*0.00000015 + float64(u.CompletionTokens)*0.0000006
+		fmt.Fprintf(os.Stderr, "\n💰 LLM Usage: %d tokens (prompt: %d, completion: %d) — est. cost $%.4f\n",
+			u.TotalTokens, u.PromptTokens, u.CompletionTokens, estCost)
 	}
 
 	return nil
@@ -305,7 +312,8 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 		{Role: "user", Content: userPrompt},
 	}
 
-	response, _, err := llmClient.Chat(ctx, messages)
+	response, usage, err := llmClient.Chat(ctx, messages)
+	addUsage(&state.TotalUsage, usage)
 	if err != nil {
 		return fmt.Errorf("threat model LLM call failed: %w", err)
 	}
@@ -381,77 +389,11 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 	return nil
 }
 
-func runWorkers(ctx context.Context, state *AgentState, llmClient llm.Client) error {
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	errChan := make(chan error, len(state.Batches))
-
-	// Build threat model context summary (if available)
-	threatContext := ""
-	if state.ThreatModel != nil {
-		tmSummary, _ := json.MarshalIndent(struct {
-			ComponentOverview string   `json:"component_overview"`
-			PriorityAreas     []string `json:"priority_areas"`
-		}{
-			ComponentOverview: state.ThreatModel.ComponentOverview,
-			PriorityAreas:     state.ThreatModel.PriorityAreas,
-		}, "", "  ")
-		threatContext = string(tmSummary)
-	}
-
-	// Build disposition lookup for enriching batch context
-	dispositionMap := make(map[string]string) // VulnID → Disposition
-	for _, d := range state.FindingDispositions {
-		if d.FindingID != "" {
-			dispositionMap[d.FindingID] = d.Disposition
-		}
-	}
-
-	for i, batch := range state.Batches {
-		wg.Add(1)
-		go func(idx int, b []EnrichedFinding) {
-			defer wg.Done()
-
-			batchJSON, _ := json.MarshalIndent(b, "", "  ")
-
-			var userPrompt string
-			if threatContext != "" {
-				userPrompt = fmt.Sprintf(prompts.TriageUserPromptWithThreatModelTemplate,
-					threatContext, string(batchJSON))
-			} else {
-				userPrompt = fmt.Sprintf(prompts.TriageUserPromptTemplate, string(batchJSON))
-			}
-
-			messages := []llm.Message{
-				{Role: "system", Content: prompts.TriageSystemPrompt},
-				{Role: "user", Content: userPrompt},
-			}
-
-			response, _, err := llmClient.Chat(ctx, messages)
-			if err != nil {
-				errChan <- fmt.Errorf("batch %d failed: %w", idx, err)
-				return
-			}
-
-			mu.Lock()
-			state.TriagedResults = append(state.TriagedResults, fmt.Sprintf("--- BATCH %d ---\n%s", idx, response))
-			mu.Unlock()
-		}(i, batch)
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	var errs []error
-	for e := range errChan {
-		errs = append(errs, e)
-	}
-	if len(errs) > 0 {
-		return fmt.Errorf("encountered %d errors during triaging, first: %v", len(errs), errs[0])
-	}
-
-	return nil
-}
+// runWorkers was removed in the pipeline simplification (June 2026).
+// The Threat Model step (buildThreatModel) now serves as the single authoritative
+// source of TP/FP/NR dispositions. The old Map-Reduce workers duplicated this
+// classification with 10+ extra LLM calls and the output (raw markdown) was never
+// parsed back into structured FindingDispositions.
 
 // ── PoC Verification Step ────────────────────────────────────────────────────
 
@@ -499,7 +441,8 @@ func runPoCVerification(ctx context.Context, state *AgentState, llmClient llm.Cl
 		{Role: "user", Content: userPrompt},
 	}
 
-	response, _, err := llmClient.Chat(ctx, messages)
+	response, usage, err := llmClient.Chat(ctx, messages)
+	addUsage(&state.TotalUsage, usage)
 	if err != nil {
 		return fmt.Errorf("PoC verification LLM call failed: %w", err)
 	}
@@ -535,12 +478,6 @@ func runPoCVerification(ctx context.Context, state *AgentState, llmClient llm.Cl
 }
 
 func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client) error {
-	combinedTriage := strings.Join(state.TriagedResults, "\n\n")
-
-	if len(combinedTriage) > 30000 {
-		combinedTriage = combinedTriage[:30000] + "\n...[TRUNCATED — too many findings]"
-	}
-
 	// Generate lookup table for original findings (now with CS-XXX-NNN IDs)
 	var lookupLines []string
 	lookupLines = append(lookupLines, "| Vulnerability ID | Rule ID | Severity | File | Line |")
@@ -635,20 +572,159 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 		time.Now().Format("January 2, 2006"), healthBlock, len(state.EnrichedFindings),
 		threatModelBlock, dispositionBlock, lookupTable, pocBlock)
 
-	userPrompt := fmt.Sprintf(prompts.ReportUserPromptTemplate, metadataBlock+combinedTriage)
+	userPrompt := fmt.Sprintf(prompts.ReportUserPromptTemplate, metadataBlock)
 
 	messages := []llm.Message{
 		{Role: "system", Content: prompts.ReportSystemPrompt},
 		{Role: "user", Content: userPrompt},
 	}
 
-	response, _, err := llmClient.Chat(ctx, messages)
+	response, usage, err := llmClient.Chat(ctx, messages)
+	addUsage(&state.TotalUsage, usage)
 	if err != nil {
 		return fmt.Errorf("failed to generate report: %w", err)
 	}
 
 	state.ReportMarkdown = response
 	return nil
+}
+
+// generateSummary builds a deterministic (no LLM), actionable Markdown summary
+// for the GitHub Actions Step Summary. It includes ONLY True Positives and Needs
+// Manual Review findings. False Positives are excluded from the table but their
+// count is mentioned in the footer so reviewers know they can download the full
+// report artifact for the audit trail.
+func generateSummary(state *AgentState) {
+	var sb strings.Builder
+
+	// ── Disposition counts ────────────────────────────────────────────────
+	tp, fp, nr := 0, 0, 0
+	dispositionMap := make(map[int]string) // findingIndex → disposition
+	for _, d := range state.FindingDispositions {
+		switch d.Disposition {
+		case "True Positive":
+			tp++
+		case "False Positive":
+			fp++
+		default:
+			nr++
+		}
+		dispositionMap[d.FindingIndex] = d.Disposition
+	}
+
+	// ── Header ────────────────────────────────────────────────────────────
+	hc := state.HealthCheck
+	sb.WriteString("## Security Assessment Report\n\n")
+
+	verdictEmoji := "PASSED"
+	if !hc.Verdict.Passed {
+		verdictEmoji = "FAILED"
+	}
+	sb.WriteString(fmt.Sprintf("**Health Check**: %d/100 (%s) | **IB Gate**: %s\n\n",
+		hc.Score, hc.Grade, verdictEmoji))
+	sb.WriteString(fmt.Sprintf("**Policy**: `%s` (`fail_on=%s`)\n\n",
+		hc.Policy.Profile, hc.Policy.FailOn))
+	sb.WriteString(fmt.Sprintf("| Metric | Count |\n|---|---|\n"))
+	sb.WriteString(fmt.Sprintf("| True Positives | %d |\n", tp))
+	sb.WriteString(fmt.Sprintf("| Needs Manual Review | %d |\n", nr))
+	sb.WriteString(fmt.Sprintf("| False Positives (suppressed) | %d |\n", fp))
+	sb.WriteString(fmt.Sprintf("| Total raw findings | %d |\n\n", len(state.EnrichedFindings)))
+
+	// ── Blocking Reasons ──────────────────────────────────────────────────
+	if len(hc.Verdict.BlockingReasons) > 0 {
+		sb.WriteString("### Blocking Reasons\n\n")
+		for _, reason := range hc.Verdict.BlockingReasons {
+			sb.WriteString(fmt.Sprintf("- `%s`: %s", reason.Code, reason.Message))
+			if reason.Count != 0 || reason.Threshold != 0 {
+				sb.WriteString(fmt.Sprintf(" (count %d, threshold %d)", reason.Count, reason.Threshold))
+			}
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	// ── Actionable Findings Table (TP + NR only) ──────────────────────────
+	type actionableFinding struct {
+		vulnID      string
+		severity    string
+		file        string
+		line        int
+		message     string
+		disposition string
+	}
+
+	var actionable []actionableFinding
+	for i, ef := range state.EnrichedFindings {
+		disp, ok := dispositionMap[i]
+		if !ok {
+			// No disposition = treat as actionable (conservative)
+			disp = "Needs Manual Review"
+		}
+		if disp == "False Positive" {
+			continue
+		}
+		msg := ef.Message
+		if len(msg) > 120 {
+			msg = msg[:117] + "..."
+		}
+		// Sanitise pipe characters for markdown table
+		msg = strings.ReplaceAll(msg, "|", "\\|")
+		msg = strings.ReplaceAll(msg, "\n", " ")
+
+		actionable = append(actionable, actionableFinding{
+			vulnID:      ef.VulnID,
+			severity:    ef.Severity,
+			file:        ef.File,
+			line:        ef.Line,
+			message:     msg,
+			disposition: disp,
+		})
+	}
+
+	if len(actionable) > 0 {
+		sb.WriteString("### Actionable Findings\n\n")
+		sb.WriteString("| Vulnerability ID | Severity | File | Line | Issue | Status |\n")
+		sb.WriteString("|---|---|---|---|---|---|\n")
+		for _, f := range actionable {
+			file := f.file
+			if file == "" {
+				file = "N/A"
+			}
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %d | %s | %s |\n",
+				f.vulnID, f.severity, file, f.line, f.message, f.disposition))
+		}
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("### Actionable Findings\n\nNo actionable security findings.\n\n")
+	}
+
+	// ── PoC Summary (compact, one line per TP) ────────────────────────────
+	if len(state.PoCResults) > 0 {
+		sb.WriteString("### PoC Verification\n\n")
+		sb.WriteString("| Vulnerability | Severity | Conclusion |\n")
+		sb.WriteString("|---|---|---|\n")
+		for _, poc := range state.PoCResults {
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n",
+				poc.VulnerabilityType, poc.Severity, poc.Conclusion))
+		}
+		sb.WriteString("\n")
+	}
+
+	// ── Footer ────────────────────────────────────────────────────────────
+	sb.WriteString("---\n")
+	if fp > 0 {
+		sb.WriteString(fmt.Sprintf("\n_%d false positive(s) suppressed from this summary. Download the `report.md` artifact for the full audit trail with FP rationale._\n",
+			fp))
+	}
+	if state.TotalUsage.TotalTokens > 0 {
+		estCost := float64(state.TotalUsage.PromptTokens)*0.00000015 + float64(state.TotalUsage.CompletionTokens)*0.0000006
+		sb.WriteString(fmt.Sprintf("\n_LLM: %d tokens (prompt: %d, completion: %d) — est. cost $%.4f_\n",
+			state.TotalUsage.TotalTokens, state.TotalUsage.PromptTokens, state.TotalUsage.CompletionTokens, estCost))
+	}
+
+	state.SummaryMarkdown = sb.String()
+
+	fmt.Fprintf(os.Stderr, "   Summary: %d actionable, %d suppressed FP\n", len(actionable), fp)
 }
 
 func generateAIFixSpec(ctx context.Context, state *AgentState, llmClient llm.Client) error {
@@ -659,7 +735,8 @@ func generateAIFixSpec(ctx context.Context, state *AgentState, llmClient llm.Cli
 		{Role: "user", Content: userPrompt},
 	}
 
-	response, _, err := llmClient.Chat(ctx, messages)
+	response, usage, err := llmClient.Chat(ctx, messages)
+	addUsage(&state.TotalUsage, usage)
 	if err != nil {
 		return fmt.Errorf("failed to generate fix spec: %w", err)
 	}
@@ -669,6 +746,13 @@ func generateAIFixSpec(ctx context.Context, state *AgentState, llmClient llm.Cli
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// addUsage accumulates LLM token usage from a single call into the total.
+func addUsage(total *llm.Usage, u llm.Usage) {
+	total.PromptTokens += u.PromptTokens
+	total.CompletionTokens += u.CompletionTokens
+	total.TotalTokens += u.TotalTokens
+}
 
 // extractFullContext extracts the full function body + imports for a finding.
 // Uses tree-sitter AST when possible, falls back to ±30 lines.

@@ -31,5 +31,10 @@ if [ -n "$AITRIAGE_ARGS" ]; then
   set -- "$@" $AITRIAGE_ARGS
 fi
 
+# Agent-specific flags (not applicable to scan/fix/sbom).
+if [ "$CMD" = "agent" ]; then
+  [ -n "$AITRIAGE_SUMMARY_FILE" ] && set -- "$@" --summary-out "$AITRIAGE_SUMMARY_FILE"
+fi
+
 echo "+ aitriage $*" >&2
 exec aitriage "$@"

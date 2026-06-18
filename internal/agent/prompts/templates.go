@@ -228,7 +228,7 @@ Crucial formatting rules:
    b. **Threat Model Summary** -- component overview, entry points, trust boundaries (if threat model is provided).
    c. **Vulnerability Report** -- the main findings table.
    d. **PoC Verification** -- exploit reasoning for True Positives (if PoC results are provided).
-   e. **Suppressed Findings** -- False Positives with rationale (if any).
+   e. **Suppressed Findings (False Positives)** -- Detailed FP rationale for the audit trail. This section is included in the full report artifact only (not in the GHA Summary).
    f. **Recommendations** -- prioritized remediation steps.
 
 2. The Vulnerability Report table MUST use the following columns EXACTLY:

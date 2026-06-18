@@ -2,6 +2,7 @@ package graph
 
 import (
 	agentcontext "github.com/cybertortuga/aitriage/internal/agent/context"
+	"github.com/cybertortuga/aitriage/internal/agent/llm"
 	"github.com/cybertortuga/aitriage/internal/engine/core"
 	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
 	"github.com/cybertortuga/aitriage/internal/scanner/deployaudit"
@@ -42,17 +43,21 @@ type AgentState struct {
 
 	// Map-Reduce state
 	EnrichedFindings []EnrichedFinding
-	Batches          [][]EnrichedFinding
-	TriagedResults   []string
+	Batches          [][]EnrichedFinding // Deprecated: runWorkers removed (June 2026)
+	TriagedResults   []string            // Deprecated: runWorkers removed (June 2026)
 
 	// SecureCoder-enhanced fields
 	ThreatModel         *ThreatModel         // Structured threat model analysis
 	FindingDispositions []FindingDisposition // TP/FP/NR classification per finding
 	PoCResults          []PoCResult          // PoC verification results
 
+	// LLM usage tracking (accumulated across all Chat calls)
+	TotalUsage llm.Usage
+
 	// Outputs
-	ReportMarkdown string
-	AIFixSpec      string
+	ReportMarkdown  string // Full report (includes FP rationale) → artifact
+	SummaryMarkdown string // Actionable summary (TP + NR only) → GHA Step Summary
+	AIFixSpec       string
 }
 
 // EnrichedFinding is a unified representation of any finding with its source snippet attached.

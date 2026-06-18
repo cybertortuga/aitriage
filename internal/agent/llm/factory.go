@@ -131,7 +131,12 @@ func (c *anthropicClientWrapper) Chat(ctx context.Context, messages []Message) (
 }
 
 // NewClient создаёт LLM клиент нужного провайдера на основе конфига.
+// All clients are automatically wrapped with RetryClient (3 retries,
+// exponential backoff) to handle transient 429/5xx/network errors.
 func NewClient(cfg Config) (Client, error) {
+	var inner Client
+	var err error
+
 	switch cfg.Provider {
 	case "anthropic":
 		if cfg.APIKey == "" {
@@ -141,10 +146,10 @@ func NewClient(cfg Config) (Client, error) {
 		if cfg.Timeout > 0 {
 			opts = append(opts, option.WithRequestTimeout(time.Duration(cfg.Timeout)*time.Second))
 		}
-		return &anthropicClientWrapper{
+		inner = &anthropicClientWrapper{
 			client: anthropic.NewClient(opts...),
 			cfg:    cfg,
-		}, nil
+		}
 
 	case "gemini":
 		// Gemini uses the OpenAI-compatible API.
@@ -167,10 +172,10 @@ func NewClient(cfg Config) (Client, error) {
 		if cfg.Timeout > 0 {
 			opts = append(opts, openai_option.WithRequestTimeout(time.Duration(cfg.Timeout)*time.Second))
 		}
-		return &openAIClient{
+		inner = &openAIClient{
 			client: openai.NewClient(opts...),
 			cfg:    Config{Provider: "gemini", Model: model, APIKey: cfg.APIKey, BaseURL: baseURL, Timeout: cfg.Timeout},
-		}, nil
+		}
 
 	case "openai", "ollama", "groq":
 		if cfg.APIKey == "" && cfg.Provider == "openai" {
@@ -186,10 +191,10 @@ func NewClient(cfg Config) (Client, error) {
 		if cfg.Timeout > 0 {
 			opts = append(opts, openai_option.WithRequestTimeout(time.Duration(cfg.Timeout)*time.Second))
 		}
-		return &openAIClient{
+		inner = &openAIClient{
 			client: openai.NewClient(opts...),
 			cfg:    cfg,
-		}, nil
+		}
 
 	case "":
 		return nil, fmt.Errorf(noLLMConfiguredMsg)
@@ -197,4 +202,11 @@ func NewClient(cfg Config) (Client, error) {
 	default:
 		return nil, fmt.Errorf("unknown LLM provider: %q\nSupported: gemini, anthropic, openai, ollama, groq", cfg.Provider)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap with retry logic: 3 retries with exponential backoff.
+	return NewRetryClient(inner, 3), nil
 }

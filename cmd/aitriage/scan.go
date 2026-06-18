@@ -393,7 +393,8 @@ var scanCmd = &cobra.Command{
 
 		if !report.HealthCheck.Verdict.Passed {
 			printPolicyFailure(os.Stderr, report.HealthCheck.Verdict)
-			os.Exit(1)
+			cmd.SilenceErrors = true
+			return ErrPolicyViolation
 		}
 		return nil
 	},

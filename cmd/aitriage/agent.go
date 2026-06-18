@@ -29,6 +29,7 @@ var (
 	agentTargetLine    int
 	agentReportOut     string
 	agentFixSpecOut    string
+	agentSummaryOut    string
 	agentFailOn        string
 	agentFailScore     int
 	agentHealthProfile string
@@ -69,6 +70,7 @@ func init() {
 	agentCmd.Flags().IntVar(&agentTargetLine, "line", 0, "Target a specific line to fix (used with --rule-id)")
 	agentCmd.Flags().StringVar(&agentReportOut, "report-out", "", "Write the final Markdown triage report to this file (for CI/CD)")
 	agentCmd.Flags().StringVar(&agentFixSpecOut, "fixspec-out", "", "Write the AI fix specification to this file (for CI/CD)")
+	agentCmd.Flags().StringVar(&agentSummaryOut, "summary-out", "", "Write the actionable summary (TP/NR only, no FP) to this file")
 	agentCmd.Flags().StringVar(&agentFailOn, "fail-on", "never", "CI gate: exit 1 when 'critical' (active CRITICAL/HIGH after AI triage), 'any' finding, or 'never'")
 	agentCmd.Flags().IntVar(&agentFailScore, "fail-score", 0, "CI gate: exit 1 if the post-AI Health Check score is below this threshold (0 = disabled)")
 	agentCmd.Flags().StringVar(&agentHealthProfile, "health-profile", "", "Health Check policy profile: baseline, standard, strict")
@@ -196,6 +198,19 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "   ✓ Fix spec written to %s\n", agentFixSpecOut)
 	}
+	if agentSummaryOut != "" {
+		if err := os.WriteFile(agentSummaryOut, []byte(state.SummaryMarkdown), 0644); err != nil {
+			return fmt.Errorf("failed to write summary to %s: %w", agentSummaryOut, err)
+		}
+		fmt.Fprintf(os.Stderr, "   ✓ Summary written to %s\n", agentSummaryOut)
+	}
+
+	// Auto-write actionable summary to GitHub Actions Step Summary.
+	// The agent writes a clean, FP-free summary — workflows no longer need
+	// to `cat report.md >> $GITHUB_STEP_SUMMARY`.
+	if os.Getenv("GITHUB_ACTIONS") == "true" {
+		writeAgentGHASummary(state)
+	}
 
 	// CI/CD GATE: decide the exit code from the post-AI Health Check verdict.
 	// False Positives are already excluded from state.HealthCheck, so the gate
@@ -217,7 +232,8 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	if shouldFail {
 		printPolicyFailure(os.Stderr, state.HealthCheck.Verdict)
-		os.Exit(1)
+		cmd.SilenceErrors = true
+		return ErrPolicyViolation
 	}
 	return nil
 }
@@ -270,4 +286,22 @@ func runConsultation(ctx context.Context, client llm.Client, history []llm.Messa
 		}
 		fmt.Print("\n> ")
 	}
+}
+
+// writeAgentGHASummary writes the actionable summary (TP/NR only) to the
+// GitHub Actions Step Summary. This runs automatically when GITHUB_ACTIONS=true,
+// so workflows no longer need to `cat report.md >> $GITHUB_STEP_SUMMARY`.
+func writeAgentGHASummary(state *graph.AgentState) {
+	summaryFile := os.Getenv("GITHUB_STEP_SUMMARY")
+	if summaryFile == "" {
+		return
+	}
+	f, err := os.OpenFile(summaryFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "   ⚠ Failed to write GHA Step Summary: %v\n", err)
+		return
+	}
+	defer f.Close()
+	f.WriteString(state.SummaryMarkdown)
+	fmt.Fprintf(os.Stderr, "   ✓ GHA Step Summary written (actionable findings only)\n")
 }

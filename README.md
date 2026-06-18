@@ -247,15 +247,13 @@ jobs:
         uses: cybertortuga/aitriage@v1
         with:
           command: 'agent'
-          args: '--no-chat --report-out report.md --fixspec-out fixspec.md'
+          args: '--no-chat --report-out report.md --fixspec-out fixspec.md --summary-out summary.md'
 
-      - name: Publish AI Triage Report & Fix Specs to GitHub Summary
+      # Agent auto-writes actionable summary (TP/NR only) to $GITHUB_STEP_SUMMARY.
+      # We only need to append the fix spec (also actionable).
+      - name: Publish Fix Specs to GitHub Summary
         if: always()
         run: |
-          if [ -f report.md ]; then
-            echo "### AITriage AI Audit Report" >> $GITHUB_STEP_SUMMARY
-            cat report.md >> $GITHUB_STEP_SUMMARY
-          fi
           if [ -f fixspec.md ]; then
             echo "### AI IDE Fix Prompt" >> $GITHUB_STEP_SUMMARY
             echo '```markdown' >> $GITHUB_STEP_SUMMARY
@@ -263,6 +261,7 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
+      # Full report (including FP rationale) is downloadable as an artifact.
       - name: Upload AI Triage Artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -271,12 +270,26 @@ jobs:
           path: |
             report.md
             fixspec.md
+            summary.md
 ```
 
 > [!IMPORTANT]
 > **AI Keys & Provider Auto-Detection**:
 > - **LLM Key Storage**: Never hardcode API keys. Store them securely in your repository secrets (e.g. `secrets.GEMINI_API_KEY`, `secrets.OPENAI_API_KEY`, or `secrets.ANTHROPIC_API_KEY`) and map them under the `env:` block of your action step.
 > - **Provider Auto-Detection**: The AITriage Agent automatically detects the LLM provider based on which API key environment variable is set (`GEMINI_API_KEY` for Google Gemini, `OPENAI_API_KEY` for OpenAI, `ANTHROPIC_API_KEY` for Anthropic).
+
+### Dual Output: Actionable Summary vs Full Report
+
+The AI agent produces **two separate outputs** to maximise signal-to-noise ratio:
+
+| Output | Contains | Destination |
+|---|---|---|
+| **Summary** (`summary.md`) | True Positives + Needs Review only | `$GITHUB_STEP_SUMMARY` (auto) |
+| **Full Report** (`report.md`) | All findings including False Positive rationale | Downloadable artifact |
+
+- The agent **automatically writes** the actionable summary to `$GITHUB_STEP_SUMMARY` when running in GitHub Actions — no shell scripting needed.
+- False Positives are **counted** in the summary header but their details are only in the full report, serving as an audit trail.
+- Use `--summary-out summary.md` to also persist the summary as a file artifact.
 
 ---
 
