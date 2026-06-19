@@ -542,48 +542,6 @@ type GroupBy = 'none' | 'severity' | 'title' | 'file' | 'scanner' | 'product';
 type SortBy = 'severity' | 'title' | 'file';
 const PAGE_SIZE = 25;
 
-/* ── Inline AI IDE Prompts ── */
-const INLINE_PROMPT_CATEGORIES = [
-  {
-    id: 'security-scan',
-    labelKey: 'aiPrompts.categories.securityScan',
-    icon: 'shield',
-    prompts: [
-      { id: 'scan-project', titleKey: 'aiPrompts.prompts.scanProject.title', descKey: 'aiPrompts.prompts.scanProject.desc', promptKey: 'aiPrompts.prompts.scanProject.prompt', tags: ['Cursor', 'Copilot', 'Windsurf'], features: ['CVSS 3.1', 'CWE Mapping', '7 Analysis Categories', 'Structured Output'] },
-      { id: 'scan-file', titleKey: 'aiPrompts.prompts.scanFile.title', descKey: 'aiPrompts.prompts.scanFile.desc', promptKey: 'aiPrompts.prompts.scanFile.prompt', tags: ['Cursor', 'Copilot'], features: ['Data Flow Tracing', 'Trust Boundary Analysis', 'Confidence Level', 'Exploit Scenarios'] },
-      { id: 'scan-deps', titleKey: 'aiPrompts.prompts.scanDeps.title', descKey: 'aiPrompts.prompts.scanDeps.desc', promptKey: 'aiPrompts.prompts.scanDeps.prompt', tags: ['Cursor', 'Copilot', 'Windsurf'], features: ['NVD / OSV / GHSA', 'Typosquatting Check', 'License Audit', 'Lockfile Integrity'] },
-    ],
-  },
-  {
-    id: 'remediation',
-    labelKey: 'aiPrompts.categories.remediation',
-    icon: 'auto_fix_high',
-    prompts: [
-      { id: 'fix-vuln', titleKey: 'aiPrompts.prompts.fixVuln.title', descKey: 'aiPrompts.prompts.fixVuln.desc', promptKey: 'aiPrompts.prompts.fixVuln.prompt', tags: ['Cursor', 'Copilot'], features: ['SecureCoder Workflow', 'Root Cause Analysis', 'PoC Verification', 'Regression Test'] },
-      { id: 'fix-batch', titleKey: 'aiPrompts.prompts.fixBatch.title', descKey: 'aiPrompts.prompts.fixBatch.desc', promptKey: 'aiPrompts.prompts.fixBatch.prompt', tags: ['Cursor', 'Windsurf'], features: ['4-Phase Pipeline', 'Threat Model First', 'Implementation Plan', 'Verification Pass'] },
-      { id: 'secure-refactor', titleKey: 'aiPrompts.prompts.secureRefactor.title', descKey: 'aiPrompts.prompts.secureRefactor.desc', promptKey: 'aiPrompts.prompts.secureRefactor.prompt', tags: ['Cursor', 'Copilot', 'Windsurf'], features: ['Defense in Depth', 'CSP / CSRF / HSTS', 'Rate Limiting', 'Constant-Time Ops'] },
-    ],
-  },
-  {
-    id: 'analysis',
-    labelKey: 'aiPrompts.categories.analysis',
-    icon: 'analytics',
-    prompts: [
-      { id: 'threat-model', titleKey: 'aiPrompts.prompts.threatModel.title', descKey: 'aiPrompts.prompts.threatModel.desc', promptKey: 'aiPrompts.prompts.threatModel.prompt', tags: ['Cursor', 'Copilot'], features: ['STRIDE Methodology', 'DFD Diagram', 'Attack Trees', 'Risk Scoring'] },
-      { id: 'code-review', titleKey: 'aiPrompts.prompts.codeReview.title', descKey: 'aiPrompts.prompts.codeReview.desc', promptKey: 'aiPrompts.prompts.codeReview.prompt', tags: ['Cursor', 'Copilot', 'Windsurf'], features: ['Pass/Fail Checklist', '5 Security Domains', 'GDPR / CCPA', 'Code Quality'] },
-      { id: 'attack-surface', titleKey: 'aiPrompts.prompts.attackSurface.title', descKey: 'aiPrompts.prompts.attackSurface.desc', promptKey: 'aiPrompts.prompts.attackSurface.prompt', tags: ['Cursor'], features: ['4 Surface Categories', 'Risk Assessment Table', 'ASCII Surface Map', 'Top 5 Targets'] },
-    ],
-  },
-  {
-    id: 'compliance',
-    labelKey: 'aiPrompts.categories.compliance',
-    icon: 'verified_user',
-    prompts: [
-      { id: 'owasp-check', titleKey: 'aiPrompts.prompts.owaspCheck.title', descKey: 'aiPrompts.prompts.owaspCheck.desc', promptKey: 'aiPrompts.prompts.owaspCheck.prompt', tags: ['Cursor', 'Copilot'], features: ['OWASP 2025', 'Per-Category Assessment', 'Compliance Scorecard', 'A01-A10 Coverage'] },
-      { id: 'write-tests', titleKey: 'aiPrompts.prompts.writeTests.title', descKey: 'aiPrompts.prompts.writeTests.desc', promptKey: 'aiPrompts.prompts.writeTests.prompt', tags: ['Cursor', 'Copilot', 'Windsurf'], features: ['5 Test Categories', 'Injection Payloads', 'Auth & IDOR Tests', 'Race Conditions'] },
-    ],
-  },
-];
 
 const SecureCoderPanel: React.FC<{ activeProducts: any[]; findings: any[] }> = ({ activeProducts, findings }) => {
   const { t } = useTranslation('pages');
@@ -957,82 +915,6 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[]; findings: any[] }> = (
     })();
     return () => { cancelled = true; };
   }, [activeProducts, restoreRunwayFromSession]);
-
-  // Runway handlers
-  const handleInitRunway = async () => {
-    if (!runwayProject) return;
-    const project = runwayProject; // capture locally to avoid stale closure
-    const projectFindings = findings.filter(f => f.product_id === project.id && f.status !== 'triage');
-    const scanCountBefore = projectFindings.length;
-    setRunwayScanCountBefore(scanCountBefore);
-    setRunwayStep(1);
-
-    // Create DB session
-    let sessionId = runwaySessionId;
-    if (!sessionId) {
-      try {
-        const createRes = await fetch('/api/runway', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ product_id: project.id, auto_mode: false })
-        });
-        const createData = await createRes.json();
-        if (createData.ok && createData.session) {
-          sessionId = createData.session.id;
-          setRunwaySessionId(sessionId);
-          await saveRunwayToDB(createData.session.id, 1, { scan_count_before: scanCountBefore, product_id: project.id, auto_mode: false });
-        }
-      } catch (e) {
-        console.error('Failed to create runway session in DB:', e);
-      }
-    }
-
-    // Auto-run full pipeline inline using local variables
-    setRunwayLoading(true);
-    setRunwayError('');
-    try {
-      // Step 1: Threat Model
-      const threatModel = await runThreatModelStep(project, findings);
-      setRunwayThreatModel(threatModel);
-      setRunwayStep(2);
-      if (sessionId) await saveRunwayToDB(sessionId, 2, { threat_model: threatModel, product_id: project.id });
-
-      // Step 2: Security Plan
-      const plan = await runSecurityPlanStep(project, threatModel);
-      setRunwaySecurityPlan(plan);
-      setRunwayStep(3);
-      if (sessionId) await saveRunwayToDB(sessionId, 3, { security_plan: plan, product_id: project.id });
-
-      // Step 3: Remediation
-      const remediation = await runRemediationStep(project, plan);
-      setRunwayRemediation(remediation);
-      setRunwayStep(4);
-      if (sessionId) await saveRunwayToDB(sessionId, 4, { remediation, product_id: project.id });
-
-      // Step 4: Scan & PoC
-      const { poc, scanCountAfter } = await runScanAndPoCStep(project, remediation);
-      setRunwayPoC(poc);
-      setRunwayScanCountAfter(scanCountAfter);
-      setRunwayStep(5);
-      if (sessionId) await saveRunwayToDB(sessionId, 5, { poc, scan_count_after: scanCountAfter, product_id: project.id });
-
-      // Step 5: Audit Report
-      const report = await runReportStep(project, threatModel, remediation, poc);
-      setRunwayAuditReport(report);
-      setRunwayStep(6);
-      if (sessionId) await saveRunwayToDB(sessionId, 6, { audit_report: report, product_id: project.id });
-
-      // Step 6: Complete
-      await runCompleteStep(scanCountBefore, scanCountAfter);
-      setRunwayStep(7);
-      if (sessionId) await saveRunwayToDB(sessionId, 7, { status: 'completed', product_id: project.id });
-    } catch (e: any) {
-      setRunwayError(e.message || 'Pipeline error.');
-    } finally {
-      setRunwayLoading(false);
-    }
-  };
-
 
   // --- Individual step handlers (used by both manual and auto mode) ---
 
@@ -1648,23 +1530,14 @@ Threat Model:\n${threatModel}\n\nRemediation:\n${remediation}\n\nPoC Verificatio
                   {activeProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
-              <div className="flex gap-2">
+              <div>
                 <button
                   onClick={handleRunwayAutoRun}
                   disabled={!runwayProject}
-                  className="flex-1 px-4 py-2.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[12px] font-bold uppercase tracking-wider disabled:opacity-30 transition-all duration-300 flex items-center justify-center gap-2 shadow-[0_0_15px_var(--accent-color-line)] hover:shadow-[0_0_25px_var(--accent-color-soft)]"
+                  className="w-full px-4 py-2.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[12px] font-bold uppercase tracking-wider disabled:opacity-30 transition-all duration-300 flex items-center justify-center gap-2 shadow-[0_0_15px_var(--accent-color-line)] hover:shadow-[0_0_25px_var(--accent-color-soft)]"
                 >
                   <span className="material-symbols-outlined text-[16px]">play_arrow</span>
                   {t('SimpleDashboardPage.runway.startFullPipeline')}
-                </button>
-                <button
-                  onClick={handleInitRunway}
-                  disabled={!runwayProject}
-                  className="px-3 py-2.5 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.08)] text-[#a1a1aa] hover:text-[#f4f4f5] rounded text-[10px] font-bold uppercase tracking-wider disabled:opacity-30 transition-colors flex items-center gap-1.5"
-                  title={t('SimpleDashboardPage.runway.runEachStepManually')}
-                >
-                  <span className="material-symbols-outlined text-[12px]">tune</span>
-                  {t('SimpleDashboardPage.runway.stepByStep')}
                 </button>
               </div>
             </div>
@@ -2480,340 +2353,6 @@ Threat Model:\n${threatModel}\n\nRemediation:\n${remediation}\n\nPoC Verificatio
   );
 };
 
-interface InlineAIPromptsProps {
-  activeProducts: any[];
-  findings: any[];
-}
-
-const InlineAIPrompts: React.FC<InlineAIPromptsProps> = ({ activeProducts, findings }) => {
-  const { t } = useTranslation('components');
-  const [expandedCat, setExpandedCat] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [previewId, setPreviewId] = useState<string | null>(null);
-
-  // Run in UI state
-  const [runProjectId, setRunProjectId] = useState<Record<string, number>>({});
-  const [activeSelectPromptId, setActiveSelectPromptId] = useState<string | null>(null);
-  const [runOutput, setRunOutput] = useState<Record<string, string>>({});
-  const [runLoading, setRunLoading] = useState<Record<string, boolean>>({});
-  const [runError, setRunError] = useState<Record<string, string>>({});
-
-  const handleCopy = useCallback((promptKey: string, id: string) => {
-    const text = t(promptKey);
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    });
-  }, [t]);
-
-  const handleOpenIDE = useCallback((promptKey: string, ide: string) => {
-    const text = t(promptKey);
-    navigator.clipboard.writeText(text).then(() => {
-      const scheme = ide === 'Cursor' ? 'cursor://' : 'windsurf://';
-      window.location.href = scheme;
-    });
-  }, [t]);
-
-  const handleRunInUI = async (promptId: string, promptKey: string) => {
-    const prodId = runProjectId[promptId];
-    if (!prodId) return;
-    const proj = activeProducts.find(p => p.id === prodId);
-    if (!proj) return;
-
-    setRunLoading(prev => ({ ...prev, [promptId]: true }));
-    setRunError(prev => ({ ...prev, [promptId]: '' }));
-    setRunOutput(prev => ({ ...prev, [promptId]: '' }));
-
-    try {
-      const projectFindings = findings.filter(f => f.product_id === prodId && f.status !== 'triage');
-      const findingsText = projectFindings.map(f => `- [${f.severity?.toUpperCase()}] ${f.title} | File: ${f.file_path || 'N/A'}${f.line_number ? ':' + f.line_number : ''}`).join('\n');
-      
-      const basePrompt = t(promptKey);
-      const fullPrompt = `Analyze the project "${proj.name}" using the following guidelines:\n\n${basePrompt}\n\nProject findings context:\n${findingsText}\n\nPerform this security analysis and output in structured markdown format.`;
-
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [{ role: 'user', content: fullPrompt }] })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setRunOutput(prev => ({ ...prev, [promptId]: data.content }));
-      } else {
-        setRunError(prev => ({ ...prev, [promptId]: data.error || 'Failed to run analysis.' }));
-      }
-    } catch (e) {
-      setRunError(prev => ({ ...prev, [promptId]: 'Network error occurred.' }));
-    } finally {
-      setRunLoading(prev => ({ ...prev, [promptId]: false }));
-    }
-  };
-
-  return (
-    <motion.div variants={itemVariants} className="border border-[rgba(255,255,255,0.06)] rounded-lg bg-[rgba(255,255,255,0.01)] overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-[rgba(255,255,255,0.06)]">
-        <div className="w-8 h-8 rounded-lg bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] flex items-center justify-center">
-          <span className="material-symbols-outlined text-[16px] text-[#a1a1aa]" style={{ fontVariationSettings: "'FILL' 1" }}>terminal</span>
-        </div>
-        <div className="flex-1">
-          <h3 className="text-[12px] font-bold text-[#f4f4f5] tracking-wider uppercase">{t('aiPrompts.title')}</h3>
-          <p className="text-[10px] text-[#52525b] tracking-widest uppercase">EXECUTE AGENT SKILLS INTERACTIVELY</p>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-[9px] text-[#3f3f46] tracking-wider font-medium">RUNS DIRECTLY IN WEB UI</span>
-        </div>
-      </div>
-
-      {/* Categories */}
-      <div className="divide-y divide-[rgba(255,255,255,0.04)]">
-        {INLINE_PROMPT_CATEGORIES.map((cat) => {
-          const isOpen = expandedCat === cat.id;
-          return (
-            <div key={cat.id}>
-              <button
-                onClick={() => setExpandedCat(isOpen ? null : cat.id)}
-                className="w-full flex items-center gap-3 px-6 py-3 hover:bg-[rgba(255,255,255,0.02)] transition-colors group"
-              >
-                <span className={`material-symbols-outlined text-[16px] transition-colors ${isOpen ? 'text-[var(--accent-color)]' : 'text-[#3f3f46] group-hover:text-[var(--accent-color)]'}`}>{cat.icon}</span>
-                <span className={`text-[11px] font-semibold tracking-wider uppercase flex-1 text-left transition-colors ${isOpen ? 'text-[#f4f4f5]' : 'text-[#a1a1aa] group-hover:text-[#f4f4f5]'}`}>{t(cat.labelKey)}</span>
-                <span className={`text-[10px] mr-1 transition-colors ${isOpen ? 'text-[var(--accent-color)]' : 'text-[#3f3f46] group-hover:text-[var(--accent-color)]'}`}>{cat.prompts.length}</span>
-                <span className={`material-symbols-outlined text-[14px] text-[#3f3f46] transition-transform duration-200 ${isOpen ? 'rotate-180 text-[var(--accent-color)]' : 'group-hover:text-[var(--accent-color)]'}`}>expand_more</span>
-              </button>
-
-              <AnimatePresence>
-                {isOpen && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2, ease: 'easeInOut' }}
-                    className="overflow-hidden"
-                  >
-                    <div className="px-6 pb-4 grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-                      {cat.prompts.map((prompt) => {
-                        const isCopied = copiedId === prompt.id;
-                        const isPreviewing = previewId === prompt.id;
-                        const isLoading = runLoading[prompt.id];
-                        const error = runError[prompt.id];
-                        const output = runOutput[prompt.id];
-                        const selectedProj = runProjectId[prompt.id];
-
-                        return (
-                          <div key={prompt.id} className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.015)] hover:border-[rgba(255,255,255,0.1)] transition-all p-3.5 group/card">
-                            <div className="text-[12px] font-medium text-[#e4e4e7] mb-0.5">{t(prompt.titleKey)}</div>
-                            <div className="text-[10px] text-[#52525b] mb-2 leading-relaxed">{t(prompt.descKey)}</div>
-                            
-                            {/* Methodology Features */}
-                            {prompt.features && prompt.features.length > 0 && (
-                              <div className="flex items-center gap-1 flex-wrap mb-2.5">
-                                {prompt.features.map((feature: string) => (
-                                  <span 
-                                    key={feature} 
-                                    className="text-[7.5px] px-1.5 py-[3px] rounded-sm font-mono font-bold uppercase tracking-wider leading-none"
-                                    style={{
-                                      color: 'var(--accent-color, #8b5cf6)',
-                                      backgroundColor: 'color-mix(in srgb, var(--accent-color, #8b5cf6) 8%, transparent)',
-                                      border: '1px solid color-mix(in srgb, var(--accent-color, #8b5cf6) 15%, transparent)',
-                                    }}
-                                  >
-                                    {feature}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Select Project Inline for Execution */}
-                            <div className="flex gap-2 mb-3 relative">
-                              <div className="flex-1 relative">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveSelectPromptId(prev => prev === prompt.id ? null : prompt.id);
-                                  }}
-                                  className="w-full h-9 bg-[rgba(255,255,255,0.015)] hover:bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.12)] rounded-lg px-3 text-[12px] text-[#a1a1aa] hover:text-white flex items-center justify-between transition-all cursor-pointer outline-none focus:border-[var(--accent-color)]"
-                                >
-                                  <span className="truncate">
-                                    {selectedProj && activeProducts.find(p => p.id === selectedProj)
-                                      ? activeProducts.find(p => p.id === selectedProj)!.name
-                                      : 'Select Project...'}
-                                  </span>
-                                  <span className={`material-symbols-outlined text-[16px] text-[#71717a] transition-transform ${activeSelectPromptId === prompt.id ? 'rotate-180' : ''}`}>
-                                    keyboard_arrow_down
-                                  </span>
-                                </button>
-
-                                <AnimatePresence>
-                                  {activeSelectPromptId === prompt.id && (
-                                    <>
-                                      <div 
-                                        className="fixed inset-0 z-40 cursor-default" 
-                                        onClick={() => setActiveSelectPromptId(null)} 
-                                      />
-                                      <motion.div
-                                        initial={{ opacity: 0, y: 4 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: 4 }}
-                                        transition={{ duration: 0.15 }}
-                                        className="absolute left-0 right-0 mt-1.5 z-50 bg-[#161618] border border-[rgba(255,255,255,0.08)] rounded-lg shadow-[0_8px_30px_rgb(0,0,0,0.65)] backdrop-blur-xl py-1 max-h-48 overflow-y-auto"
-                                        style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.06) transparent' }}
-                                      >
-                                        <div
-                                          onClick={() => {
-                                            setRunProjectId(prev => ({ ...prev, [prompt.id]: 0 }));
-                                            setActiveSelectPromptId(null);
-                                          }}
-                                          className={`px-3 py-2 text-[12px] cursor-pointer transition-colors flex items-center justify-between ${
-                                            !selectedProj 
-                                              ? 'bg-[var(--accent-color-soft)] text-white font-semibold' 
-                                              : 'text-[#71717a] hover:text-[#e4e4e7] hover:bg-[rgba(255,255,255,0.03)]'
-                                          }`}
-                                        >
-                                          <span>Select Project...</span>
-                                          {!selectedProj && <span className="material-symbols-outlined text-xs text-[var(--accent-color)]">check</span>}
-                                        </div>
-                                        {activeProducts.map(p => {
-                                          const isSelected = selectedProj === p.id;
-                                          return (
-                                            <div
-                                              key={p.id}
-                                              onClick={() => {
-                                                setRunProjectId(prev => ({ ...prev, [prompt.id]: p.id }));
-                                                setActiveSelectPromptId(null);
-                                              }}
-                                              className={`px-3 py-2 text-[12px] cursor-pointer transition-colors flex items-center justify-between ${
-                                                isSelected 
-                                                  ? 'bg-[var(--accent-color-soft)] text-white font-semibold' 
-                                                  : 'text-[#a1a1aa] hover:text-white hover:bg-[rgba(255,255,255,0.03)]'
-                                              }`}
-                                            >
-                                              <span className="truncate">{p.name}</span>
-                                              {isSelected && <span className="material-symbols-outlined text-xs text-[var(--accent-color)]">check</span>}
-                                            </div>
-                                          );
-                                        })}
-                                      </motion.div>
-                                    </>
-                                  )}
-                                </AnimatePresence>
-                              </div>
-
-                              <button
-                                onClick={() => handleRunInUI(prompt.id, prompt.promptKey)}
-                                disabled={!selectedProj || isLoading}
-                                className="h-9 px-4 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] text-[12px] rounded-lg font-bold uppercase tracking-wider disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-1.5 shrink-0 shadow-md cursor-pointer"
-                              >
-                                {isLoading ? (
-                                  <div className="w-3.5 h-3.5 border-2 border-[var(--accent-color-on-text)]/30 border-t-[var(--accent-color-on-text)] rounded-full animate-spin" />
-                                ) : (
-                                  <span className="material-symbols-outlined text-[14px]">play_arrow</span>
-                                )}
-                                Run
-                              </button>
-                            </div>
-
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <button
-                                onClick={() => handleCopy(prompt.promptKey, prompt.id)}
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium tracking-wide transition-all duration-200 cursor-pointer ${
-                                  isCopied
-                                    ? 'bg-[rgba(34,197,94,0.08)] border border-[rgba(34,197,94,0.2)] text-[#22c55e]'
-                                    : 'bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] text-[#a1a1aa] hover:bg-[rgba(255,255,255,0.06)] hover:text-[#f4f4f5]'
-                                }`}
-                                title={t('aiPrompts.copyPrompt')}
-                              >
-                                <span className="material-symbols-outlined text-[13px]">{isCopied ? 'check_circle' : 'content_copy'}</span>
-                              </button>
-                              
-                              <button
-                                onClick={() => handleOpenIDE(prompt.promptKey, 'Cursor')}
-                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium tracking-wide bg-[rgba(56,189,248,0.04)] border border-[rgba(56,189,248,0.15)] text-[#38bdf8] hover:bg-[rgba(56,189,248,0.1)] transition-all duration-200 cursor-pointer"
-                                title="Copy & Open in Cursor"
-                              >
-                                <span className="material-symbols-outlined text-[13px]">open_in_new</span>
-                                Cursor
-                              </button>
-
-                              <button
-                                onClick={() => handleOpenIDE(prompt.promptKey, 'Windsurf')}
-                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium tracking-wide bg-[rgba(16,185,129,0.04)] border border-[rgba(16,185,129,0.15)] text-[#10b981] hover:bg-[rgba(16,185,129,0.1)] transition-all duration-200 cursor-pointer"
-                                title="Copy & Open in Windsurf"
-                              >
-                                <span className="material-symbols-outlined text-[13px]">open_in_new</span>
-                                Windsurf
-                              </button>
-                              
-                              <button
-                                onClick={() => setPreviewId(isPreviewing ? null : prompt.id)}
-                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium tracking-wide bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] text-[#52525b] hover:text-[#a1a1aa] hover:bg-[rgba(255,255,255,0.04)] transition-all cursor-pointer"
-                              >
-                                <span className="material-symbols-outlined text-[13px]">{isPreviewing ? 'visibility_off' : 'visibility'}</span>
-                                {isPreviewing ? t('aiPrompts.hide') : t('aiPrompts.preview')}
-                              </button>
-                            </div>
-
-                            {/* Run Result Area */}
-                            {isLoading && (
-                              <div className="mt-3 flex flex-col items-center justify-center p-4 border border-[rgba(255,255,255,0.04)] bg-[rgba(0,0,0,0.15)] rounded-lg gap-2 text-[#71717a]">
-                                <div className="w-4 h-4 border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--accent-color)] rounded-full animate-spin" />
-                                <span className="text-[9px] font-mono uppercase tracking-widest animate-pulse">Analyzing Project...</span>
-                              </div>
-                            )}
-
-                            {error && (
-                              <div className="mt-3 p-2.5 bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.15)] text-[#ef4444] text-[10px] rounded font-medium font-mono">
-                                {error}
-                              </div>
-                            )}
-
-                            {output && (
-                              <div className="mt-3 bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.04)] rounded-lg p-3 max-h-56 overflow-y-auto text-[11px] text-[#a1a1aa] leading-relaxed prose prose-invert select-text" style={{ scrollbarWidth: 'thin' }}>
-                                <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.05)] pb-1.5 mb-2">
-                                  <span className="text-[9px] text-[var(--accent-color)] font-mono font-bold uppercase">Analysis Result</span>
-                                  <button onClick={() => setRunOutput(prev => ({ ...prev, [prompt.id]: '' }))} className="text-[10px] text-[#52525b] hover:text-[#a1a1aa] material-symbols-outlined font-bold">close</button>
-                                </div>
-                                <Markdown>{output}</Markdown>
-                              </div>
-                            )}
-
-                            <AnimatePresence>
-                              {isPreviewing && (
-                                <motion.div
-                                  initial={{ height: 0, opacity: 0 }}
-                                  animate={{ height: 'auto', opacity: 1 }}
-                                  exit={{ height: 0, opacity: 0 }}
-                                  transition={{ duration: 0.15 }}
-                                  className="overflow-hidden"
-                                >
-                                  <pre className="mt-2.5 p-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.04)] text-[10px] text-[#71717a] font-mono leading-relaxed whitespace-pre-wrap max-h-36 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.06) transparent' }}>
-                                    {t(prompt.promptKey)}
-                                  </pre>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Footer */}
-      <div className="px-6 py-2.5 border-t border-[rgba(255,255,255,0.04)] bg-[rgba(255,255,255,0.01)]">
-        <div className="flex items-center gap-2 text-[9px] text-[#3f3f46]">
-          <span className="material-symbols-outlined text-[12px]">info</span>
-          <span>Analyze projects using pre-configured security agent prompts or sync metrics.</span>
-        </div>
-      </div>
-    </motion.div>
-  );
-};
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -3097,12 +2636,12 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
 
   const [globalScanning, setGlobalScanning] = useState(false);
   const [globalScanPath, setGlobalScanPath] = useState('/host');
+  void setGlobalScanPath;
   const [globalScanLogs, setGlobalScanLogs] = useState<string[]>([]);
   const [globalScanPhase, setGlobalScanPhase] = useState(0);
   const [globalScanElapsed, setGlobalScanElapsed] = useState(0);
   
   // AI query state
-  const [aiQuery, setAiQuery] = useState('');
 
   const scanPhases = [
     { name: 'Core', desc: 'AST parsing & pattern matching', icon: 'memory' },
@@ -3156,6 +2695,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
       setGlobalScanning(false);
     }
   };
+  void handleGlobalScan;
 
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
@@ -3499,102 +3039,6 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
           className="px-8 py-6"
         >
           <div className="flex flex-col gap-6">
-            {/* ── AI COMMAND & SCAN BAR ── */}
-            <motion.div 
-              variants={itemVariants} 
-              className="border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 bg-background/80 backdrop-blur-xl flex flex-col gap-5 shadow-2xl relative overflow-hidden group"
-            >
-              {/* Subtle glass glow background */}
-              <div className="absolute inset-0 bg-gradient-to-br from-[rgba(255,255,255,0.02)] to-[rgba(255,255,255,0.002)] pointer-events-none" />
-              
-              {/* Row 1: AI Prompt Input */}
-              <div className="flex flex-col gap-2 relative z-10">
-                <label className="text-[10px] font-bold text-[#71717a] tracking-[0.2em] uppercase font-mono flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[13px] text-[var(--accent-color)]">smart_toy</span>
-                  AI Security Copilot Command Bar
-                </label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <span className="material-symbols-outlined text-[16px] text-[#52525b] absolute left-3.5 top-1/2 -translate-y-1/2">
-                      search
-                    </span>
-                    <input
-                      value={aiQuery}
-                      onChange={(e) => setAiQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && aiQuery.trim()) {
-                          onNavigateToChat?.(aiQuery);
-                        }
-                      }}
-                      placeholder="Ask the security agent to check CORS rules, analyze auth flows, or review code..."
-                      className="w-full bg-surface-bright border border-[rgba(255,255,255,0.06)] rounded-xl pl-10 pr-4 py-3 text-[13px] text-[#f4f4f5] placeholder:text-[#52525b] outline-none focus:border-[rgba(255,255,255,0.15)] transition-all font-sans"
-                    />
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (aiQuery.trim() && onNavigateToChat) {
-                        onNavigateToChat(aiQuery);
-                      }
-                    }}
-                    disabled={!aiQuery.trim()}
-                    className="v2-btn px-6 bg-white hover:bg-[#e4e4e7] text-black font-semibold text-[13px] rounded-xl flex items-center gap-2 h-[46px] transition-all cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">bolt</span>
-                    Ask AI
-                  </button>
-                </div>
-                
-                {/* Suggestions */}
-                <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                  <span className="text-[10px] text-[#52525b] font-medium mr-1 uppercase tracking-wider font-mono">Suggestions:</span>
-                  {[
-                    "Find SQL Injection in /host",
-                    "Check if CORS is secure",
-                    "Generate STRIDE model for Next.js"
-                  ].map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => onNavigateToChat?.(s)}
-                      className="text-[11px] text-[#a1a1aa] bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.05)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white px-3 py-1 rounded-full transition-all cursor-pointer font-sans"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Separator line */}
-              <div className="h-[1px] bg-[rgba(255,255,255,0.05)] relative z-10" />
-
-              {/* Row 2: In-place Directory Scanner */}
-              <div className="flex flex-col gap-2 relative z-10">
-                <label className="text-[10px] font-bold text-[#71717a] tracking-[0.2em] uppercase font-mono flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[13px] text-[var(--accent-color)]">folder_open</span>
-                  Quick Workspace Scanner
-                </label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <span className="material-symbols-outlined text-[15px] text-[#52525b] absolute left-3.5 top-1/2 -translate-y-1/2">
-                      terminal
-                    </span>
-                    <input
-                      value={globalScanPath}
-                      onChange={(e) => setGlobalScanPath(e.target.value)}
-                      placeholder="/host/my-project"
-                      className="w-full bg-surface-bright border border-[rgba(255,255,255,0.06)] rounded-xl pl-10 pr-4 py-3 text-[13px] text-[#a1a1aa] placeholder:text-[#3f3f46] outline-none focus:border-[rgba(255,255,255,0.15)] transition-all font-mono"
-                    />
-                  </div>
-                  <button
-                    onClick={() => handleGlobalScan(globalScanPath)}
-                    className="v2-btn px-6 border border-[#27272a] hover:bg-[rgba(255,255,255,0.03)] text-white font-semibold text-[13px] rounded-xl flex items-center gap-2 h-[46px] transition-all cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">play_arrow</span>
-                    Scan Now
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-
             {/* ── TOP BENTO ROW ── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
               

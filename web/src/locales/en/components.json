@@ -25,6 +25,7 @@
   "general": "General",
   "select_accent_palette": "SELECT_ACCENT_PALETTE",
   "select_background_palette": "SELECT_BACKGROUND_PALETTE",
+  "background_animation": "Background Animation",
   "danger_zone": "Danger Zone",
   "danger_zone_desc": "These actions are irreversible and will permanently delete data from the database.",
   "clear_findings_cache": "Clear Findings Cache",

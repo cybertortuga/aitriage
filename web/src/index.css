@@ -365,8 +365,8 @@ html[data-accent="green"] {
 body {
   font-family: var(--font-sans);
   background: 
-    radial-gradient(circle at 10% 20%, color-mix(in srgb, var(--accent-color) 12%, transparent) 0%, transparent 45%),
-    radial-gradient(circle at 90% 80%, color-mix(in srgb, var(--accent-color) 8%, transparent) 0%, transparent 45%),
+    radial-gradient(circle at 10% 20%, color-mix(in srgb, var(--bg-accent-a) 12%, transparent) 0%, transparent 45%),
+    radial-gradient(circle at 90% 80%, color-mix(in srgb, var(--bg-accent-b) 10%, transparent) 0%, transparent 45%),
     linear-gradient(135deg, var(--bg-color-deep) 0%, var(--bg-color-soft) 50%, var(--bg-color-deep) 100%) fixed;
   color: #f4f4f5;
   -webkit-font-smoothing: antialiased;
@@ -710,6 +710,35 @@ body {
   }
 }
 
+@keyframes ambient-bg-drift {
+  0% {
+    transform: translate3d(-2%, -1%, 0) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translate3d(2%, 3%, 0) rotate(8deg) scale(1.05);
+  }
+  100% {
+    transform: translate3d(-1%, 2%, 0) rotate(-6deg) scale(1.02);
+  }
+}
+
+.ambient-bg-motion {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.72;
+  filter: blur(90px) saturate(1.2);
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--bg-accent-a) 32%, transparent) 0%, transparent 34%),
+    radial-gradient(circle at 86% 16%, color-mix(in srgb, var(--bg-accent-b) 26%, transparent) 0%, transparent 32%),
+    radial-gradient(circle at 45% 92%, color-mix(in srgb, var(--accent-color) 18%, transparent) 0%, transparent 38%);
+  animation: ambient-bg-drift 24s ease-in-out infinite alternate;
+  transition: background 0.6s ease, opacity 0.3s ease;
+  will-change: transform;
+}
+
 .luxury-glow-orb-1 {
   position: absolute;
   width: 750px;
@@ -829,11 +858,34 @@ body {
     ),
     linear-gradient(
       135deg,
-      color-mix(in srgb, var(--accent-color) 5%, var(--bg-color)) 0%,
+      color-mix(in srgb, var(--bg-accent-a) 14%, var(--bg-color)) 0%,
       var(--bg-color) 40%,
       var(--bg-color) 60%,
-      color-mix(in srgb, var(--accent-color) 3%, var(--bg-color)) 100%
+      color-mix(in srgb, var(--bg-accent-b) 16%, var(--bg-color)) 100%
     );
+  background-size: 160% 160%;
+  animation: simple-gradient-pan 18s ease-in-out infinite alternate;
+}
+
+@keyframes simple-gradient-pan {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 100% 50%;
+  }
+}
+
+html[data-bg-motion="off"] .ambient-bg-motion,
+html[data-bg-motion="off"] .luxury-glow-orb-1,
+html[data-bg-motion="off"] .luxury-glow-orb-2,
+html[data-bg-motion="off"] .luxury-glow-orb-3,
+html[data-bg-motion="off"] .simple-bg-gradient {
+  animation: none !important;
+}
+
+html[data-bg-motion="off"] .ambient-bg-motion {
+  opacity: 0.35;
 }
 
 /* ── LANGUAGE CHANGE TRANSITION ── */

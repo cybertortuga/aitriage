@@ -20,12 +20,12 @@ const PALETTES = [
 ];
 
 const BACKGROUND_PALETTES = [
-  { id: 'obsidian', name: 'Obsidian Black', hex: '#0a0a0b', surface: '#18181b' },
-  { id: 'graphite', name: 'Graphite Steel', hex: '#101014', surface: '#202028' },
-  { id: 'midnight', name: 'Midnight Navy', hex: '#07111f', surface: '#142238' },
-  { id: 'bordeaux', name: 'Bordeaux Noir', hex: '#13070d', surface: '#25131d' },
-  { id: 'evergreen', name: 'Evergreen Vault', hex: '#06120f', surface: '#142820' },
-  { id: 'indigo', name: 'Indigo Depth', hex: '#0b0a19', surface: '#1d1a35' },
+  { id: 'obsidian', name: 'Obsidian Black', hex: '#050506', surface: '#1a1a1e', glow: '#52525b' },
+  { id: 'graphite', name: 'Arctic Steel', hex: '#0b111c', surface: '#1e293b', glow: '#38bdf8' },
+  { id: 'midnight', name: 'Cobalt Abyss', hex: '#020b1f', surface: '#0b2454', glow: '#0ea5e9' },
+  { id: 'bordeaux', name: 'Crimson Reactor', hex: '#18030b', surface: '#3a0d1e', glow: '#f43f5e' },
+  { id: 'evergreen', name: 'Emerald Matrix', hex: '#02120d', surface: '#0a3525', glow: '#34d399' },
+  { id: 'indigo', name: 'Ultraviolet Core', hex: '#0b0520', surface: '#241454', glow: '#a855f7' },
 ];
 
 export const Header: React.FC = () => {
@@ -55,6 +55,13 @@ export const Header: React.FC = () => {
       return 'obsidian';
     }
   });
+  const [backgroundMotion, setBackgroundMotion] = React.useState(() => {
+    try {
+      return localStorage.getItem('aitriage_background_motion') !== 'off';
+    } catch {
+      return true;
+    }
+  });
 
   React.useEffect(() => {
     try {
@@ -69,6 +76,14 @@ export const Header: React.FC = () => {
     } catch {}
     document.documentElement.setAttribute('data-bg', background);
   }, [background]);
+
+  React.useEffect(() => {
+    const motionValue = backgroundMotion ? 'on' : 'off';
+    try {
+      localStorage.setItem('aitriage_background_motion', motionValue);
+    } catch {}
+    document.documentElement.setAttribute('data-bg-motion', motionValue);
+  }, [backgroundMotion]);
 
   React.useEffect(() => {
     const handleAccentChange = () => {
@@ -324,6 +339,29 @@ export const Header: React.FC = () => {
 
                         <section className="space-y-4">
                           <label className="text-[10px] text-[#71717a] tracking-[0.2em] font-semibold uppercase">{t('components.select_background_palette')}</label>
+                          <div className="flex items-center justify-between p-4 rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.015)]">
+                            <div className="flex items-center gap-3">
+                              <span className="material-symbols-outlined text-[17px] text-[var(--accent-color)]">animation</span>
+                              <span className="text-[11px] font-mono tracking-widest text-[#f4f4f5] uppercase">{t('components.background_animation')}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setBackgroundMotion((value) => !value)}
+                              className={`relative h-7 w-12 rounded-full border transition-all duration-300 ${
+                                backgroundMotion
+                                  ? 'bg-[var(--accent-color)] border-[var(--accent-color-line)]'
+                                  : 'bg-[rgba(255,255,255,0.08)] border-[rgba(255,255,255,0.08)]'
+                              }`}
+                              aria-pressed={backgroundMotion}
+                              title={t('components.background_animation')}
+                            >
+                              <span
+                                className={`absolute top-1 h-5 w-5 rounded-full bg-[#f4f4f5] transition-all duration-300 ${
+                                  backgroundMotion ? 'left-6' : 'left-1'
+                                }`}
+                              />
+                            </button>
+                          </div>
                           <div className="grid grid-cols-2 gap-4">
                             {BACKGROUND_PALETTES.map((p) => {
                               const isActive = background === p.id;
@@ -338,7 +376,7 @@ export const Header: React.FC = () => {
                                     document.documentElement.setAttribute('data-bg', p.id);
                                     window.dispatchEvent(new Event('aitriage_background_change'));
                                   }}
-                                  className={`group flex items-center gap-4 p-4 rounded-xl transition-all duration-300 text-left relative overflow-hidden ${
+                                  className={`group flex items-center gap-4 p-3 rounded-xl transition-all duration-300 text-left relative overflow-hidden min-h-[76px] ${
                                     isActive
                                       ? 'bg-[rgba(255,255,255,0.03)] border border-[var(--accent-color-line)] shadow-[0_0_20px_var(--accent-color-soft)]'
                                       : 'bg-[rgba(255,255,255,0.01)] border border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.1)]'
@@ -346,14 +384,19 @@ export const Header: React.FC = () => {
                                 >
                                   {isActive && <div className="absolute inset-0 bg-gradient-to-r from-[var(--accent-color-soft)] to-transparent opacity-50" />}
                                   <span
-                                    className="w-4 h-4 rounded-full shrink-0 relative z-10 shadow-lg border border-white/10"
+                                    className="h-11 w-16 rounded-lg shrink-0 relative z-10 shadow-lg border border-white/10 overflow-hidden"
                                     style={{
-                                      background: `linear-gradient(135deg, ${p.hex}, ${p.surface})`,
-                                      boxShadow: isActive ? `0 0 12px ${p.surface}` : 'none',
+                                      background: `radial-gradient(circle at 20% 25%, ${p.glow} 0%, transparent 32%), linear-gradient(135deg, ${p.hex} 0%, ${p.surface} 68%, ${p.glow} 140%)`,
+                                      boxShadow: isActive ? `0 0 18px color-mix(in srgb, ${p.glow} 45%, transparent)` : 'none',
                                     }}
                                   />
-                                  <span className={`text-[11px] font-mono tracking-widest truncate relative z-10 transition-colors ${isActive ? 'text-[#f4f4f5] font-bold' : 'text-[#a1a1aa] group-hover:text-[#f4f4f5]'}`}>
-                                    {p.name.toUpperCase()}
+                                  <span className="min-w-0 relative z-10 flex flex-col gap-1">
+                                    <span className={`text-[11px] font-mono tracking-widest truncate transition-colors ${isActive ? 'text-[#f4f4f5] font-bold' : 'text-[#a1a1aa] group-hover:text-[#f4f4f5]'}`}>
+                                      {p.name.toUpperCase()}
+                                    </span>
+                                    <span className="text-[9px] font-mono tracking-[0.18em] text-[#52525b] uppercase">
+                                      {p.hex}
+                                    </span>
                                   </span>
                                 </button>
                               );

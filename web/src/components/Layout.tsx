@@ -154,13 +154,17 @@ export const Layout: React.FC = () => {
       {/* Background — mode-specific */}
       {viewMode === 'advanced' ? (
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+          <div className="ambient-bg-motion" />
           <div className="luxury-glow-orb-1" />
           <div className="luxury-glow-orb-2" />
           <div className="luxury-glow-orb-3" />
           <div className="absolute inset-0 grid-bg opacity-25" />
         </div>
       ) : (
-        <div className="absolute inset-0 pointer-events-none z-0 simple-bg-gradient" />
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+          <div className="absolute inset-0 simple-bg-gradient" />
+          <div className="ambient-bg-motion" />
+        </div>
       )}
 
       <Header />
