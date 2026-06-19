@@ -25,10 +25,9 @@ concurrency:
 
 jobs:
   build-push:
-    # Publishing an image is reserved for the configured repository owner.
-    if: >-
-      vars.AITRIAGE_ALLOWED_ACTOR_ID != '' &&
-      github.actor_id == vars.AITRIAGE_ALLOWED_ACTOR_ID
+    # Publishing an image is reserved for the repository owner's immutable
+    # GitHub account ID. This repository deliberately has one operator.
+    if: github.actor_id == '184216056'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
