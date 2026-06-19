@@ -753,7 +753,6 @@ func writeHumanSummary(sb *strings.Builder, state *AgentState, actionable []acti
 		sb.WriteString("### ⚠️ Top Critical Issues\n\n")
 
 		type ranked struct {
-			rank     int
 			severity string
 			vulnID   string
 			file     string
