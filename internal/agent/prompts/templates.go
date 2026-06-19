@@ -335,7 +335,17 @@ const FixSpecUserPromptTemplate = `Based on the following security report, gener
 
 Remember: describe problems, not solutions. The AI IDE will write the code.
 
-Security Report:
+## Repository Context
+
+**Repository**: %s
+**Tech Stack**: %s
+
+### Project Structure
+` + "```" + `
+%s
+` + "```" + `
+
+## Security Report
 %s`
 
 // ── Vulnerability ID Generation ──────────────────────────────────────────────

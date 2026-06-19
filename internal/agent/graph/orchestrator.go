@@ -739,7 +739,28 @@ func generateSummary(state *AgentState) {
 }
 
 func generateAIFixSpec(ctx context.Context, state *AgentState, llmClient llm.Client) error {
-	userPrompt := fmt.Sprintf(prompts.FixSpecUserPromptTemplate, state.ReportMarkdown)
+	// Extract repository name from project path (last path component)
+	repoName := filepath.Base(state.ProjectPath)
+	if repoName == "." || repoName == "/" {
+		repoName = "unknown"
+	}
+
+	// Get stack and project tree from RepoContext
+	stack := "Not detected"
+	projectTree := ""
+	if state.RepoContext != nil {
+		if state.RepoContext.Stack != "" {
+			stack = state.RepoContext.Stack
+		}
+		if state.RepoContext.ProjectTree != "" {
+			projectTree = state.RepoContext.ProjectTree
+			if len(projectTree) > 3000 {
+				projectTree = projectTree[:3000] + "\n... (truncated)"
+			}
+		}
+	}
+
+	userPrompt := fmt.Sprintf(prompts.FixSpecUserPromptTemplate, repoName, stack, projectTree, state.ReportMarkdown)
 
 	messages := []llm.Message{
 		{Role: "system", Content: prompts.FixSpecSystemPrompt},
