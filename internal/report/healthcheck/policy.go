@@ -18,7 +18,7 @@ const (
 )
 
 // Policy defines the security requirements used to decide whether a repository
-// may pass an IB gate. Score remains informational; Verdict is the gate answer.
+// may pass the security gate. Score remains informational; Verdict is the gate answer.
 type Policy struct {
 	Profile      string   `json:"profile"`
 	FailOn       string   `json:"fail_on"`
@@ -30,7 +30,7 @@ type Policy struct {
 	BlockClasses []string `json:"block_classes,omitempty"`
 }
 
-// Verdict is the CI/CD-ready answer to "can this project pass IB requirements?".
+// Verdict is the CI/CD-ready answer to "can this project pass its security policy?".
 type Verdict struct {
 	Passed          bool             `json:"passed"`
 	Status          string           `json:"status"`
@@ -104,7 +104,7 @@ func EvaluatePolicy(res Result, policy Policy) Verdict {
 		return Verdict{
 			Passed:  true,
 			Status:  "passed",
-			Summary: "IB policy gate disabled by fail_on=never",
+			Summary: "Security gate disabled by fail_on=never",
 		}
 	}
 
@@ -180,14 +180,14 @@ func EvaluatePolicy(res Result, policy Policy) Verdict {
 		return Verdict{
 			Passed:  true,
 			Status:  "passed",
-			Summary: fmt.Sprintf("IB policy %q passed", policy.Profile),
+			Summary: fmt.Sprintf("Security policy %q passed", policy.Profile),
 		}
 	}
 
 	return Verdict{
 		Passed:          false,
 		Status:          "failed",
-		Summary:         fmt.Sprintf("IB policy %q failed with %d blocking reason(s)", policy.Profile, len(reasons)),
+		Summary:         fmt.Sprintf("Security policy %q failed with %d blocking reason(s)", policy.Profile, len(reasons)),
 		BlockingReasons: reasons,
 	}
 }

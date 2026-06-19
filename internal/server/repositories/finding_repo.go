@@ -149,6 +149,34 @@ func (r *FindingRepository) List(ctx context.Context, engagementID int64) ([]mod
 	return findings, nil
 }
 
+func (r *FindingRepository) ListByProductID(ctx context.Context, productID int64) ([]models.Finding, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, engagement_id, product_id, rule_id, title, severity, cvss_score, cve_id, cwe_id, file_path, line_number, col_number, code_snippet, description, impact, fix_suggestion, references_, hash_code, is_duplicate, duplicate_of, status, kanban_column, sla_deadline, sla_breached, risk_accepted, risk_accepted_by, risk_accepted_reason, risk_accepted_expiry, assigned_to, is_verified, verified_by, verified_at, created_at, updated_at, resolved_at, resolved_by, is_false_positive, fp_reason, stack, ai_triage_status, ai_triage_summary
+		FROM findings
+		WHERE product_id = ?
+		ORDER BY created_at DESC
+	`, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var findings []models.Finding
+	for rows.Next() {
+		var f models.Finding
+		if err := rows.Scan(&f.ID, &f.EngagementID, &f.ProductID, &f.RuleID, &f.Title, &f.Severity, &f.CVSSScore, &f.CVEID, &f.CWEID, &f.FilePath, &f.LineNumber, &f.ColNumber, &f.CodeSnippet, &f.Description, &f.Impact, &f.FixSuggestion, &f.References, &f.HashCode, &f.IsDuplicate, &f.DuplicateOf, &f.Status, &f.KanbanColumn, &f.SLADeadline, &f.SLABreached, &f.RiskAccepted, &f.RiskAcceptedBy, &f.RiskAcceptedReason, &f.RiskAcceptedExpiry, &f.AssignedTo, &f.IsVerified, &f.VerifiedBy, &f.VerifiedAt, &f.CreatedAt, &f.UpdatedAt, &f.ResolvedAt, &f.ResolvedBy, &f.IsFalsePositive, &f.FPReason, &f.Stack, &f.AITriageStatus, &f.AITriageSummary); err != nil {
+			return nil, err
+		}
+		findings = append(findings, f)
+	}
+	for i := range findings {
+		if findings[i].Status == "" {
+			findings[i].Status = "open"
+		}
+	}
+	return findings, nil
+}
+
 func (r *FindingRepository) ListAll(ctx context.Context) ([]models.Finding, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, engagement_id, product_id, rule_id, title, severity, cvss_score, cve_id, cwe_id, file_path, line_number, col_number, code_snippet, description, impact, fix_suggestion, references_, hash_code, is_duplicate, duplicate_of, status, kanban_column, sla_deadline, sla_breached, risk_accepted, risk_accepted_by, risk_accepted_reason, risk_accepted_expiry, assigned_to, is_verified, verified_by, verified_at, created_at, updated_at, resolved_at, resolved_by, is_false_positive, fp_reason, stack, ai_triage_status, ai_triage_summary

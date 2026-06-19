@@ -3,6 +3,8 @@ package repositories
 import (
 	"context"
 	"database/sql"
+
+	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
 )
 
 type MetricsRepository struct {
@@ -122,27 +124,36 @@ func (r *MetricsRepository) GetDashboardMetrics(ctx context.Context) (*Dashboard
 		metrics.SeverityCounts[severity] = count
 	}
 
-	// Compute security score: 100 - weighted penalty
-	critCount := metrics.SeverityCounts["CRITICAL"]
-	highCount := metrics.SeverityCounts["HIGH"]
-	medCount := metrics.SeverityCounts["MEDIUM"]
-	lowCount := metrics.SeverityCounts["LOW"]
-	penalty := critCount*10 + highCount*4 + medCount*1 + lowCount*0
-	metrics.SecurityScore = 100 - penalty
-	if metrics.SecurityScore < 0 {
-		metrics.SecurityScore = 0
-	}
-	switch {
-	case metrics.SecurityScore >= 90:
-		metrics.SecurityGrade = "A"
-	case metrics.SecurityScore >= 80:
-		metrics.SecurityGrade = "B"
-	case metrics.SecurityScore >= 70:
-		metrics.SecurityGrade = "C"
-	case metrics.SecurityScore >= 50:
-		metrics.SecurityGrade = "D"
-	default:
-		metrics.SecurityGrade = "F"
+	// Compute security score using healthcheck
+	hcInput := healthcheck.Input{}
+	hcRows, err := r.db.QueryContext(ctx, `
+		SELECT COALESCE(source, 'unknown'), COALESCE(rule_id, 'unknown'), COALESCE(severity, 'INFO'), COALESCE(file_path, ''), COALESCE(line_number, 0), COALESCE(status, 'open')
+		FROM findings
+		WHERE status NOT IN ('resolved', 'closed')
+	`)
+	if err == nil {
+		defer hcRows.Close()
+		for hcRows.Next() {
+			var src, class, sev, file, status string
+			var line int
+			if err := hcRows.Scan(&src, &class, &sev, &file, &line, &status); err == nil {
+				ignored := (status == "false_positive" || status == "risk_accepted")
+				hcInput.Findings = append(hcInput.Findings, healthcheck.Finding{
+					Source:   src,
+					Class:    class,
+					Severity: sev,
+					File:     file,
+					Line:     line,
+					Ignored:  ignored,
+				})
+			}
+		}
+		res := healthcheck.Evaluate(hcInput)
+		metrics.SecurityScore = res.Score
+		metrics.SecurityGrade = res.Grade
+	} else {
+		metrics.SecurityScore = 100
+		metrics.SecurityGrade = "A+"
 	}
 
 	// Top risky products — products with highest open finding count

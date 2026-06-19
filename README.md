@@ -22,6 +22,17 @@
 
 ---
 
+## At a Glance
+
+- **Deterministic scans first:** run built-in rules and integrated scanners, then apply a reproducible policy gate.
+- **AI triage is optional:** use an LLM to prioritize findings and produce fix specifications without making the deterministic gate dependent on the model.
+- **Built for local development and CI:** scan a repository, enforce a baseline-aware policy in GitHub Actions, or expose security context through MCP.
+- **Go 1.25+ for source builds:** released binaries and the Homebrew formula do not require a local Go toolchain.
+
+See the [integration guide](docs/INTEGRATION.md), [architecture](docs/ARCHITECTURE.md), and [API reference](docs/API_REFERENCE.md) for deeper detail.
+
+---
+
 ## Why AITriage?
 
 AI coding assistants generate code at light speed — but they also propagate **security vulnerabilities** just as fast. AITriage is a hybrid security scanner designed specifically for the post-AI software development era. It bridges the gap between deterministic pattern matching and intelligent context analysis by catching what traditional SAST tools often miss:
@@ -75,6 +86,9 @@ aitriage scan .
 
 # Run the interactive TUI dashboard
 aitriage scan . -i
+
+# See all supported commands and flags in the installed version
+aitriage --help
 ```
 
 ---
@@ -86,7 +100,8 @@ aitriage scan . -i
 aitriage scan .                    # Basic scan
 aitriage scan . --format json      # Structured JSON output
 aitriage scan . --format sarif     # SARIF 2.1 stream for CI platforms
-aitriage scan . -o results.sarif   # Write SARIF to file and display TUI logs
+aitriage scan . --format sarif -o results.sarif # Write SARIF to a file
+aitriage scan . --health-profile standard       # Apply the standard policy profile
 ```
 
 ### Incremental Scanning
@@ -109,6 +124,10 @@ aitriage scan . --baseline         # Scan and hide baseline findings (fails only
 aitriage fix .                     # Generate fix specifications for issues
 aitriage fix . --dry-run           # Preview changes without editing files
 aitriage fix . --severity high     # Only generate fixes for high+ issues
+
+# Deterministic fixes: dry run by default; writes only with --apply
+aitriage autofix .
+aitriage autofix . --apply
 ```
 
 ### Sentinel (Watch Mode)
@@ -134,27 +153,41 @@ aitriage rules install owasp-2025  # Install specific package from registry
 aitriage init                      # Launch onboarding setup wizard
 aitriage init --ci --pre-commit    # Generate config + pre-commit hook + GHA workflow
 aitriage install-mcp               # Install AITriage as an MCP Server
+aitriage serve                      # Run the MCP server over stdio
+aitriage serve --transport sse --port 8080
 ```
+
+### Web Dashboard
+```bash
+# Start the browser dashboard from the repository checkout
+docker compose up -d web
+
+# Or scan a mounted host filesystem with the published image
+docker run --rm -p 8080:8080 -v /:/host:ro \
+  ghcr.io/cybertortuga/aitriage web
+```
+
+Open `http://localhost:8080` after the service starts. See the [deployment guide](docs/DEPLOYMENT.md) for production configuration.
 
 ---
 
 ## Built-in Rules Ecosystem
 
-AITriage ships with **180+ static security rules** across 11 technology stacks, loaded directly from the [rules/](file:///Users/afedotov/Documents/GitHub/aitriage/rules/) directory at compile time.
+AITriage ships with **180+ static security rules** across 11 technology stacks, loaded directly from the [rules/](rules/) directory at compile time. The current rule catalog is maintained in [rules/README.md](rules/README.md).
 
 | Technology | Rules | Key Detections |
 | :--- | :--- | :--- |
-| **[Universal](file:///Users/afedotov/Documents/GitHub/aitriage/rules/universal/)** | 28 | Plaintext keys, weak cryptography, SSRF, prototype pollution, AI residue |
-| **[Next.js / React](file:///Users/afedotov/Documents/GitHub/aitriage/rules/nextjs/)** | 28 | Cross-site Scripting (XSS), server-side injection, raw DOM nodes |
-| **[FastAPI](file:///Users/afedotov/Documents/GitHub/aitriage/rules/fastapi/)** | 22 | Unsafe pickle loaders, SSTI, synchronous database calls inside async handlers |
-| **[Flask](file:///Users/afedotov/Documents/GitHub/aitriage/rules/flask/)** | 14 | Dev debug flags, SSTI, unescaped templates, insecure cookies |
-| **[Django](file:///Users/afedotov/Documents/GitHub/aitriage/rules/django/)** | 16 | Missing CSRF middleware, raw SQL exec, DEBUG mode enabled |
-| **[ExpressJS](file:///Users/afedotov/Documents/GitHub/aitriage/rules/express/)** | 14 | Missing helmet protection, NoSQL injection patterns, shell child processes |
-| **[Go](file:///Users/afedotov/Documents/GitHub/aitriage/rules/golang/)** | 14 | SSRF, unsafe pointers, crypto/rand package omission, error swallowing |
-| **[Python](file:///Users/afedotov/Documents/GitHub/aitriage/rules/python/)** | 13 | YAML unsafe loading, subprocess shells, eval/exec execution |
-| **[LLM / AI Security](file:///Users/afedotov/Documents/GitHub/aitriage/rules/llm/)** | 10 | OWASP Top 10 for LLMs: prompt injections, execution flows, excessive agency |
-| **[Docker / IaC](file:///Users/afedotov/Documents/GitHub/aitriage/rules/docker/)** | 11 | Root user configurations, privileged containers, secret leakage in env keys |
-| **[ASP.NET Core](file:///Users/afedotov/Documents/GitHub/aitriage/rules/aspnetcore/)** | 10 | Deserialization flaws, unsafe XML parsing (XXE), CORS wildcards |
+| **[Universal](rules/universal/)** | 32 | Plaintext keys, weak cryptography, SSRF, prototype pollution, AI residue |
+| **[Next.js / React](rules/nextjs/)** | 28 | Cross-site scripting (XSS), server-side injection, raw DOM nodes |
+| **[FastAPI](rules/fastapi/)** | 25 | Unsafe pickle loaders, SSTI, synchronous database calls inside async handlers |
+| **[Flask](rules/flask/)** | 14 | Dev debug flags, SSTI, unescaped templates, insecure cookies |
+| **[Django](rules/django/)** | 16 | Missing CSRF middleware, raw SQL execution, DEBUG mode enabled |
+| **[ExpressJS](rules/express/)** | 14 | Missing helmet protection, NoSQL injection patterns, shell child processes |
+| **[Go](rules/golang/)** | 14 | SSRF, unsafe pointers, crypto/rand package omission, error swallowing |
+| **[Python](rules/python/)** | 12 | YAML unsafe loading, subprocess shells, eval/exec execution |
+| **[LLM / AI Security](rules/llm/)** | 10 | OWASP Top 10 for LLMs: prompt injections, execution flows, excessive agency |
+| **[Docker / IaC](rules/docker/)** | 11 | Root user configurations, privileged containers, secret leakage in env keys |
+| **[ASP.NET Core](rules/aspnetcore/)** | 10 | Deserialization flaws, unsafe XML parsing (XXE), CORS wildcards |
 
 ---
 
@@ -305,7 +338,7 @@ You can configure a profile via the `health-profile` action parameter or `.aitri
 *   **`strict`** (High-assurance systems): Blocks on *any* active vulnerability (critical, high, or medium) and requires a minimum score of `90`.
 
 ### 2. Configuration Options
-Configure your security policy details in [.aitriage.yaml](file:///Users/afedotov/Documents/GitHub/aitriage/.aitriage.yaml.example):
+Configure your security policy details in [`.aitriage.yaml`](.aitriage.yaml.example):
 
 ```yaml
 health_check:
@@ -354,18 +387,18 @@ Start the enterprise stack (Web UI, API server, and SQLite storage) via Docker C
 # Start the stack in background daemon mode
 docker compose up -d
 ```
-See [docs/DEPLOYMENT.md](file:///Users/afedotov/Documents/GitHub/aitriage/docs/DEPLOYMENT.md) for full system deployment details.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for full system deployment details.
 
 ---
 
 ## Project Structure
 
-*   [cmd/](file:///Users/afedotov/Documents/GitHub/aitriage/cmd/) — CLI commands and sub-command definitions.
-*   [internal/](file:///Users/afedotov/Documents/GitHub/aitriage/internal/) — Core Go library, AST query processing engines, scoring, and telemetry logic.
-*   [rules/](file:///Users/afedotov/Documents/GitHub/aitriage/rules/) — Static security rule patterns grouped by stack.
-*   [web/](file:///Users/afedotov/Documents/GitHub/aitriage/web/) — Vite-powered React/TypeScript web app.
-*   [docs/](file:///Users/afedotov/Documents/GitHub/aitriage/docs/) — Architecture details, guidelines, and manuals.
-*   [testdata/](file:///Users/afedotov/Documents/GitHub/aitriage/testdata/) — Standard sample repositories containing security flaws for engine testing.
+*   [cmd/](cmd/) — CLI commands and sub-command definitions.
+*   [internal/](internal/) — Core Go library, AST query processing engines, scoring, and telemetry logic.
+*   [rules/](rules/) — Static security rule patterns grouped by stack.
+*   [web/](web/) — Vite-powered React/TypeScript web app.
+*   [docs/](docs/) — Architecture details, guidelines, and manuals.
+*   [testdata/](testdata/) — Standard sample repositories containing security flaws for engine testing.
 
 ---
 

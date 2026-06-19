@@ -2,6 +2,8 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFindings } from '../hooks/useFindings';
 import { useMetrics } from '../hooks/useMetrics';
+import { usePrompts, interpolatePrompt } from '../hooks/usePrompts';
+import type { PromptTemplate } from '../hooks/usePrompts';
 import { useCopilotStore } from '../store/CopilotStore';
 import { useTitle } from '../hooks/useTitle';
 import type { Finding } from '../types';
@@ -9,155 +11,12 @@ import { CountUp } from '../ui/CountUp';
 import { AnimatedProgressCircle } from '../ui/AnimatedProgressCircle';
 import { AIPromptsPanel } from '../components/AIPromptsPanel';
 
-const PROMPT_TEMPLATES = [
-  {
-    id: 'fix',
-    label: 'FIX_CODE',
-    icon: 'auto_fix_high',
-    desc: 'Generate secure patch',
-    color: 'text-v2-red',
-    buildPrompt: (f: Finding) => `You are a senior security engineer performing code remediation.
-
-## FINDING
-- **Title**: ${f.title}
-- **Severity**: ${f.severity}
-- **Rule**: ${f.rule_id || 'N/A'}
-- **File**: ${f.file_path || f.file || 'N/A'}${f.line_number ? `:${f.line_number}` : ''}
-- **Stack**: ${f.stack || 'unknown'}
-
-## DESCRIPTION
-${f.description || f.fix_suggestion || f.suggestion || 'No description available.'}
-
-## TASK
-1. Write a MINIMAL secure code patch that fixes this vulnerability
-2. Show the fix as a diff (before/after)
-3. Explain WHY the original code is vulnerable
-4. Provide a test case to verify the fix works
-5. List any related issues this fix might introduce
-
-Output format: markdown with code blocks.`,
-  },
-  {
-    id: 'explain',
-    label: 'EXPLAIN',
-    icon: 'school',
-    desc: 'Deep-dive analysis',
-    color: 'text-white',
-    buildPrompt: (
-      f: Finding,
-    ) => `You are a security researcher writing an educational analysis for a development team.
-
-## VULNERABILITY
-- **Title**: ${f.title}
-- **Severity**: ${f.severity}
-- **CWE**: ${f.cwe_id || 'Not mapped'}
-- **File**: ${f.file_path || f.file || 'N/A'}
-
-## ANALYSIS REQUIRED
-1. **What is this vulnerability?** — Explain in plain English what ${f.title} means
-2. **Why is it dangerous?** — Real-world attack scenarios with severity ${f.severity}
-3. **How does it work?** — Step-by-step exploitation flow
-4. **Fix patterns** — Common remediation approaches ranked by effectiveness
-5. **Defense in depth** — Additional layers beyond the immediate fix
-
-Be specific to the tech stack: ${f.stack || 'unknown'}`,
-  },
-  {
-    id: 'stride',
-    label: 'STRIDE',
-    icon: 'security',
-    desc: 'Threat model',
-    color: 'text-white',
-    buildPrompt: (f: Finding) => `You are a threat modeling expert performing STRIDE analysis.
-
-## TARGET FINDING
-- **${f.title}** (${f.severity})
-- File: ${f.file_path || f.file || 'N/A'}
-- Stack: ${f.stack || 'unknown'}
-- Description: ${f.description || f.suggestion || 'N/A'}
-
-## STRIDE ANALYSIS
-For each category, analyze this specific vulnerability:
-
-| Category | Threat | Likelihood | Impact | Mitigation |
-|----------|--------|-----------|--------|------------|
-| **S**poofing | ? | ? | ? | ? |
-| **T**ampering | ? | ? | ? | ? |
-| **R**epudiation | ? | ? | ? | ? |
-| **I**nfo Disclosure | ? | ? | ? | ? |
-| **D**enial of Service | ? | ? | ? | ? |
-| **E**levation of Privilege | ? | ? | ? | ? |
-
-Also provide:
-- Risk score (CVSS 3.1 estimate)
-- Priority ranking relative to other ${f.severity} findings`,
-  },
-  {
-    id: 'verify',
-    label: 'VERIFY',
-    icon: 'bug_report',
-    desc: 'PoC & test plan',
-    color: 'text-v2-muted',
-    buildPrompt: (
-      f: Finding,
-    ) => `You are a penetration tester creating a safe proof-of-concept and verification plan.
-
-## VULNERABILITY
-- **${f.title}** (${f.severity})
-- File: ${f.file_path || f.file || 'N/A'}:${f.line_number || '?'}
-- Stack: ${f.stack || 'unknown'}
-
-## DELIVERABLES
-
-### 1. Safe PoC (Non-Destructive)
-Write a proof-of-concept that demonstrates the vulnerability is real.
-Must be: safe, non-destructive, auditable, reversible.
-
-### 2. Verification Steps
-Provide exact commands/scripts to verify:
-a) The vulnerability EXISTS (before fix)
-b) The vulnerability is REMEDIATED (after fix)
-
-### 3. Regression Test
-Write a unit/integration test that:
-- Passes when the code is SECURE
-- Fails when the code is VULNERABLE
-
-Note: ALL PoCs MUST BE SAFE AND NON-DESTRUCTIVE`,
-  },
-  {
-    id: 'ignore',
-    label: 'RISK_ACCEPT',
-    icon: 'shield',
-    desc: 'Justify acceptance',
-    color: 'text-v2-muted',
-    buildPrompt: (
-      f: Finding,
-    ) => `You are a security governance advisor evaluating whether a finding can be risk-accepted.
-
-## FINDING
-- **${f.title}** (${f.severity})
-- File: ${f.file_path || f.file || 'N/A'}
-- Rule: ${f.rule_id || 'N/A'}
-
-## RISK ACCEPTANCE EVALUATION
-Analyze whether this finding can be safely risk-accepted:
-
-1. **Is this a false positive?** — Could the scanner be wrong? What evidence supports/refutes?
-2. **Compensating controls** — Are there other defenses that mitigate this risk?
-3. **Exploitability** — What is the realistic attack surface? Is it reachable?
-4. **Recommendation** — ACCEPT / REJECT with justification
-5. **Conditions** — If accepted, what conditions or time limits should apply?
-
-Be honest and conservative. If in doubt, recommend fixing.`,
-  },
-];
-
 export const DashboardPage: React.FC = () => {
   const { t } = useTranslation('pages');
   useTitle(t('dashboard.title'));
   const { findings, loading: findingsLoading } = useFindings() as any;
   const { metrics, loading: metricsLoading } = useMetrics();
+  const { templates: PROMPT_TEMPLATES, loading: promptsLoading } = usePrompts();
   const { setIsOpen, setContext } = useCopilotStore();
 
   const [selectedFindingId, setSelectedFindingId] = useState<number | null>(null);
@@ -174,7 +33,7 @@ export const DashboardPage: React.FC = () => {
   });
   const [filterSev, setFilterSev] = useState<string | null>(null);
 
-  const loading = findingsLoading || metricsLoading;
+  const loading = findingsLoading || metricsLoading || promptsLoading;
   const selectedFinding: Finding | null =
     findings?.find((f: Finding) => f.id === selectedFindingId) || null;
 
@@ -227,12 +86,12 @@ export const DashboardPage: React.FC = () => {
   const handleAction = useCallback(
     (actionId: string) => {
       if (!selectedFinding) return;
-      const template = PROMPT_TEMPLATES.find((t) => t.id === actionId);
+      const template = PROMPT_TEMPLATES.find((t: PromptTemplate) => t.id === actionId);
       if (!template) return;
       setActiveAction(actionId);
-      setActivePrompt(template.buildPrompt(selectedFinding));
+      setActivePrompt(interpolatePrompt(template.template, selectedFinding));
     },
-    [selectedFinding],
+    [selectedFinding, PROMPT_TEMPLATES],
   );
 
   const handleCopy = useCallback(() => {

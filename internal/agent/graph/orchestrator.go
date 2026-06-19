@@ -31,15 +31,13 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	// SecureCoder Step 1: Threat Model (classifies each finding as TP/FP/NR)
 	fmt.Fprintf(os.Stderr, "🏗️ Building Threat Model (SecureCoder)...\n")
 	if err := buildThreatModel(ctx, state, llmClient); err != nil {
-		// Non-fatal: continue without threat model
-		fmt.Fprintf(os.Stderr, "⚠️ Threat model step failed (continuing): %v\n", err)
+		return fmt.Errorf("threat-model analysis failed: %w", err)
 	}
 
 	// SecureCoder Step 2: PoC Verification (proves exploitability of True Positives)
 	fmt.Fprintf(os.Stderr, "🧪 PoC Verification (SecureCoder)...\n")
 	if err := runPoCVerification(ctx, state, llmClient); err != nil {
-		// Non-fatal: continue without PoC
-		fmt.Fprintf(os.Stderr, "⚠️ PoC verification step failed (continuing): %v\n", err)
+		return fmt.Errorf("PoC verification failed: %w", err)
 	}
 
 	// Health Check: compute AFTER all triage is complete (Threat Model + PoC).
@@ -57,23 +55,21 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 		return err
 	}
 
-	// Deterministic actionable summary (no LLM) for GHA Step Summary.
-	// Contains only True Positives + Needs Review — False Positives are excluded.
-	fmt.Fprintf(os.Stderr, "📋 Generating Actionable Summary (TP/NR only)...\n")
-	generateSummary(state)
-
 	fmt.Fprintf(os.Stderr, "🤖 Generating AI Fix Specification...\n")
 	if err := generateAIFixSpec(ctx, state, llmClient); err != nil {
 		return err
 	}
 
+	// Generate the final summary only after every required AI stage has finished,
+	// so its usage and findings cannot be partial or pre-triage.
+	fmt.Fprintf(os.Stderr, "📋 Generating Actionable Summary (TP/NR only)...\n")
+	generateSummary(state)
+
 	// Print LLM usage summary
 	u := state.TotalUsage
 	if u.TotalTokens > 0 {
-		// Rough cost estimate (Gemini 2.5 Flash pricing: ~$0.15/1M input, ~$0.60/1M output)
-		estCost := float64(u.PromptTokens)*0.00000015 + float64(u.CompletionTokens)*0.0000006
-		fmt.Fprintf(os.Stderr, "\n💰 LLM Usage: %d tokens (prompt: %d, completion: %d) — est. cost $%.4f\n",
-			u.TotalTokens, u.PromptTokens, u.CompletionTokens, estCost)
+		fmt.Fprintf(os.Stderr, "\nLLM usage (provider reported): %s. Cost is not estimated because it depends on provider, model, caching, and billing tier.\n",
+			formatLLMUsage(u))
 	}
 
 	return nil
@@ -177,7 +173,7 @@ func enrichFindings(state *AgentState) {
 	}
 }
 
-// computeHealthCheck recomputes the authoritative IB Health Check across ALL
+// computeHealthCheck recomputes the authoritative Security Health Check across ALL
 // scanner sources (core, external, NFR, deploy, network) and applies AI triage
 // dispositions: findings classified as False Positive are excluded from the
 // penalty. The result becomes the canonical SecurityScore/SecurityGrade.
@@ -273,6 +269,11 @@ func assignVulnIDs(findings []EnrichedFinding) {
 	}
 }
 
+// AssignVulnIDsPublic is the exported version of assignVulnIDs for use by the web pipeline.
+func AssignVulnIDsPublic(findings []EnrichedFinding) {
+	assignVulnIDs(findings)
+}
+
 // classifyVulnCode maps a finding message to a short vulnerability class code.
 func classifyVulnCode(message string) string {
 	lower := strings.ToLower(message)
@@ -341,17 +342,7 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 	}
 
 	if err := json.Unmarshal([]byte(jsonText), &rawResult); err != nil {
-		// Fallback: mark all as True Positive if we can't parse
-		fmt.Fprintf(os.Stderr, "   ⚠️ Could not parse threat model JSON: %v (defaulting all to True Positive)\n", err)
-		for i, f := range state.EnrichedFindings {
-			state.FindingDispositions = append(state.FindingDispositions, FindingDisposition{
-				FindingIndex: i,
-				FindingID:    f.VulnID,
-				Disposition:  "True Positive",
-				Rationale:    "Could not build threat model; defaulting to True Positive.",
-			})
-		}
-		return nil
+		return fmt.Errorf("parse threat-model JSON: %w", err)
 	}
 
 	state.ThreatModel = &ThreatModel{
@@ -375,6 +366,9 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 			Rationale:    d.Rationale,
 		})
 	}
+	if err := validateFindingDispositions(state.FindingDispositions, len(state.EnrichedFindings)); err != nil {
+		return err
+	}
 
 	tp := 0
 	fp := 0
@@ -390,6 +384,34 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 		}
 	}
 	fmt.Fprintf(os.Stderr, "   ✅ Threat model: %d True Positives, %d False Positives, %d Needs Review\n", tp, fp, nr)
+
+	return nil
+}
+
+func validateFindingDispositions(dispositions []FindingDisposition, findingCount int) error {
+	if findingCount == 0 {
+		return nil
+	}
+	if len(dispositions) != findingCount {
+		return fmt.Errorf("threat-model response classified %d of %d findings", len(dispositions), findingCount)
+	}
+
+	seen := make(map[int]struct{}, findingCount)
+	for _, disposition := range dispositions {
+		if disposition.FindingIndex < 0 || disposition.FindingIndex >= findingCount {
+			return fmt.Errorf("threat-model response has out-of-range finding_index %d", disposition.FindingIndex)
+		}
+		if _, duplicate := seen[disposition.FindingIndex]; duplicate {
+			return fmt.Errorf("threat-model response classifies finding_index %d more than once", disposition.FindingIndex)
+		}
+		seen[disposition.FindingIndex] = struct{}{}
+
+		switch disposition.Disposition {
+		case "True Positive", "False Positive", "Needs Manual Review":
+		default:
+			return fmt.Errorf("threat-model response has unsupported disposition %q", disposition.Disposition)
+		}
+	}
 
 	return nil
 }
@@ -415,16 +437,6 @@ func runPoCVerification(ctx context.Context, state *AgentState, llmClient llm.Cl
 	for _, f := range state.EnrichedFindings {
 		if tpSet[f.VulnID] {
 			tpFindings = append(tpFindings, f)
-		}
-	}
-
-	// If no dispositions yet (threat model failed), use all HIGH/CRITICAL
-	if len(tpFindings) == 0 && len(state.FindingDispositions) == 0 {
-		for _, f := range state.EnrichedFindings {
-			sev := strings.ToUpper(f.Severity)
-			if sev == "CRITICAL" || sev == "HIGH" {
-				tpFindings = append(tpFindings, f)
-			}
 		}
 	}
 
@@ -461,8 +473,7 @@ func runPoCVerification(ctx context.Context, state *AgentState, llmClient llm.Cl
 		if err2 := json.Unmarshal([]byte(jsonText), &single); err2 == nil {
 			pocResults = []PoCResult{single}
 		} else {
-			fmt.Fprintf(os.Stderr, "   ⚠️ Could not parse PoC JSON: %v\n", err)
-			return nil // Non-fatal
+			return fmt.Errorf("parse PoC JSON: %w", err)
 		}
 	}
 
@@ -553,14 +564,14 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 			if len(poc.ReasoningSteps) > 0 {
 				pocBlock += "\n| Step | Description | Result |\n|---|---|---|\n"
 				for _, step := range poc.ReasoningSteps {
-					pocBlock += fmt.Sprintf("| %d | %s | %s |\n", step.Step, step.Description, step.Result)
+					pocBlock += fmt.Sprintf("| %s | %s | %s |\n", step.Step, step.Description, step.Result)
 				}
 			}
 		}
 	}
 
 	hc := state.HealthCheck
-	healthBlock := fmt.Sprintf("- **Health Check**: %d/100 (%s) — the authoritative IB posture score\n- **IB Gate Verdict**: %s under `%s` policy (`fail_on=%s`)\n- **Health Check Breakdown**: %d active findings, %d ignored (False Positives), %d deduplicated; penalty %d, bonus %d\n",
+	healthBlock := fmt.Sprintf("- **Health Check**: %d/100 (%s) — the authoritative security posture score\n- **Security Gate Verdict**: %s under `%s` policy (`fail_on=%s`)\n- **Health Check Breakdown**: %d active findings, %d ignored (False Positives), %d deduplicated; penalty %d, bonus %d\n",
 		hc.Score, hc.Grade,
 		strings.ToUpper(hc.Verdict.Status), hc.Policy.Profile, hc.Policy.FailOn,
 		hc.Breakdown.ActiveFindings, hc.Breakdown.IgnoredFindings, hc.Breakdown.DedupedFindings,
@@ -570,7 +581,7 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 		for _, reason := range hc.Verdict.BlockingReasons {
 			reasonLines = append(reasonLines, fmt.Sprintf("  - `%s`: %s", reason.Code, reason.Message))
 		}
-		healthBlock += "- **IB Gate Blocking Reasons**:\n" + strings.Join(reasonLines, "\n") + "\n"
+		healthBlock += "- **Security Gate Blocking Reasons**:\n" + strings.Join(reasonLines, "\n") + "\n"
 	}
 
 	metadataBlock := fmt.Sprintf("## AITriage + SecureCoder Engine Summary\n- **Date**: %s\n%s- **Total raw findings**: %d\n%s%s\n### Original Findings Reference Table (CRITICAL: Use these Vulnerability ID/File/Line mappings for your output):\n%s\n%s\n",
@@ -595,75 +606,36 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 }
 
 // generateSummary builds a deterministic (no LLM), actionable Markdown summary
-// for the GitHub Actions Step Summary. It includes ONLY True Positives and Needs
-// Manual Review findings. False Positives are excluded from the table but their
-// count is mentioned in the footer so reviewers know they can download the full
-// report artifact for the audit trail.
+// for the GitHub Actions Step Summary. The output is split into three blocks:
+//
+//  1. Human Summary — compact health card for quick glance by humans
+//  2. AI Agent Data — structured JSON in a collapsed &lt;details&gt; block
+//  3. AI Remediation Prompt — copy-paste SecureCoder prompt for Cursor/Claude/Antigravity
+//
+// False Positives are excluded from actionable sections but mentioned in stats.
 func generateSummary(state *AgentState) {
 	var sb strings.Builder
 
-	// ── Disposition counts ────────────────────────────────────────────────
-	tp, fp, nr := 0, 0, 0
+	// ── Precompute dispositions ───────────────────────────────────────────
+	tp, fpCount, nr := 0, 0, 0
 	dispositionMap := make(map[int]string) // findingIndex → disposition
 	for _, d := range state.FindingDispositions {
 		switch d.Disposition {
 		case "True Positive":
 			tp++
 		case "False Positive":
-			fp++
+			fpCount++
 		default:
 			nr++
 		}
 		dispositionMap[d.FindingIndex] = d.Disposition
 	}
 
-	// ── Header ────────────────────────────────────────────────────────────
-	hc := state.HealthCheck
-	sb.WriteString("## Security Assessment Report\n\n")
-
-	verdictEmoji := "PASSED"
-	if !hc.Verdict.Passed {
-		verdictEmoji = "FAILED"
-	}
-	sb.WriteString(fmt.Sprintf("**Health Check**: %d/100 (%s) | **IB Gate**: %s\n\n",
-		hc.Score, hc.Grade, verdictEmoji))
-	sb.WriteString(fmt.Sprintf("**Policy**: `%s` (`fail_on=%s`)\n\n",
-		hc.Policy.Profile, hc.Policy.FailOn))
-	sb.WriteString("| Metric | Count |\n|---|---|\n")
-	sb.WriteString(fmt.Sprintf("| True Positives | %d |\n", tp))
-	sb.WriteString(fmt.Sprintf("| Needs Manual Review | %d |\n", nr))
-	sb.WriteString(fmt.Sprintf("| False Positives (suppressed) | %d |\n", fp))
-	sb.WriteString(fmt.Sprintf("| Total raw findings | %d |\n\n", len(state.EnrichedFindings)))
-
-	// ── Blocking Reasons ──────────────────────────────────────────────────
-	if len(hc.Verdict.BlockingReasons) > 0 {
-		sb.WriteString("### Blocking Reasons\n\n")
-		for _, reason := range hc.Verdict.BlockingReasons {
-			sb.WriteString(fmt.Sprintf("- `%s`: %s", reason.Code, reason.Message))
-			if reason.Count != 0 || reason.Threshold != 0 {
-				sb.WriteString(fmt.Sprintf(" (count %d, threshold %d)", reason.Count, reason.Threshold))
-			}
-			sb.WriteString("\n")
-		}
-		sb.WriteString("\n")
-	}
-
-	// ── Actionable Findings Table (TP + NR only) ──────────────────────────
-	type actionableFinding struct {
-		vulnID      string
-		source      string
-		severity    string
-		file        string
-		line        int
-		message     string
-		disposition string
-	}
-
+	// ── Collect actionable findings (TP + NR) ─────────────────────────────
 	var actionable []actionableFinding
 	for i, ef := range state.EnrichedFindings {
 		disp, ok := dispositionMap[i]
 		if !ok {
-			// No disposition = treat as actionable (conservative)
 			disp = "Needs Manual Review"
 		}
 		if disp == "False Positive" {
@@ -673,7 +645,6 @@ func generateSummary(state *AgentState) {
 		if len(msg) > 120 {
 			msg = msg[:117] + "..."
 		}
-		// Sanitise pipe characters for markdown table
 		msg = strings.ReplaceAll(msg, "|", "\\|")
 		msg = strings.ReplaceAll(msg, "\n", " ")
 
@@ -688,28 +659,148 @@ func generateSummary(state *AgentState) {
 		})
 	}
 
+	// ── Block 1: Human Summary ────────────────────────────────────────────
+	writeHumanSummary(&sb, state, actionable, tp, fpCount, nr)
+
+	// ── Block 2: AI Remediation Prompt ────────────────────────────────────
+	writeAIRemediationPrompt(&sb, state, actionable)
+
+	// ── Block 3: AI Agent Data ────────────────────────────────────────────
+	writeAIAgentData(&sb, state, actionable, tp, fpCount, nr)
+
+	// ── Footer ────────────────────────────────────────────────────────────
+	sb.WriteString("\n---\n")
+	if fpCount > 0 {
+		sb.WriteString(fmt.Sprintf("\n_%d false positive(s) suppressed. Download `report.md` artifact for the full audit trail with FP rationale._\n",
+			fpCount))
+	}
+	if state.TotalUsage.TotalTokens > 0 {
+		sb.WriteString(fmt.Sprintf("\n_LLM usage (provider reported): %s. Cost is not estimated because it depends on provider, model, caching, and billing tier._\n",
+			formatLLMUsage(state.TotalUsage)))
+	}
+
+	state.SummaryMarkdown = sb.String()
+	fmt.Fprintf(os.Stderr, "   Summary: %d actionable, %d suppressed FP\n", len(actionable), fpCount)
+}
+
+// ── Block 1: Human-Readable Summary ─────────────────────────────────────────
+
+type actionableFinding struct {
+	vulnID      string
+	source      string
+	severity    string
+	file        string
+	line        int
+	message     string
+	disposition string
+}
+
+func writeHumanSummary(sb *strings.Builder, state *AgentState, actionable []actionableFinding, tp, fp, nr int) {
+	hc := state.HealthCheck
+
+	sb.WriteString("## 🛡 Security Assessment\n\n")
+
+	verdict := "✅ PASSED"
+	if !hc.Verdict.Passed {
+		verdict = "❌ FAILED"
+	}
+	sb.WriteString(fmt.Sprintf("**Score**: %d/100 (%s) | **Gate**: %s | **Policy**: `%s` (`fail_on=%s`)\n\n",
+		hc.Score, hc.Grade, verdict, hc.Policy.Profile, hc.Policy.FailOn))
+
+	// ── Blocking Reasons ──────────────────────────────────────────────
+	if len(hc.Verdict.BlockingReasons) > 0 {
+		sb.WriteString("#### Blocking Reasons\n\n")
+		for _, reason := range hc.Verdict.BlockingReasons {
+			sb.WriteString(fmt.Sprintf("- `%s`: %s", reason.Code, reason.Message))
+			if reason.Count != 0 || reason.Threshold != 0 {
+				sb.WriteString(fmt.Sprintf(" (count %d, threshold %d)", reason.Count, reason.Threshold))
+			}
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	// ── Severity Matrix ───────────────────────────────────────────────
+	sevByDisp := map[string]map[string]int{
+		"True Positive":       {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0},
+		"Needs Manual Review": {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0},
+	}
+	for _, f := range actionable {
+		sev := strings.ToUpper(f.severity)
+		if _, ok := sevByDisp[f.disposition]; !ok {
+			continue
+		}
+		if _, ok := sevByDisp[f.disposition][sev]; ok {
+			sevByDisp[f.disposition][sev]++
+		}
+	}
+
+	sb.WriteString("### Overview\n\n")
+	sb.WriteString("| | Critical | High | Medium | Low |\n")
+	sb.WriteString("|---|---|---|---|---|\n")
+	sb.WriteString(fmt.Sprintf("| True Positives | %d | %d | %d | %d |\n",
+		sevByDisp["True Positive"]["CRITICAL"], sevByDisp["True Positive"]["HIGH"],
+		sevByDisp["True Positive"]["MEDIUM"], sevByDisp["True Positive"]["LOW"]))
+	sb.WriteString(fmt.Sprintf("| Needs Review | %d | %d | %d | %d |\n\n",
+		sevByDisp["Needs Manual Review"]["CRITICAL"], sevByDisp["Needs Manual Review"]["HIGH"],
+		sevByDisp["Needs Manual Review"]["MEDIUM"], sevByDisp["Needs Manual Review"]["LOW"]))
+
+	sb.WriteString(fmt.Sprintf("> **%d** findings analyzed · **%d** true positives · **%d** needs review · **%d** false positives suppressed\n\n",
+		len(state.EnrichedFindings), tp, nr, fp))
+
+	// ── Top Critical Issues (max 5, CRITICAL first then HIGH) ─────────
 	if len(actionable) > 0 {
-		sb.WriteString("### Actionable Findings\n\n")
-		sb.WriteString("| Vulnerability ID | Source | Severity | File | Line | Issue | Status |\n")
-		sb.WriteString("|---|---|---|---|---|---|---|\n")
+		sb.WriteString("### ⚠️ Top Critical Issues\n\n")
+
+		type ranked struct {
+			rank     int
+			severity string
+			vulnID   string
+			file     string
+			line     int
+			message  string
+		}
+		var top []ranked
+		// First pass: CRITICAL
 		for _, f := range actionable {
-			file := f.file
+			if strings.ToUpper(f.severity) == "CRITICAL" {
+				top = append(top, ranked{severity: f.severity, vulnID: f.vulnID, file: f.file, line: f.line, message: f.message})
+			}
+		}
+		// Second pass: HIGH
+		for _, f := range actionable {
+			if strings.ToUpper(f.severity) == "HIGH" {
+				top = append(top, ranked{severity: f.severity, vulnID: f.vulnID, file: f.file, line: f.line, message: f.message})
+			}
+		}
+
+		limit := 5
+		if len(top) < limit {
+			limit = len(top)
+		}
+		for i := 0; i < limit; i++ {
+			file := top[i].file
 			if file == "" {
 				file = "N/A"
 			}
-			source := f.source
-			if source == "" {
-				source = "aitriage"
+			// Clean message for display: take first part before ":"
+			displayMsg := top[i].message
+			if idx := strings.Index(displayMsg, ":"); idx > 0 && idx < 60 {
+				displayMsg = displayMsg[:idx]
 			}
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %d | %s | %s |\n",
-				f.vulnID, source, f.severity, file, f.line, f.message, f.disposition))
+			displayMsg = strings.ReplaceAll(displayMsg, "\\|", "|")
+			if top[i].line > 0 {
+				sb.WriteString(fmt.Sprintf("%d. **[%s]** %s — `%s:%d`\n", i+1, top[i].severity, displayMsg, file, top[i].line))
+			} else {
+				sb.WriteString(fmt.Sprintf("%d. **[%s]** %s — `%s`\n", i+1, top[i].severity, displayMsg, file))
+			}
 		}
 		sb.WriteString("\n")
 	} else {
 		sb.WriteString("### Actionable Findings\n\nNo actionable security findings.\n\n")
 	}
 
-	// ── PoC Summary (compact, one line per TP) ────────────────────────────
+	// ── PoC Summary (compact) ─────────────────────────────────────────
 	if len(state.PoCResults) > 0 {
 		sb.WriteString("### PoC Verification\n\n")
 		sb.WriteString("| Vulnerability | Severity | Conclusion |\n")
@@ -720,22 +811,150 @@ func generateSummary(state *AgentState) {
 		}
 		sb.WriteString("\n")
 	}
+}
 
-	// ── Footer ────────────────────────────────────────────────────────────
-	sb.WriteString("---\n")
-	if fp > 0 {
-		sb.WriteString(fmt.Sprintf("\n_%d false positive(s) suppressed from this summary. Download the `report.md` artifact for the full audit trail with FP rationale._\n",
-			fp))
+// ── Block 2: AI Agent Structured Data ───────────────────────────────────────
+
+func writeAIAgentData(sb *strings.Builder, state *AgentState, actionable []actionableFinding, tp, fp, nr int) {
+	// Build JSON structure
+	type findingJSON struct {
+		ID             string `json:"id"`
+		Severity       string `json:"severity"`
+		File           string `json:"file,omitempty"`
+		Line           int    `json:"line,omitempty"`
+		Title          string `json:"title"`
+		Disposition    string `json:"disposition"`
+		Recommendation string `json:"recommendation,omitempty"`
 	}
-	if state.TotalUsage.TotalTokens > 0 {
-		estCost := float64(state.TotalUsage.PromptTokens)*0.00000015 + float64(state.TotalUsage.CompletionTokens)*0.0000006
-		sb.WriteString(fmt.Sprintf("\n_LLM: %d tokens (prompt: %d, completion: %d) — est. cost $%.4f_\n",
-			state.TotalUsage.TotalTokens, state.TotalUsage.PromptTokens, state.TotalUsage.CompletionTokens, estCost))
+
+	type summaryJSON struct {
+		ScanDate   string `json:"scan_date"`
+		Score      int    `json:"score"`
+		Grade      string `json:"grade"`
+		GateStatus string `json:"gate_status"`
+		Policy     struct {
+			Profile string `json:"profile"`
+			FailOn  string `json:"fail_on"`
+		} `json:"policy"`
+		Stats struct {
+			TruePositives  int `json:"true_positives"`
+			NeedsReview    int `json:"needs_review"`
+			FalsePositives int `json:"false_positives"`
+			Total          int `json:"total"`
+		} `json:"stats"`
+		Findings []findingJSON `json:"findings"`
 	}
 
-	state.SummaryMarkdown = sb.String()
+	hc := state.HealthCheck
+	data := summaryJSON{
+		ScanDate: time.Now().Format("2006-01-02"),
+		Score:    hc.Score,
+		Grade:    hc.Grade,
+	}
+	if hc.Verdict.Passed {
+		data.GateStatus = "PASSED"
+	} else {
+		data.GateStatus = "FAILED"
+	}
+	data.Policy.Profile = string(hc.Policy.Profile)
+	data.Policy.FailOn = string(hc.Policy.FailOn)
+	data.Stats.TruePositives = tp
+	data.Stats.NeedsReview = nr
+	data.Stats.FalsePositives = fp
+	data.Stats.Total = len(state.EnrichedFindings)
 
-	fmt.Fprintf(os.Stderr, "   Summary: %d actionable, %d suppressed FP\n", len(actionable), fp)
+	// Build finding recommendations from dispositions
+	recommendationMap := make(map[string]string)
+	for _, d := range state.FindingDispositions {
+		if d.Disposition != "False Positive" && d.Rationale != "" {
+			recommendationMap[d.FindingID] = d.Rationale
+		}
+	}
+
+	for _, f := range actionable {
+		fj := findingJSON{
+			ID:          f.vulnID,
+			Severity:    f.severity,
+			File:        f.file,
+			Line:        f.line,
+			Title:       strings.ReplaceAll(f.message, "\\|", "|"),
+			Disposition: f.disposition,
+		}
+		if rec, ok := recommendationMap[f.vulnID]; ok {
+			fj.Recommendation = rec
+		}
+		data.Findings = append(data.Findings, fj)
+	}
+
+	jsonBytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return
+	}
+
+	sb.WriteString("\n<details>\n")
+	sb.WriteString("<summary>🤖 AI Agent Data (structured findings for Cursor / Claude / Antigravity)</summary>\n\n")
+	sb.WriteString("```json\n")
+	sb.WriteString(string(jsonBytes))
+	sb.WriteString("\n```\n\n")
+	sb.WriteString("</details>\n")
+}
+
+// ── Block 3: AI Remediation Prompt ──────────────────────────────────────────
+
+func writeAIRemediationPrompt(sb *strings.Builder, state *AgentState, actionable []actionableFinding) {
+	if len(actionable) == 0 {
+		return
+	}
+
+	hc := state.HealthCheck
+
+	sb.WriteString("\n### 📋 AI Remediation Prompt\n\n")
+	sb.WriteString("> Copy this prompt into your AI IDE (Cursor, Claude, Antigravity) to generate a remediation plan.\n\n")
+	sb.WriteString("<details>\n")
+	sb.WriteString("<summary>Click to expand prompt</summary>\n\n")
+	sb.WriteString("```markdown\n")
+
+	sb.WriteString("You are a SecureCoder security engineer. Below is the output of an AITriage security scan.\n")
+	sb.WriteString("Your task is to create a COMPLETE remediation plan — but DO NOT write the actual code fixes.\n\n")
+
+	sb.WriteString("## SCAN METADATA\n")
+	sb.WriteString(fmt.Sprintf("- Score: %d/100 (%s)\n", hc.Score, hc.Grade))
+	sb.WriteString(fmt.Sprintf("- Date: %s\n", time.Now().Format("2006-01-02")))
+	sb.WriteString(fmt.Sprintf("- Gate: %s\n\n", strings.ToUpper(hc.Verdict.Status)))
+
+	sb.WriteString("## VULNERABILITIES FOUND\n\n")
+	for i, f := range actionable {
+		file := f.file
+		if file == "" {
+			file = "N/A"
+		}
+		title := strings.ReplaceAll(f.message, "\\|", "|")
+		if f.line > 0 {
+			sb.WriteString(fmt.Sprintf("%d. [%s] %s | %s | %s:%d\n",
+				i+1, strings.ToUpper(f.severity), f.vulnID, title, file, f.line))
+		} else {
+			sb.WriteString(fmt.Sprintf("%d. [%s] %s | %s | %s\n",
+				i+1, strings.ToUpper(f.severity), f.vulnID, title, file))
+		}
+		sb.WriteString(fmt.Sprintf("   Status: %s\n", f.disposition))
+	}
+
+	sb.WriteString("\n## YOUR TASK\n\n")
+	sb.WriteString("Create a complete step-by-step remediation plan for ALL vulnerabilities listed above.\n\n")
+	sb.WriteString("Requirements:\n")
+	sb.WriteString("1. Group fixes by component/directory (e.g., thirdparty/VAmPI, synthetic/nextjs-terrible)\n")
+	sb.WriteString("2. Prioritize: CRITICAL first, then HIGH, MEDIUM, LOW\n")
+	sb.WriteString("3. For each vulnerability create a task with:\n")
+	sb.WriteString("   - [ ] Main task description\n")
+	sb.WriteString("     - [ ] Subtask: what specific change is needed and why\n")
+	sb.WriteString("     - [ ] Subtask: what to verify after the change\n")
+	sb.WriteString("4. Note dependencies between fixes (e.g., upgrade PyJWT fixes 4 issues at once)\n")
+	sb.WriteString("5. Include a final verification checklist\n")
+	sb.WriteString("6. DO NOT write actual code — describe WHAT needs to change and WHY\n\n")
+	sb.WriteString("Output format: Markdown with checkboxes (- [ ] task)\n")
+
+	sb.WriteString("```\n\n")
+	sb.WriteString("</details>\n")
 }
 
 func generateAIFixSpec(ctx context.Context, state *AgentState, llmClient llm.Client) error {
@@ -784,6 +1003,20 @@ func addUsage(total *llm.Usage, u llm.Usage) {
 	total.PromptTokens += u.PromptTokens
 	total.CompletionTokens += u.CompletionTokens
 	total.TotalTokens += u.TotalTokens
+}
+
+// formatLLMUsage preserves the provider's total instead of inventing a price.
+// Gemini thinking models can report tokens beyond prompt and visible completion.
+func formatLLMUsage(u llm.Usage) string {
+	parts := []string{
+		fmt.Sprintf("%d total", u.TotalTokens),
+		fmt.Sprintf("%d prompt", u.PromptTokens),
+		fmt.Sprintf("%d completion", u.CompletionTokens),
+	}
+	if additional := u.TotalTokens - u.PromptTokens - u.CompletionTokens; additional > 0 {
+		parts = append(parts, fmt.Sprintf("%d reasoning/other", additional))
+	}
+	return strings.Join(parts, " · ")
 }
 
 // extractFullContext extracts the full function body + imports for a finding.

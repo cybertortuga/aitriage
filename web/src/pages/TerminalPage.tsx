@@ -280,7 +280,7 @@ export const TerminalPage: React.FC = () => {
               const gateColor = res.health_check.verdict.passed ? C.primaryDim : C.error;
               addLines(
                 line(
-                  span('IB Gate: ', C.gray, true),
+                  span('Security Gate: ', C.gray, true),
                   span(res.health_check.verdict.status.toUpperCase(), gateColor, true),
                   span(' · ', C.gray),
                   span(res.health_check.policy?.profile || 'baseline', C.textVariant),

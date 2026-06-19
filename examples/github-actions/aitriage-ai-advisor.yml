@@ -1,0 +1,66 @@
+# Copy this file to .github/workflows/aitriage-ai-advisor.yml.
+#
+# Non-blocking AI triage for trusted code. The agent performs a full scan,
+# including recent Git history, then writes an actionable summary and fix spec.
+name: AITriage AI Advisor
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aitriage-ai-advisor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ai-triage:
+    name: AI Triage & Fix Specs
+    # Secrets are unavailable to fork PRs. Skip them explicitly instead of
+    # attempting a run without a provider key or using pull_request_target.
+    if: >-
+      vars.AITRIAGE_ALLOWED_ACTOR_ID != '' &&
+      github.actor_id == vars.AITRIAGE_ALLOWED_ACTOR_ID &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository and history
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Run AI triage
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        uses: cybertortuga/aitriage@v1
+        with:
+          command: agent
+          summary-file: summary.md
+          args: >-
+            --no-chat
+            --report-out report.md
+            --fixspec-out fixspec.md
+
+      - name: Upload AI triage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aitriage-ai-triage
+          path: |
+            summary.md
+            report.md
+            fixspec.md
+          if-no-files-found: warn
+          retention-days: 14

@@ -3,6 +3,8 @@ package graph
 import (
 	"strings"
 	"testing"
+
+	"github.com/cybertortuga/aitriage/internal/agent/llm"
 )
 
 func TestGenerateSummaryExcludesFalsePositives(t *testing.T) {
@@ -26,7 +28,7 @@ func TestGenerateSummaryExcludesFalsePositives(t *testing.T) {
 		t.Fatal("SummaryMarkdown is empty")
 	}
 
-	// Must contain TP finding
+	// Must contain TP finding in AI prompt or AI data
 	if !strings.Contains(summary, "CS-SECRETS-001") {
 		t.Error("Summary should contain True Positive finding CS-SECRETS-001")
 	}
@@ -36,7 +38,7 @@ func TestGenerateSummaryExcludesFalsePositives(t *testing.T) {
 		t.Error("Summary should contain Needs Manual Review finding CS-CONFIG-001")
 	}
 
-	// Must NOT contain FP finding in table
+	// Must NOT contain FP finding in actionable sections
 	if strings.Contains(summary, "CS-CRYPTO-001") {
 		t.Error("Summary should NOT contain False Positive finding CS-CRYPTO-001")
 	}
@@ -46,12 +48,17 @@ func TestGenerateSummaryExcludesFalsePositives(t *testing.T) {
 		t.Error("Summary footer should mention 1 suppressed false positive")
 	}
 
-	// Must contain stats table
-	if !strings.Contains(summary, "True Positives | 1") {
-		t.Error("Summary should show 1 True Positive in stats")
+	// Must contain severity matrix (new format)
+	if !strings.Contains(summary, "True Positives") {
+		t.Error("Summary should contain severity matrix with True Positives row")
 	}
-	if !strings.Contains(summary, "False Positives (suppressed) | 1") {
-		t.Error("Summary should show 1 suppressed FP in stats")
+
+	// Must contain stats in blockquote
+	if !strings.Contains(summary, "1** true positives") {
+		t.Error("Summary should show 1 true positive in stats blockquote")
+	}
+	if !strings.Contains(summary, "1** false positives suppressed") {
+		t.Error("Summary should show 1 suppressed FP in stats blockquote")
 	}
 }
 
@@ -127,9 +134,86 @@ func TestGenerateSummaryPipesInMessagesAreEscaped(t *testing.T) {
 
 	generateSummary(state)
 
-	// The message "Issue with | pipe char" should become "Issue with \| pipe char"
-	// in the markdown table to avoid breaking the table structure.
-	if !strings.Contains(state.SummaryMarkdown, `Issue with \| pipe char`) {
-		t.Error("Pipe characters in messages should be escaped as \\| for valid markdown tables")
+	// The AI prompt restores pipes for readability, but the message is stored escaped internally.
+	// Verify the finding appears in the summary (AI prompt or AI data block).
+	if !strings.Contains(state.SummaryMarkdown, "CS-MISC-001") {
+		t.Error("Finding CS-MISC-001 should appear in the summary")
+	}
+	// The AI data JSON block should have the pipe unescaped in the title field
+	if !strings.Contains(state.SummaryMarkdown, "Issue with | pipe char") {
+		t.Error("AI data block should contain unescaped pipe in JSON title")
+	}
+}
+
+func TestGenerateSummaryHasThreeBlocks(t *testing.T) {
+	state := &AgentState{
+		EnrichedFindings: []EnrichedFinding{
+			{ID: "r1", VulnID: "CS-SQLI-001", Type: "core", Severity: "CRITICAL", File: "db.py", Line: 10, Message: "SQL Injection via string concat"},
+		},
+		FindingDispositions: []FindingDisposition{
+			{FindingIndex: 0, FindingID: "CS-SQLI-001", Disposition: "True Positive", Rationale: "Confirmed exploitable"},
+		},
+	}
+
+	generateSummary(state)
+
+	summary := state.SummaryMarkdown
+
+	// Block 1: Human Summary
+	if !strings.Contains(summary, "🛡 Security Assessment") {
+		t.Error("Missing Block 1: Human Summary header")
+	}
+	if !strings.Contains(summary, "Top Critical Issues") {
+		t.Error("Missing Block 1: Top Critical Issues section")
+	}
+
+	// Block 2: AI Remediation Prompt
+	if !strings.Contains(summary, "AI Remediation Prompt") {
+		t.Error("Missing Block 2: AI Remediation Prompt header")
+	}
+	if !strings.Contains(summary, "SecureCoder") {
+		t.Error("Missing Block 2: SecureCoder reference in prompt")
+	}
+	if !strings.Contains(summary, "DO NOT write actual code") {
+		t.Error("Missing Block 2: instruction to not write code")
+	}
+
+	// Block 3: AI Agent Data
+	if !strings.Contains(summary, "AI Agent Data") {
+		t.Error("Missing Block 3: AI Agent Data header")
+	}
+	if !strings.Contains(summary, `"id": "CS-SQLI-001"`) {
+		t.Error("Missing Block 3: JSON finding in AI data block")
+	}
+
+	// Verify order: Human → Prompt → AI Data
+	humanIdx := strings.Index(summary, "🛡 Security Assessment")
+	promptIdx := strings.Index(summary, "AI Remediation Prompt")
+	dataIdx := strings.Index(summary, "AI Agent Data")
+	if humanIdx >= promptIdx {
+		t.Error("Block 1 (Human) should come before Block 2 (Prompt)")
+	}
+	if promptIdx >= dataIdx {
+		t.Error("Block 2 (Prompt) should come before Block 3 (AI Data)")
+	}
+}
+
+func TestGenerateSummaryReportsProviderUsageWithoutInventingCost(t *testing.T) {
+	state := &AgentState{
+		TotalUsage: llm.Usage{
+			PromptTokens:     32777,
+			CompletionTokens: 32189,
+			TotalTokens:      88735,
+		},
+	}
+
+	generateSummary(state)
+
+	summary := state.SummaryMarkdown
+	if !strings.Contains(summary, "88735 total · 32777 prompt · 32189 completion · 23769 reasoning/other") {
+		t.Fatalf("summary does not contain complete provider usage: %s", summary)
+	}
+	if strings.Contains(strings.ToLower(summary), "est. cost") || strings.Contains(summary, "$0.") {
+		t.Fatalf("summary must not invent a cost: %s", summary)
 	}
 }

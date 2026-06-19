@@ -15,7 +15,7 @@ type Overrides struct {
 }
 
 // FromConfig converts .aitriage.yaml policy settings plus legacy top-level
-// fields into the single runtime IB gate policy used by scan/agent/CI.
+// fields into the single runtime security-gate policy used by scan/agent/CI.
 func FromConfig(cfg *config.Config) healthcheck.Policy {
 	if cfg == nil {
 		return healthcheck.DefaultPolicy()

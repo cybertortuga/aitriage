@@ -148,78 +148,95 @@ export const securityService = {
   },
 
   /* ── SecureCoder Integration ─────────────────────────────────────── */
+  // These methods use the unified SecureCoder framework from the server.
+  // The system prompt is injected server-side via handleChat's SecureCoderFramework.
+  // We just need to send the right user-level instruction — the server adds
+  // the full MUST/MUST NOT ruleset and threat model methodology automatically.
 
   generateThreatModel: async (context: string): Promise<ChatResponse> => {
     return securityService.chat([
       {
-        role: 'system',
-        content: `You are a senior security architect performing STRIDE threat modeling.
-Analyze the target and produce a structured threat model with these sections:
-## STRIDE Analysis
-For each category (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege):
-- List specific threats with severity (CRITICAL/HIGH/MEDIUM/LOW)
-- Affected components
-- Recommended mitigations
-## Attack Surface Summary
-## Risk Matrix
-Use markdown tables and formatting.`,
+        role: 'user',
+        content: `Perform a comprehensive STRIDE threat model analysis for the following target.
+
+## Target
+${context}
+
+## Required Sections
+1. **STRIDE Analysis** — For each category (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege): list specific threats with severity (CRITICAL/HIGH/MEDIUM/LOW), affected components, and recommended mitigations grounded in the SecureCoder Evaluation Ruleset.
+2. **Entry Points & Trust Boundaries** — All untrusted input sources and trust boundary crossings.
+3. **Attack Surface Summary** — Prioritized list of areas requiring immediate attention.
+4. **Risk Matrix** — Use markdown tables.
+
+Apply the MUST/MUST NOT rules from your Evaluation Ruleset to each mitigation recommendation.`,
       },
-      { role: 'user', content: `Perform STRIDE threat analysis for: ${context}` },
     ]);
   },
 
   generateAuditReport: async (context: string): Promise<ChatResponse> => {
     return securityService.chat([
       {
-        role: 'system',
-        content: `You are a senior security auditor generating a comprehensive security audit report.
-Structure the report with:
-## Executive Summary
-## Scope & Methodology 
-## Threat Model (STRIDE)
-## Vulnerability Findings
-For each finding: ID, Title, Severity, CVSS, Description, Impact, Remediation
-## Dependency Analysis
-## Compliance Mapping (OWASP Top 10, CWE)
-## Remediation Roadmap (prioritized)
-## Risk Score & Grade
-Use markdown formatting with tables, severity badges, and clear structure.`,
+        role: 'user',
+        content: `Generate a comprehensive security audit report for the following target.
+
+## Target
+${context}
+
+## Required Sections
+1. **Executive Summary** — Overall security posture, score, grade.
+2. **Threat Model (STRIDE)** — Entry points, trust boundaries, sensitive data paths.
+3. **Vulnerability Findings** — Table with columns: Vulnerability ID (CS-XXX-NNN), Severity, File, Line, Triage Status, Recommendation, Rationale.
+4. **PoC Verification** — For each True Positive, step-by-step exploit reasoning.
+5. **Dependency Analysis** — Known CVEs in dependencies.
+6. **Compliance Mapping** — OWASP Top 10, CWE references.
+7. **Remediation Roadmap** — Prioritized fix plan using the SecureCoder Evaluation Ruleset.
+
+Use the CS-XXX-NNN vulnerability ID format. Ground all recommendations in the MUST/MUST NOT rules.`,
       },
-      { role: 'user', content: `Generate a full security audit report for: ${context}` },
     ]);
   },
 
   generateSecurityPlan: async (context: string): Promise<ChatResponse> => {
     return securityService.chat([
       {
-        role: 'system',
-        content: `You are a security implementation planner. Create a detailed, actionable security implementation plan.
-Include:
-## Priority Actions (Critical/High severity)
-## Implementation Steps (numbered, with code examples)
-## Timeline Estimate
-## Testing & Verification Plan
-## Rollback Strategy`,
+        role: 'user',
+        content: `Create a detailed, actionable security implementation plan for the following target.
+
+## Target
+${context}
+
+## Required Sections
+1. **Fix Plan Summary Table** — | # | Priority | File | Issue | Vuln IDs |
+2. **Tasks** — For each task: Priority, Vuln IDs, File, Line, Function, Problem description (trace data flow from untrusted input to sink), Security rules violated (MUST/MUST NOT from the Evaluation Ruleset), Context.
+3. **Execution Order** — Fix critical vulnerabilities first (RCE, SSTI, debug mode), then auth/authz gaps, then input validation, then hardening.
+4. **Verification Plan** — Tests and commands to verify each fix.
+
+CRITICAL: Describe problems, not solutions. The AI IDE will write the code. Every finding must have a concrete file path.`,
       },
-      { role: 'user', content: `Create a security implementation plan for: ${context}` },
     ]);
   },
 
   generatePoC: async (context: string): Promise<ChatResponse> => {
     return securityService.chat([
       {
-        role: 'system',
-        content: `You are a penetration tester. Generate proof-of-concept attack simulations to verify vulnerabilities.
-For each PoC:
-## Vulnerability Target
-## Attack Vector
-## PoC Code (safe, non-destructive)
-## Expected Result
-## Verification Steps
-## Remediation Verification
-IMPORTANT: All PoCs must be safe and non-destructive. Include clear warnings.`,
+        role: 'user',
+        content: `Generate proof-of-concept verification for vulnerabilities in the following target.
+
+## Target
+${context}
+
+## For Each Vulnerability
+1. **Vulnerability Type & Severity**
+2. **PoC Description** — What input/request would an attacker craft? Must be SAFE and NON-DESTRUCTIVE.
+3. **Data Flow Trace** — Follow the exploit input through the code step by step.
+4. **Interception Point** — Where would a fix intercept or neutralize the exploit?
+5. **Conclusion** — Exploitable / Not Exploitable / Needs Manual Review.
+6. **Verification Steps** — Commands to verify the vulnerability EXISTS (before fix) and is REMEDIATED (after fix).
+7. **Regression Test** — Test that passes when secure, fails when vulnerable.
+
+Use vulnerability-specific reasoning from the Evaluation Ruleset (Path Traversal, XSS, SQLi, SSRF, Command Injection, Hardcoded Secrets, JWT Bypass, SSTI).
+ALL PoCs MUST BE SAFE AND NON-DESTRUCTIVE.`,
       },
-      { role: 'user', content: `Generate PoC attack simulations for: ${context}` },
     ]);
   },
 };

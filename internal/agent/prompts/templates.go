@@ -353,37 +353,226 @@ Remember: describe problems, not solutions. The AI IDE will write the code.
 
 // VulnClassCodes maps vulnerability class names to short codes for CS-XXX-NNN IDs.
 var VulnClassCodes = map[string]string{
-	"cross-site scripting":      "XSS",
-	"xss":                       "XSS",
-	"sql injection":             "SQLI",
-	"command injection":         "EXEC",
-	"path traversal":            "PATH",
-	"ssrf":                      "SSRF",
-	"server-side request forgery": "SSRF",
-	"hardcoded secret":          "SECRETS",
-	"secret":                    "SECRETS",
-	"weak cryptography":         "CRYPTO",
-	"insecure deserialization":  "DESER",
-	"csrf":                      "CSRF",
-	"authentication":            "AUTH",
-	"authorization":             "AUTHZ",
-	"information exposure":      "INFO",
-	"information disclosure":    "INFO",
-	"ssti":                      "SSTI",
+	"cross-site scripting":           "XSS",
+	"xss":                            "XSS",
+	"sql injection":                  "SQLI",
+	"command injection":              "EXEC",
+	"path traversal":                 "PATH",
+	"ssrf":                           "SSRF",
+	"server-side request forgery":    "SSRF",
+	"hardcoded secret":               "SECRETS",
+	"secret":                         "SECRETS",
+	"weak cryptography":              "CRYPTO",
+	"insecure deserialization":       "DESER",
+	"csrf":                           "CSRF",
+	"authentication":                 "AUTH",
+	"authorization":                  "AUTHZ",
+	"information exposure":           "INFO",
+	"information disclosure":         "INFO",
+	"ssti":                           "SSTI",
 	"server-side template injection": "SSTI",
-	"jwt":                       "JWT",
-	"debug mode":                "DEBUG",
-	"open redirect":             "REDIR",
-	"xml external entity":       "XXE",
-	"insecure configuration":    "CONFIG",
-	"denial of service":         "DOS",
-	"race condition":            "RACE",
-	"prototype pollution":       "PROTO",
-	"directory listing":         "DIRLIST",
-	"file upload":               "UPLOAD",
-	"cors misconfiguration":     "CORS",
-	"cookie":                    "COOKIE",
-	"session":                   "SESSION",
-	"logging":                   "LOG",
-	"error handling":            "ERROR",
+	"jwt":                            "JWT",
+	"debug mode":                     "DEBUG",
+	"open redirect":                  "REDIR",
+	"xml external entity":            "XXE",
+	"insecure configuration":         "CONFIG",
+	"denial of service":              "DOS",
+	"race condition":                 "RACE",
+	"prototype pollution":            "PROTO",
+	"directory listing":              "DIRLIST",
+	"file upload":                    "UPLOAD",
+	"cors misconfiguration":          "CORS",
+	"cookie":                         "COOKIE",
+	"session":                        "SESSION",
+	"logging":                        "LOG",
+	"error handling":                 "ERROR",
+}
+
+// ── Web Prompt Templates (served via /api/prompts) ───────────────────────────
+// These templates are the single source of truth for ALL frontends.
+// They use {{placeholder}} syntax for client-side interpolation.
+
+// WebPromptTemplate represents a prompt template that can be served to the web UI.
+type WebPromptTemplate struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Icon     string `json:"icon"`
+	Desc     string `json:"description"`
+	Template string `json:"template"`
+}
+
+// WebPromptTemplates are the unified prompt templates used by both web UI and CI/CD.
+// They incorporate the full SecureCoder framework instead of simplified frontend versions.
+var WebPromptTemplates = []WebPromptTemplate{
+	{
+		ID:    "fix",
+		Label: "FIX_CODE",
+		Icon:  "auto_fix_high",
+		Desc:  "Generate secure patch",
+		Template: SecureCoderFramework + `
+
+## Current Task: Generate Secure Code Patch
+
+You are given a specific vulnerability finding to remediate.
+
+## FINDING
+- **Vulnerability ID**: {{rule_id}}
+- **Title**: {{title}}
+- **Severity**: {{severity}}
+- **File**: {{file}}:{{line}}
+- **Stack**: {{stack}}
+- **CWE**: {{cwe_id}}
+
+## DESCRIPTION
+{{description}}
+
+## TASK
+1. Analyze the root cause of this vulnerability using the Evaluation Ruleset above.
+2. Write a MINIMAL secure code patch that fixes the root cause at the trust boundary.
+3. Show the fix as a diff (before/after).
+4. Explain WHY the original code is vulnerable — trace the data flow from untrusted input to the sink.
+5. Provide a regression test that passes when secure, fails when vulnerable.
+6. List any related issues this fix might introduce (breaking changes, performance).
+
+CRITICAL: Apply the MUST/MUST NOT rules from the Evaluation Ruleset. Do not add generic best-practice filler.
+Output format: markdown with code blocks.`,
+	},
+	{
+		ID:    "explain",
+		Label: "EXPLAIN",
+		Icon:  "school",
+		Desc:  "Deep-dive analysis",
+		Template: SecureCoderFramework + `
+
+## Current Task: Security Analysis & Education
+
+You are given a specific vulnerability finding to analyze in depth.
+
+## VULNERABILITY
+- **Title**: {{title}}
+- **Severity**: {{severity}}
+- **CWE**: {{cwe_id}}
+- **File**: {{file}}
+- **Stack**: {{stack}}
+
+## ANALYSIS REQUIRED
+1. **What is this vulnerability?** — Explain in plain English what {{title}} means.
+2. **Why is it dangerous?** — Real-world attack scenarios with severity {{severity}}. Reference the MUST/MUST NOT rules that are violated.
+3. **How does it work?** — Step-by-step exploitation flow tracing the data from untrusted input to the vulnerable sink.
+4. **Fix patterns** — Common remediation approaches ranked by effectiveness, grounded in the Evaluation Ruleset above.
+5. **Defense in depth** — Additional layers beyond the immediate fix (CSP, rate limiting, WAF, etc.)
+
+Be specific to the tech stack: {{stack}}. Ground every recommendation in the Evaluation Ruleset.`,
+	},
+	{
+		ID:    "stride",
+		Label: "STRIDE",
+		Icon:  "security",
+		Desc:  "Threat model",
+		Template: SecureCoderFramework + `
+
+## Current Task: STRIDE Threat Model Analysis
+
+You are given a specific vulnerability finding. Perform a STRIDE analysis using the SecureCoder threat model methodology.
+
+## TARGET FINDING
+- **{{title}}** ({{severity}})
+- File: {{file}}
+- Stack: {{stack}}
+- Description: {{description}}
+
+## STRIDE ANALYSIS
+For each category, analyze this specific vulnerability:
+
+| Category | Threat | Likelihood | Impact | Mitigation |
+|----------|--------|-----------|--------|------------|
+| **S**poofing | ? | ? | ? | ? |
+| **T**ampering | ? | ? | ? | ? |
+| **R**epudiation | ? | ? | ? | ? |
+| **I**nfo Disclosure | ? | ? | ? | ? |
+| **D**enial of Service | ? | ? | ? | ? |
+| **E**levation of Privilege | ? | ? | ? | ? |
+
+Also provide:
+- Entry points and trust boundaries analysis (from the Evaluation Ruleset).
+- Risk score (CVSS 3.1 estimate).
+- Priority ranking relative to other {{severity}} findings.
+- Which MUST/MUST NOT rules from the SecureCoder ruleset are relevant.`,
+	},
+	{
+		ID:    "verify",
+		Label: "VERIFY",
+		Icon:  "bug_report",
+		Desc:  "PoC & test plan",
+		Template: SecureCoderFramework + `
+
+## Current Task: PoC Verification & Test Plan
+
+You are given a specific vulnerability finding. Create a safe proof-of-concept and verification plan.
+
+IMPORTANT: Do NOT execute the PoC. Reason through it step by step using the actual code context.
+
+## VULNERABILITY
+- **{{title}}** ({{severity}})
+- File: {{file}}:{{line}}
+- Stack: {{stack}}
+
+## DELIVERABLES
+
+### 1. Safe PoC (Non-Destructive)
+Describe a proof-of-concept that demonstrates the vulnerability is real.
+Must be: safe, non-destructive, auditable, reversible.
+
+Use vulnerability-specific reasoning from the Evaluation Ruleset:
+- Path Traversal: Can ../sequences escape the allowed directory?
+- XSS: Does user input reach DOM insertion without sanitization?
+- SQL Injection: Is string concatenation used for queries?
+- SSRF: Can attacker control target URL?
+- Command Injection: Does user input reach exec/spawn?
+- Hardcoded Secrets: Is the secret in a public repo? Is it real or a placeholder?
+
+### 2. Verification Steps
+Provide exact commands/scripts to verify:
+a) The vulnerability EXISTS (before fix)
+b) The vulnerability is REMEDIATED (after fix)
+
+### 3. Regression Test
+Write a unit/integration test that:
+- Passes when the code is SECURE
+- Fails when the code is VULNERABLE
+
+### 4. CI/CD Gate
+Suggest a CI pipeline check that prevents this class of vulnerability from recurring.
+
+CRITICAL: ALL PoCs MUST BE SAFE AND NON-DESTRUCTIVE.`,
+	},
+	{
+		ID:    "ignore",
+		Label: "RISK_ACCEPT",
+		Icon:  "shield",
+		Desc:  "Justify acceptance",
+		Template: SecureCoderFramework + `
+
+## Current Task: Risk Acceptance Evaluation
+
+You are given a specific vulnerability finding. Evaluate whether it can be safely risk-accepted using the SecureCoder threat model methodology.
+
+## FINDING
+- **{{title}}** ({{severity}})
+- File: {{file}}
+- Rule: {{rule_id}}
+- Stack: {{stack}}
+
+## RISK ACCEPTANCE EVALUATION
+Analyze whether this finding can be safely risk-accepted:
+
+1. **Is this a false positive?** — Could the scanner be wrong? Check against the Evaluation Ruleset: is the code actually reachable from an untrusted entry point?
+2. **Trust boundary analysis** — Does the auth/trust context mitigate the risk? Are there implicit trust assumptions?
+3. **Compensating controls** — Are there other defenses (CSP, WAF, input validation, parameterized queries) that mitigate this risk?
+4. **Exploitability** — What is the realistic attack surface? Would an attacker be able to trigger this code path with malicious input?
+5. **Recommendation** — ACCEPT / REJECT with justification grounded in the Evaluation Ruleset.
+6. **Conditions** — If accepted, what conditions or time limits should apply?
+
+Be honest and conservative. If in doubt, recommend fixing.`,
+	},
 }

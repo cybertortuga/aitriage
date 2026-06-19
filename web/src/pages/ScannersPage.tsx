@@ -53,6 +53,13 @@ export const ScannersPage: React.FC = () => {
 
   const scanners: ScannerInfo[] = [
     {
+      id: 'core',
+      name: 'AITriage Core Engine',
+      version: 'Built-in',
+      status: 'ACTIVE',
+      type: t('scanners.types.coreEngine', 'SAST • 50+ Rules'),
+    },
+    {
       id: 'semgrep',
       name: 'Semgrep SAST',
       version: 'N/A',
@@ -79,6 +86,34 @@ export const ScannersPage: React.FC = () => {
       version: 'N/A',
       status: tools['bandit'] ? 'ACTIVE' : 'IDLE',
       type: t('scanners.types.codeAnalysisPython'),
+    },
+    {
+      id: 'nfr',
+      name: 'NFR Checks',
+      version: 'Built-in',
+      status: 'ACTIVE',
+      type: t('scanners.types.nfr', 'Non-Functional Requirements'),
+    },
+    {
+      id: 'deploy',
+      name: 'Deploy / IaC Audit',
+      version: 'Built-in',
+      status: 'ACTIVE',
+      type: t('scanners.types.deploy', 'Dockerfile • K8s • Compose'),
+    },
+    {
+      id: 'network',
+      name: 'Network Probe',
+      version: 'Built-in',
+      status: 'ACTIVE',
+      type: t('scanners.types.network', 'Port Scan • Service Discovery'),
+    },
+    {
+      id: 'git-history',
+      name: 'Git History Entropy',
+      version: 'Built-in',
+      status: 'ACTIVE',
+      type: t('scanners.types.gitHistory', 'Leaked Secrets in Commits'),
     },
   ];
 

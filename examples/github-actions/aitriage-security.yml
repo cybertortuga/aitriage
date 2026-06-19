@@ -1,0 +1,162 @@
+# PRIMARY / UNIVERSAL EXAMPLE
+# Copy this file to .github/workflows/aitriage.yml in the repository to scan.
+#
+# Layer 1 collects deterministic evidence but never blocks a change on raw
+# findings. Layer 2 is mandatory AI triage and the sole policy gate: it makes
+# the final decision only after false positives have been classified.
+name: AITriage Security
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Default to the smallest GITHUB_TOKEN scope. The SARIF upload permission is
+# granted only to the static-scan job.
+permissions:
+  contents: read
+
+# Do not spend CI minutes analysing an obsolete commit from the same PR/branch.
+concurrency:
+  group: aitriage-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-scan:
+    name: Deterministic Evidence Collection
+    # A pull request from a fork is untrusted input. Skip the entire job: no
+    # checkout, container, scanner, or GitHub secret is made available.
+    if: >-
+      vars.AITRIAGE_ALLOWED_ACTOR_ID != '' &&
+      github.actor_id == vars.AITRIAGE_ALLOWED_ACTOR_ID &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Raw scanner output has not been triaged and can contain false positives.
+    # The AI gate below still runs and is the only job allowed to fail policy.
+    continue-on-error: true
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        # v4.3.1
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          # No step in this job needs to push back to the repository.
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Collect deterministic findings
+        # Use the maintained v1 release line. Consumers receive the digest pin
+        # after the next Action release advances this reference (see WF-001).
+        uses: cybertortuga/aitriage@v1
+        with:
+          command: scan
+          format: sarif
+          output-file: aitriage.sarif
+          # Raw findings are evidence only. Do not make a merge decision here.
+          fail-on: never
+          # The scanner's raw GHA summary is intentionally suppressed. The
+          # agent writes the only authoritative summary after AI triage.
+          args: --no-summary
+          # Enable only after creating and committing .aitriage/baseline.json.
+          # baseline: "true"
+
+      # SARIF remains an artifact if GitHub Code Security is not enabled. This
+      # integration is evidence-only and cannot override the AI policy verdict.
+      - name: Upload SARIF to GitHub Code Scanning
+        id: upload-sarif
+        if: always() && hashFiles('aitriage.sarif') != ''
+        # github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@411bbbe57033eedfc1a82d68c01345aa96c737d7
+        continue-on-error: true
+        with:
+          sarif_file: aitriage.sarif
+          category: aitriage
+
+      - name: Record SARIF upload failure
+        if: always() && steps.upload-sarif.outcome == 'failure'
+        run: |
+          {
+            echo '### AITriage SARIF integration'
+            echo 'SARIF upload failed; this is reporting-only. The mandatory AI triage gate remains authoritative.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload deterministic scan artifact
+        if: always()
+        # v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: aitriage-sarif
+          path: aitriage.sarif
+          if-no-files-found: warn
+          # Reports may contain source paths and evidence; align this with the
+          # repository retention policy if 14 days is too long.
+          retention-days: 14
+
+  ai-triage:
+    name: AI Triage & Fix Specs
+    needs: static-scan
+    # Never expose GEMINI_API_KEY to a pull request from a fork. The agent can
+    # still analyse same-repository PRs, pushes to main, and manual runs.
+    if: >-
+      always() &&
+      needs.static-scan.result != 'cancelled' &&
+      vars.AITRIAGE_ALLOWED_ACTOR_ID != '' &&
+      github.actor_id == vars.AITRIAGE_ALLOWED_ACTOR_ID &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    # Store GEMINI_API_KEY as an environment secret and configure required
+    # reviewers/branch rules for this environment in repository settings.
+    environment: ai-triage
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository and history
+        # v4.3.1
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          # The agent scans recent Git history for leaked secrets.
+          fetch-depth: 0
+
+      - name: Run AI triage
+        # AI triage is mandatory for every authorised pipeline run. Any provider
+        # or agent failure fails this job and therefore the whole pipeline.
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        uses: cybertortuga/aitriage@v1
+        with:
+          command: agent
+          # A clean TP/Needs Review summary is written to the job summary too.
+          summary-file: summary.md
+          args: >-
+            --no-chat
+            --health-profile standard
+            --fail-on any
+            --report-out report.md
+            --fixspec-out fixspec.md
+
+      - name: Upload AI triage artifacts
+        # v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: aitriage-ai-triage
+          path: |
+            summary.md
+            report.md
+            fixspec.md
+          if-no-files-found: warn
+          retention-days: 14

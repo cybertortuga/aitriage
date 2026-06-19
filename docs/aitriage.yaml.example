@@ -10,8 +10,8 @@ strict_mode: false
 # Fail the scan if Health Check score drops below this value (0 = disabled)
 fail_score: 70
 
-# ─── Information Security Policy Gate ────────────────────────────────────────
-# This is the CI/CD answer to: can this project pass IB requirements?
+# ─── Security Policy Gate ────────────────────────────────────────────────────
+# This is the CI/CD answer to: can this project pass the security policy?
 health_check:
   # baseline: compatible default; blocks active CRITICAL/HIGH by fail_on
   # standard: for sensitive/business apps; also enforces minimum_score 70

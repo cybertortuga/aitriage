@@ -1,0 +1,61 @@
+# Copy this file to .github/workflows/aitriage-manual-html-report.yml.
+#
+# On-demand, non-blocking HTML report. This is useful for private repositories
+# without GitHub Code Security or for a one-off audit before a release.
+name: AITriage Manual HTML Report
+
+on:
+  workflow_dispatch:
+    inputs:
+      health_profile:
+        description: Security policy profile included in the report
+        required: true
+        default: baseline
+        type: choice
+        options:
+          - baseline
+          - standard
+          - strict
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aitriage-html-report-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Generate HTML Security Report
+    if: >-
+      vars.AITRIAGE_ALLOWED_ACTOR_ID != '' &&
+      github.actor_id == vars.AITRIAGE_ALLOWED_ACTOR_ID
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Generate report
+        uses: cybertortuga/aitriage@v1
+        with:
+          command: scan
+          format: html
+          output-file: aitriage-report.html
+          health-profile: ${{ inputs.health_profile }}
+          # This workflow publishes a report; it intentionally does not gate.
+          fail-on: never
+          args: --no-summary
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aitriage-html-report
+          path: aitriage-report.html
+          if-no-files-found: error
+          retention-days: 14

@@ -277,7 +277,7 @@ func generateAitrageConfig(stacks []detectedStack) string {
 	sb.WriteString("# Legacy compatibility: still supported when health_check is not set\n")
 	sb.WriteString("strict_mode: false   # Set true to fail on ANY finding\n")
 	sb.WriteString("fail_score: 0        # Fail if Health Check score < this (0 = disabled)\n\n")
-	sb.WriteString("# Information Security policy gate for CI/CD\n")
+	sb.WriteString("# Security policy gate for CI/CD\n")
 	sb.WriteString("health_check:\n")
 	sb.WriteString("  profile: baseline  # baseline | standard | strict\n")
 	sb.WriteString("  fail_on: critical  # critical | any | never\n")

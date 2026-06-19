@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -13,7 +14,9 @@ import (
 	"time"
 
 	"github.com/cybertortuga/aitriage/internal/agent/architect"
+	"github.com/cybertortuga/aitriage/internal/agent/graph"
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
+	"github.com/cybertortuga/aitriage/internal/agent/prompts"
 	"github.com/cybertortuga/aitriage/internal/config"
 	"github.com/cybertortuga/aitriage/internal/engine"
 	"github.com/cybertortuga/aitriage/internal/engine/core"
@@ -228,6 +231,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mux.Handle("/api/reports/generate", middleware.PermissionMiddleware("admin", "manager")(http.HandlerFunc(reportHandler.HandleGenerateReport)))
 
 	mux.Handle("/api/analyze", middleware.PermissionMiddleware("admin", "manager")(http.HandlerFunc(s.handleAnalyze)))
+	mux.Handle("/api/pipeline", middleware.PermissionMiddleware("admin", "manager")(http.HandlerFunc(s.handlePipeline)))
 	mux.Handle("/api/file", middleware.PermissionMiddleware("admin", "manager", "viewer")(http.HandlerFunc(s.handleFile)))
 
 	topologyHandler := handlers.NewTopologyHandler(s.topologyRepo)
@@ -243,6 +247,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mux.Handle("/api/admin/rebuild", middleware.PermissionMiddleware("admin")(http.HandlerFunc(s.handleRebuild)))
 
 	mux.HandleFunc("/api/health", s.handleHealth)
+	mux.HandleFunc("/api/prompts", s.handlePrompts)
 	mux.Handle("/api/ai-summary", middleware.PermissionMiddleware("admin", "manager", "viewer")(http.HandlerFunc(s.handleSummary)))
 
 	mux.Handle("/api/chat/sessions", middleware.PermissionMiddleware("admin", "manager", "viewer")(http.HandlerFunc(s.handleChatSessions)))
@@ -267,6 +272,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mux.Handle("/api/runway/all", middleware.PermissionMiddleware("admin", "manager", "viewer")(http.HandlerFunc(s.handleRunwayAll)))
 	mux.Handle("/api/runway/export/", middleware.PermissionMiddleware("admin", "manager")(http.HandlerFunc(s.handleRunwayExport)))
 	mux.Handle("/api/runway/", middleware.PermissionMiddleware("admin", "manager")(http.HandlerFunc(s.handleRunwaySession)))
+	mux.Handle("/api/runway/start/", middleware.PermissionMiddleware("admin", "manager")(http.HandlerFunc(s.handleRunwayStart)))
 
 	// UI
 	mux.HandleFunc("/", handleUI)
@@ -724,6 +730,16 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "tools": tools})
 }
 
+// handlePrompts serves unified prompt templates from prompts.WebPromptTemplates.
+// This is the single source of truth for ALL frontends (Web UI, Command Center, AI Triage Framework).
+func (s *Server) handlePrompts(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":        true,
+		"templates": prompts.WebPromptTemplates,
+	})
+}
+
 type browserEntry struct {
 	Name  string `json:"name"`
 	IsDir bool   `json:"is_dir"`
@@ -886,8 +902,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Build security context from findings database
 	ctx := r.Context()
 	var systemCtx strings.Builder
-	systemCtx.WriteString("You are AITriage Security Consultant — an expert application security engineer.\n")
-	systemCtx.WriteString("You have access to the scan results for the user's repositories.\n\n")
+
+	// Use the unified SecureCoderFramework from templates.go (same as CI/CD pipeline)
+	systemCtx.WriteString(prompts.SecureCoderFramework)
+	systemCtx.WriteString("\n\nYou also serve as an interactive Security Consultant with access to scan results.\n")
+	systemCtx.WriteString("Answer in the user's language, but keep technical labels, file paths, commands, and code in their original form.\n\n")
 
 	// Get product (project) list
 	rows, err := s.db.QueryContext(ctx, `SELECT id, name, COALESCE(repo_url,'') FROM products ORDER BY name`)
@@ -898,7 +917,6 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			var id int64
 			var name, repoURL string
 			_ = rows.Scan(&id, &name, &repoURL)
-			// Count findings per severity for this product
 			var crit, high, med, low int
 			_ = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN severity='critical' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN severity='high' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN severity='medium' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN severity='low' THEN 1 ELSE 0 END),0) FROM findings WHERE product_id=?`, id).Scan(&crit, &high, &med, &low)
 			systemCtx.WriteString(fmt.Sprintf("- **%s** (path: %s): %d critical, %d high, %d medium, %d low\n", name, repoURL, crit, high, med, low))
@@ -938,12 +956,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM findings`).Scan(&totalFindings)
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM findings WHERE status NOT IN ('triage','false_positive','risk_accepted')`).Scan(&openFindings)
 	systemCtx.WriteString(fmt.Sprintf("## Stats: %d total findings, %d open/active.\n\n", totalFindings, openFindings))
-	systemCtx.WriteString("## SecureCoder Operating Contract\n")
-	systemCtx.WriteString("Answer in the user's language, but keep technical labels, file paths, commands, and code in their original form.\n")
-	systemCtx.WriteString("Be concise and concrete. Do not greet, motivate, apologize, use analogies, or add generic best-practice filler.\n")
-	systemCtx.WriteString("Ground every recommendation in the provided scan context. If evidence is missing, say what must be inspected; do not invent files, functions, CVEs, or line numbers.\n")
-	systemCtx.WriteString("Prioritize CRITICAL and HIGH findings first. For broad requests, cover the top 5-8 items and say that the rest should be handled in the same pattern.\n")
-	systemCtx.WriteString("Use SecureCoder principles: fix root cause at the trust boundary, least privilege, secure defaults, input validation, output encoding, safe dependencies, safe error handling, audit logging without secrets, and regression verification.\n\n")
+
+	// Response mode instructions
 	systemCtx.WriteString("## Response Modes\n")
 	systemCtx.WriteString("AI_IDE_PROMPT_MODE: Use this when the user asks for a prompt, AI IDE, Cursor, Windsurf, Copilot, repository-wide fix, or something they will copy into an IDE. Return a ready-to-copy prompt, preferably in one fenced text block. The prompt must include: role, objective, scan context, prioritized findings with file:line, SecureCoder constraints, implementation rules, verification commands/tests, and required final report format. Do not wrap it in a chatty explanation.\n")
 	systemCtx.WriteString("EXPLANATION_MODE: For questions that are not asking for an IDE prompt, answer with short sections: Priority, Why it matters, Fix, Verify. Include code only when it is directly useful.\n")
@@ -1036,7 +1050,7 @@ Your task is to:
 	messages := []llm.Message{
 		{
 			Role:    "system",
-			Content: "You are an elite DevSecOps engineer and AI security auditor. Analyze the provided finding and determine if it is a True Positive, False Positive, or Needs Human Review. Formulate your response as a clear, professional assessment focusing on exploitability, impact, and business risk.",
+			Content: prompts.SecureCoderFramework + "\n\nYou are performing a detailed single-finding analysis. Determine if this is a True Positive, False Positive, or Needs Human Review. Provide exploitability assessment, impact analysis, and if True Positive — a remediation plan with fixed code examples.",
 		},
 		{Role: "user", Content: prompt},
 	}
@@ -1305,10 +1319,11 @@ Return ONLY a valid JSON object with no other text:
 
 	slog.Info("AI Triage prompt built", "finding_id", findingID, "has_code_context", fileContent != "", "prompt_len", len(prompt))
 
+	// Use the unified TriageSystemPrompt from templates.go (same as CI/CD pipeline)
 	messages := []llm.Message{
 		{
 			Role:    "system",
-			Content: "You are an elite application security engineer performing automated vulnerability triage. You use the SecureCoder threat model methodology: you analyze entry points, trust boundaries, auth context, and exploitability to classify scanner findings. You are precise and reference specific code patterns. You output ONLY valid JSON.",
+			Content: prompts.TriageSystemPrompt + "\n\nCRITICAL: You output ONLY valid JSON. No markdown, no explanations, just the JSON object.",
 		},
 		{Role: "user", Content: prompt},
 	}
@@ -2029,4 +2044,106 @@ func (s *Server) handleRunwayExport(w http.ResponseWriter, r *http.Request) {
 		"content":  mdContent,
 		"saved_to": savedPath,
 	})
+}
+
+func (s *Server) handleRunwayStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/runway/start/")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		jsonError(w, "invalid session id", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	session, err := s.runwayRepo.GetByID(ctx, id)
+	if err != nil {
+		jsonError(w, fmt.Sprintf("session not found: %v", err), http.StatusNotFound)
+		return
+	}
+
+	product, err := s.productRepo.GetByID(ctx, session.ProductID)
+	if err != nil || product == nil {
+		jsonError(w, "product not found", http.StatusNotFound)
+		return
+	}
+
+	findings, err := s.findingRepo.ListByProductID(ctx, session.ProductID)
+	if err != nil {
+		jsonError(w, fmt.Sprintf("failed to get findings: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Start background orchestrator
+	go func() {
+		bgCtx := context.Background()
+
+		path := "/host"
+		if product.RepoURL != nil && *product.RepoURL != "" {
+			path = *product.RepoURL
+		}
+
+		state := &graph.AgentState{
+			ProjectPath: path,
+		}
+
+		for _, f := range findings {
+			if f.Status == "triage" {
+				continue
+			}
+			filePath := ""
+			if f.FilePath != nil {
+				filePath = *f.FilePath
+			}
+			line := 0
+			if f.LineNumber != nil {
+				line = *f.LineNumber
+			}
+			state.ExternalFindings = append(state.ExternalFindings, external.UnifiedFinding{
+				RuleID:   f.RuleID,
+				Severity: f.Severity,
+				File:     filePath,
+				Line:     line,
+				Message:  f.Title,
+			})
+		}
+
+		session.Status = "running"
+		s.runwayRepo.Update(bgCtx, session)
+
+		err := graph.Run(bgCtx, state, s.llmClient)
+		if err != nil {
+			errMsg := err.Error()
+			session.ErrorMessage = &errMsg
+			session.Status = "failed"
+		} else {
+			session.Status = "completed"
+			session.CurrentStep = 7
+
+			tmJSON := "{}"
+			if state.ThreatModel != nil {
+				b, _ := json.MarshalIndent(state.ThreatModel, "", "  ")
+				tmJSON = string(b)
+			}
+			session.ThreatModel = &tmJSON
+
+			pocJSON := "[]"
+			if len(state.PoCResults) > 0 {
+				b, _ := json.MarshalIndent(state.PoCResults, "", "  ")
+				pocJSON = string(b)
+			}
+			session.PoC = &pocJSON
+
+			session.AuditReport = &state.ReportMarkdown
+		}
+
+		s.runwayRepo.Update(bgCtx, session)
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "message": "Runway scan started"})
 }

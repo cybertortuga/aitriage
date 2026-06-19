@@ -1,6 +1,6 @@
 // Package healthcheck implements the unified Security Health Check engine for a
 // repository. It is the single source of truth for the repository's Information
-// Security (IB) posture score (0-100) and grade (A+..F).
+// security posture score (0-100) and grade (A+..F).
 //
 // Unlike the legacy per-check scorer, the Health Check aggregates findings from
 // ALL sources (core SAST, Semgrep, Trivy, Gitleaks, Bandit, NFR, Deploy, Network)

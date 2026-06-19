@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"encoding/json"
+
 	agentcontext "github.com/cybertortuga/aitriage/internal/agent/context"
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
 	"github.com/cybertortuga/aitriage/internal/engine/core"
@@ -27,7 +29,7 @@ type AgentState struct {
 	SecurityScore int
 	SecurityGrade string
 
-	// HealthCheck holds the unified, multi-source IB Health Check result.
+	// HealthCheck holds the unified, multi-source Security Health Check result.
 	// It is the authoritative security posture score, recomputed after AI
 	// triage so that False Positives no longer penalise the repository.
 	HealthCheck healthcheck.Result
@@ -136,7 +138,9 @@ type PoCResult struct {
 
 // PoCStep is one reasoning step in the PoC verification chain.
 type PoCStep struct {
-	Step        int    `json:"step"`
-	Description string `json:"description"`
-	Result      string `json:"result"`
+	// JSON numbers preserve labels such as 2.1 without weakening validation of
+	// the surrounding PoC result.
+	Step        json.Number `json:"step"`
+	Description string      `json:"description"`
+	Result      string      `json:"result"`
 }

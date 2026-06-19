@@ -14,6 +14,10 @@ permissions:
 
 jobs:
   test-action:
+    # No checkout or Docker build for an actor other than the repository owner.
+    if: >-
+      vars.AITRIAGE_ALLOWED_ACTOR_ID != '' &&
+      github.actor_id == vars.AITRIAGE_ALLOWED_ACTOR_ID
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

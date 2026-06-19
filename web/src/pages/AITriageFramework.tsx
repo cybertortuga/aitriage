@@ -2,167 +2,16 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFindings } from '../hooks/useFindings';
 import { useMetrics } from '../hooks/useMetrics';
+import { usePrompts, interpolatePrompt } from '../hooks/usePrompts';
+import type { PromptTemplate } from '../hooks/usePrompts';
 import { useCopilotStore } from '../store/CopilotStore';
 import type { Finding } from '../types';
+import { PipelinePanel } from '../components/PipelinePanel';
 
 /* ═══════════════════════════════════════════════════════════════════════
  * AI Triage Framework — SecureCoder-style prompt engineering
  * Pre-generated narratives + ready-made prompts for LLM remediation
  * ═══════════════════════════════════════════════════════════════════════ */
-
-/* ── Prompt Templates ────────────────────────────────────────────────── */
-const PROMPT_ACTIONS = [
-  {
-    id: 'fix',
-    label: 'FIX_CODE',
-    icon: 'auto_fix_high',
-    desc: 'Generate secure patch',
-    color: 'text-primary',
-    buildPrompt: (f: Finding) => `You are a senior security engineer performing code remediation.
-
-## FINDING
-- **Title**: ${f.title}
-- **Severity**: ${f.severity}
-- **Rule**: ${f.rule_id}
-- **File**: ${f.file_path || f.file || 'N/A'}${f.line_number ? `:${f.line_number}` : ''}
-- **Stack**: ${f.stack || 'unknown'}
-
-## DESCRIPTION
-${f.description || f.fix_suggestion || f.suggestion || 'No description available.'}
-
-## TASK
-1. Write a MINIMAL secure code patch that fixes this vulnerability
-2. Show the fix as a diff (before/after)
-3. Explain WHY the original code is vulnerable
-4. Provide a test case to verify the fix works
-5. List any related issues this fix might introduce
-
-Output format: markdown with code blocks.`,
-  },
-  {
-    id: 'explain',
-    label: 'EXPLAIN',
-    icon: 'school',
-    desc: 'Deep-dive analysis',
-    color: 'text-severity-high',
-    buildPrompt: (
-      f: Finding,
-    ) => `You are a security researcher writing an educational analysis for a development team.
-
-## VULNERABILITY
-- **Title**: ${f.title}
-- **Severity**: ${f.severity}
-- **CWE**: ${f.cwe_id || 'Not mapped'}
-- **OWASP**: ${f.owasp || 'Not mapped'}
-- **File**: ${f.file_path || f.file || 'N/A'}
-
-## ANALYSIS REQUIRED
-1. **What is this vulnerability?** — Explain in plain English what ${f.title} means
-2. **Why is it dangerous?** — Real-world attack scenarios with severity ${f.severity}
-3. **How does it work?** — Step-by-step exploitation flow
-4. **OWASP Top 10 mapping** — Which OWASP category and why
-5. **Industry examples** — Notable breaches caused by similar issues
-6. **Fix patterns** — Common remediation approaches ranked by effectiveness
-7. **Defense in depth** — Additional layers beyond the immediate fix
-
-Be specific to the tech stack: ${f.stack || 'unknown'}`,
-  },
-  {
-    id: 'stride',
-    label: 'STRIDE',
-    icon: 'security',
-    desc: 'Threat model',
-    color: 'text-severity-medium',
-    buildPrompt: (f: Finding) => `You are a threat modeling expert performing STRIDE analysis.
-
-## TARGET FINDING
-- **${f.title}** (${f.severity})
-- File: ${f.file_path || f.file || 'N/A'}
-- Stack: ${f.stack || 'unknown'}
-- Description: ${f.description || f.suggestion || 'N/A'}
-
-## STRIDE ANALYSIS
-For each category, analyze this specific vulnerability:
-
-| Category | Threat | Likelihood | Impact | Mitigation |
-|----------|--------|-----------|--------|------------|
-| **S**poofing | ? | ? | ? | ? |
-| **T**ampering | ? | ? | ? | ? |
-| **R**epudiation | ? | ? | ? | ? |
-| **I**nfo Disclosure | ? | ? | ? | ? |
-| **D**enial of Service | ? | ? | ? | ? |
-| **E**levation of Privilege | ? | ? | ? | ? |
-
-Also provide:
-- Attack tree diagram (text-based)
-- Risk score (CVSS 3.1 estimate)
-- Priority ranking relative to other ${f.severity} findings`,
-  },
-  {
-    id: 'verify',
-    label: 'VERIFY',
-    icon: 'bug_report',
-    desc: 'PoC & test plan',
-    color: 'text-success',
-    buildPrompt: (
-      f: Finding,
-    ) => `You are a penetration tester creating a safe proof-of-concept and verification plan.
-
-## VULNERABILITY
-- **${f.title}** (${f.severity})
-- File: ${f.file_path || f.file || 'N/A'}:${f.line_number || '?'}
-- Stack: ${f.stack || 'unknown'}
-
-## DELIVERABLES
-
-### 1. Safe PoC (Non-Destructive)
-Write a proof-of-concept that demonstrates the vulnerability is real.
-Must be: safe, non-destructive, auditable, reversible.
-
-### 2. Verification Steps
-Provide exact commands/scripts to verify:
-a) The vulnerability EXISTS (before fix)
-b) The vulnerability is REMEDIATED (after fix)
-
-### 3. Regression Test
-Write a unit/integration test that:
-- Passes when the code is SECURE
-- Fails when the code is VULNERABLE
-
-### 4. CI/CD Gate
-Suggest a CI pipeline check that prevents this class of vulnerability from recurring.
-
-Note: ALL PoCs MUST BE SAFE AND NON-DESTRUCTIVE`,
-  },
-  {
-    id: 'ignore',
-    label: 'RISK_ACCEPT',
-    icon: 'shield',
-    desc: 'Justify acceptance',
-    color: 'text-on-surface-variant',
-    buildPrompt: (
-      f: Finding,
-    ) => `You are a security governance advisor evaluating whether a finding can be risk-accepted.
-
-## FINDING
-- **${f.title}** (${f.severity})
-- File: ${f.file_path || f.file || 'N/A'}
-- Rule: ${f.rule_id}
-
-## RISK ACCEPTANCE EVALUATION
-Analyze whether this finding can be safely risk-accepted:
-
-1. **Is this a false positive?** — Could the scanner be wrong? What evidence supports/refutes?
-2. **Compensating controls** — Are there other defenses that mitigate this risk?
-3. **Exploitability** — What is the realistic attack surface? Is it reachable?
-4. **Business context** — When would accepting this risk be appropriate vs. inappropriate?
-5. **Recommendation** — ACCEPT / REJECT with justification
-6. **Conditions** — If accepted, what conditions or time limits should apply?
-7. **Documentation template** — Draft a risk acceptance memo for security governance
-
-Be honest and conservative. If in doubt, recommend fixing.`,
-  },
-];
 
 /* ── Helper ──────────────────────────────────────────────────────────── */
 const sevColor = (sev: string) => {
@@ -196,14 +45,18 @@ const sevBg = (sev: string) => {
 /* ═══════════════════════════════════════════════════════════════════════ */
 export const AITriageFramework: React.FC = () => {
   const { t } = useTranslation('pages');
-  const { findings, loading } = useFindings() as any;
+  const { findings, loading: findingsLoading } = useFindings() as any;
   const { metrics } = useMetrics();
+  const { templates: PROMPT_ACTIONS, loading: promptsLoading } = usePrompts();
   const { setIsOpen, setContext } = useCopilotStore();
   const [selectedFindingId, setSelectedFindingId] = useState<number | null>(null);
   const [activePrompt, setActivePrompt] = useState<string>('');
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [filterSev, setFilterSev] = useState<string | null>(null);
+  const [mode, setMode] = useState<'triage' | 'pipeline'>('triage');
+
+  const loading = findingsLoading || promptsLoading;
 
   const selectedFinding: Finding | null =
     findings?.find((f: Finding) => f.id === selectedFindingId) || null;
@@ -256,12 +109,12 @@ export const AITriageFramework: React.FC = () => {
   const handleAction = useCallback(
     (actionId: string) => {
       if (!selectedFinding) return;
-      const action = PROMPT_ACTIONS.find((a) => a.id === actionId);
+      const action = PROMPT_ACTIONS.find((a: PromptTemplate) => a.id === actionId);
       if (!action) return;
       setActiveAction(actionId);
-      setActivePrompt(action.buildPrompt(selectedFinding));
+      setActivePrompt(interpolatePrompt(action.template, selectedFinding));
     },
-    [selectedFinding],
+    [selectedFinding, PROMPT_ACTIONS],
   );
 
   /* ── Copy ────────────────────────────────────────────────────────────── */
@@ -430,7 +283,35 @@ export const AITriageFramework: React.FC = () => {
 
       {/* ═══ RIGHT PANEL: Triage Workspace ═════════════════════════════ */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
-        {selectedFinding ? (
+        {/* Mode Toggle */}
+        <div className="flex border-b border-outline-variant/30 shrink-0 bg-surface-container-lowest">
+          <button
+            onClick={() => setMode('triage')}
+            className={`px-5 py-3 text-[11px] font-bold tracking-widest uppercase transition-colors flex items-center gap-2 ${
+              mode === 'triage'
+                ? 'text-primary border-b-2 border-primary'
+                : 'text-on-surface-variant/50 hover:text-on-surface-variant'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[14px]">bug_report</span>
+            Single Finding
+          </button>
+          <button
+            onClick={() => setMode('pipeline')}
+            className={`px-5 py-3 text-[11px] font-bold tracking-widest uppercase transition-colors flex items-center gap-2 ${
+              mode === 'pipeline'
+                ? 'text-primary border-b-2 border-primary'
+                : 'text-on-surface-variant/50 hover:text-on-surface-variant'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[14px]">rocket_launch</span>
+            Full Pipeline
+          </button>
+        </div>
+
+        {mode === 'pipeline' ? (
+          <PipelinePanel />
+        ) : selectedFinding ? (
           <>
             {/* ── Finding Header ─────────────────────────────────────── */}
             <div className="shrink-0 px-6 py-4 border-b border-outline-variant/30 bg-surface-container-lowest">
@@ -594,7 +475,7 @@ export const AITriageFramework: React.FC = () => {
                   key={a.id}
                   className="flex flex-col items-center gap-1.5 p-3 border border-outline-variant/10 bg-surface-container-low skeuo-panel"
                 >
-                  <span className={`material-symbols-outlined text-[18px] ${a.color} opacity-30`}>
+                  <span className="material-symbols-outlined text-[18px] text-primary opacity-30">
                     {a.icon}
                   </span>
                   <span className="text-[9px] text-on-surface-variant/20 tracking-widest font-bold">

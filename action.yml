@@ -28,7 +28,7 @@ inputs:
     required: false
     default: '0'
   health-profile:
-    description: 'Health Check policy profile for the IB gate: baseline, standard, strict.'
+    description: 'Health Check policy profile for the Security Gate: baseline, standard, strict.'
     required: false
     default: ''
   stack:
@@ -54,9 +54,9 @@ inputs:
 
 runs:
   using: 'docker'
-  # Pre-built image from GHCR (published by .github/workflows/docker-publish.yml).
-  # Pin to a major tag (e.g. :v1) in production for stability.
-  image: 'docker://ghcr.io/cybertortuga/aitriage:latest'
+  # Immutable linux/amd64 image for the v1 Action release. Update this digest
+  # only as part of releasing a new Action version.
+  image: 'docker://ghcr.io/cybertortuga/aitriage@sha256:cfba72be295ba54d1807ec8819ff9fbeb4fa57411f6ed0e4d276f8e6e5f4fd6a'
   entrypoint: '/entrypoint.sh'
   env:
     AITRIAGE_COMMAND: ${{ inputs.command }}

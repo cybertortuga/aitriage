@@ -10,6 +10,10 @@ permissions:
 jobs:
   build:
     name: Build Binary (${{ matrix.goos }}/${{ matrix.goarch }})
+    # A tag alone must not let another collaborator create release artifacts.
+    if: >-
+      vars.AITRIAGE_ALLOWED_ACTOR_ID != '' &&
+      github.actor_id == vars.AITRIAGE_ALLOWED_ACTOR_ID
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -93,6 +97,9 @@ jobs:
   release:
     name: Create Release
     needs: build
+    if: >-
+      vars.AITRIAGE_ALLOWED_ACTOR_ID != '' &&
+      github.actor_id == vars.AITRIAGE_ALLOWED_ACTOR_ID
     runs-on: ubuntu-latest
     steps:
       - name: Download Artifacts
@@ -113,4 +120,3 @@ jobs:
             dist/aitriage_*
             dist/checksums.txt
           generate_release_notes: true
-

@@ -1,0 +1,71 @@
+# Copy this file to .github/workflows/aitriage-pr-gate.yml.
+#
+# Fast deterministic gate for pull requests and the protected main branch.
+# It does not call an LLM or require provider credentials.
+name: AITriage PR Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aitriage-pr-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-gate:
+    name: Deterministic Security Gate
+    # External fork PRs do not execute any Actions jobs in this repository.
+    if: >-
+      vars.AITRIAGE_ALLOWED_ACTOR_ID != '' &&
+      github.actor_id == vars.AITRIAGE_ALLOWED_ACTOR_ID &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Run AITriage policy gate
+        uses: cybertortuga/aitriage@v1
+        with:
+          command: scan
+          format: sarif
+          output-file: aitriage.sarif
+          health-profile: standard
+          fail-on: critical
+          # Enable after creating and committing .aitriage/baseline.json.
+          # baseline: "true"
+
+      # For private/internal repositories, enable GitHub Code Security before
+      # using this step. The artifact remains useful if this step is removed.
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always() && hashFiles('aitriage.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: aitriage.sarif
+          category: aitriage
+
+      - name: Upload SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aitriage-sarif
+          path: aitriage.sarif
+          if-no-files-found: warn
+          retention-days: 14

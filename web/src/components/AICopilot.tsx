@@ -77,10 +77,8 @@ export const AICopilot: React.FC<AICopilotProps> = ({ onClose, isPinned, onToggl
 
     try {
       const apiMessages = [
-        {
-          role: 'system',
-          content: 'You are a concise Security Co-pilot. Keep all answers short, structured, and free of fluff. Avoid long paragraphs; get straight to the point in Russian language.'
-        },
+        // System prompt is injected server-side (SecureCoderFramework from templates.go)
+        // Only send user/assistant messages here
         ...newMessages.map((m) => ({
           role: m.role === 'assistant' ? 'assistant' : 'user',
           content: context

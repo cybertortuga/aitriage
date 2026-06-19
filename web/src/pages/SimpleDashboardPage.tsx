@@ -543,7 +543,7 @@ type SortBy = 'severity' | 'title' | 'file';
 const PAGE_SIZE = 25;
 
 
-const SecureCoderPanel: React.FC<{ activeProducts: any[]; findings: any[] }> = ({ activeProducts, findings }) => {
+const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts }) => {
   const { t } = useTranslation('pages');
   const [expandedCat, setExpandedCat] = useState<string | null>(null);
   
@@ -555,7 +555,6 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[]; findings: any[] }> = (
   const runwayLoadingRef = useRef(false);
   const [runwayError, setRunwayError] = useState('');
   const [runwayAutoMode, setRunwayAutoMode] = useState(false);
-  const [runwayAutoPhase, setRunwayAutoPhase] = useState(''); // human-readable current auto phase
   
   const [runwayThreatModel, setRunwayThreatModel] = useState('');
   const [runwaySecurityPlan, setRunwaySecurityPlan] = useState('');
@@ -835,52 +834,7 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[]; findings: any[] }> = (
     };
   }, [pollingInterval]);
 
-  // --- Runway DB persistence helpers ---
-  const saveRunwayToDB = useCallback(async (
-    sessionId: number,
-    step: number,
-    data: {
-      status?: string;
-      auto_mode?: boolean;
-      threat_model?: string;
-      security_plan?: string;
-      remediation?: string;
-      poc?: string;
-      audit_report?: string;
-      scan_count_before?: number;
-      scan_count_after?: number;
-      error_message?: string;
-      product_id?: number;
-    }
-  ) => {
-    try {
-      const res = await fetch(`/api/runway/${sessionId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ current_step: step, ...data })
-      });
-      if (!res.ok) {
-        const errText = await res.text().catch(() => 'unknown');
-        console.error(`[saveRunwayToDB] HTTP ${res.status} for step ${step}:`, errText);
-        return;
-      }
-      console.log(`[saveRunwayToDB] Step ${step} saved OK for session ${sessionId}`);
-      if (data.status === 'completed') {
-        fetch(`/api/runway/export/${sessionId}`, { method: 'POST' })
-          .then(r => r.json())
-          .then(resData => {
-            if (resData.ok) {
-              console.log('Runway report auto-saved to project directory:', resData.saved_to);
-            } else {
-              console.error('Failed to auto-save runway report:', resData.error);
-            }
-          })
-          .catch(e => console.error('Error auto-exporting report:', e));
-      }
-    } catch (e) {
-      console.error(`[saveRunwayToDB] Network error at step ${step}:`, e);
-    }
-  }, []);
+
 
   const restoreRunwayFromSession = useCallback((session: any) => {
     if (!session) return;
@@ -934,340 +888,13 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[]; findings: any[] }> = (
     return () => { cancelled = true; clearInterval(pollId); };
   }, [activeProducts, restoreRunwayFromSession]);
 
-  // --- Individual step handlers (used by both manual and auto mode) ---
-
-  const runThreatModelStep = async (project: any, findingsArr: any[]): Promise<string> => {
-    const projectFindings = findingsArr.filter((f: any) => f.product_id === project.id && f.status !== 'triage');
-    const findingsText = projectFindings.map((f: any) => `- [${f.severity?.toUpperCase()}] ${f.title} in ${f.file_path || 'N/A'}:${f.line_number || 'N/A'}`).join('\n');
-    const prompt = `You are a threat modeling expert following the determine_threat_model methodology.
-Respond in English regardless of the programming language or comments in the source code.
-Analyze the project: "${project.name}".
-Findings Context:\n${findingsText}\n\nBuild a comprehensive threat model: Identify components, trust boundaries, and sensitive data paths. Provide a STRIDE analysis table and prioritized mitigations in markdown.`;
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] })
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Failed to generate threat model.');
-    return data.content || 'No threat model generated.';
-  };
-
-  const runSecurityPlanStep = async (project: any, threatModel: string): Promise<string> => {
-    const prompt = `You are a security architect. Respond in English regardless of the programming language or comments in the source code.
-Create a security implementation plan for project "${project.name}" based on the following STRIDE Threat Model:\n\n${threatModel}\n\nOutline high-level fix priorities and specific security verification tests/checkpoints in markdown.`;
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] })
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Failed to generate plan.');
-    return data.content || 'No security plan generated.';
-  };
-
-  const runRemediationStep = async (project: any, securityPlan: string): Promise<string> => {
-    const prompt = `Respond in English regardless of the programming language or comments in the source code.
-Generate a targeted security patch (before/after code diffs) to fix the security vulnerabilities for project "${project.name}" based on this security plan:\n\n${securityPlan}`;
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] })
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Failed to generate fixes.');
-    return data.content || 'No fixes generated.';
-  };
-
-  const runScanAndPoCStep = async (project: any, remediation: string): Promise<{ poc: string; scanCountAfter: number }> => {
-    const path = project.repo_url || '/host';
-    const scanRes = await fetch('/api/securecoder/scan-directory', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path, external: true })
-    });
-    const scanData = await scanRes.json();
-    const newCount = scanData.findings ? scanData.findings.length : 0;
-
-    const prompt = `Respond in English regardless of the programming language or comments in the source code.
-Generate a Proof-of-Concept (PoC) exploit scenario and verification analysis.
-Remediation Diffs:\n${remediation}\n\nDescribe how the exploit works on the unpatched code, and demonstrate why it is now blocked in the patched state in markdown.`;
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] })
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Failed to generate PoC.');
-    return { poc: data.content || 'No PoC generated.', scanCountAfter: newCount };
-  };
-
-  const runReportStep = async (project: any, threatModel: string, remediation: string, poc: string): Promise<string> => {
-    const prompt = `Respond in English regardless of the programming language or comments in the source code.
-Compile a professional Security Audit Report in CS-XXX-NNN markdown format for project "${project.name}".
-Threat Model:\n${threatModel}\n\nRemediation:\n${remediation}\n\nPoC Verification:\n${poc}`;
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] })
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Failed to compile report.');
-    return data.content || 'No report generated.';
-  };
-
-  const runCompleteStep = async (scanCountBefore: number, scanCountAfter: number): Promise<void> => {
-    const res = await fetch('/api/securecoder/fix_completed', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        findingsCountBefore: scanCountBefore,
-        findingsCountAfter: scanCountAfter,
-        findingsByFiletypeAfter: 'ts:0, go:0, py:0'
-      })
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Failed to complete runway.');
-  };
-
-  // --- Manual step wrappers (keep existing behavior) ---
-
-  const handleGenerateThreatModel = async () => {
-    setRunwayLoading(true);
-    setRunwayError('');
-    try {
-      const result = await runThreatModelStep(runwayProject, findings);
-      setRunwayThreatModel(result);
-      setRunwayStep(2);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 2, { threat_model: result, product_id: runwayProject.id });
-      // Auto-chain: immediately start next step
-      setRunwayLoading(true);
-      try {
-        const plan = await runSecurityPlanStep(runwayProject, result);
-        setRunwaySecurityPlan(plan);
-        setRunwayStep(3);
-        if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 3, { security_plan: plan, product_id: runwayProject.id });
-        // Auto-chain: remediation
-        setRunwayLoading(true);
-        try {
-          const remediation = await runRemediationStep(runwayProject, plan);
-          setRunwayRemediation(remediation);
-          setRunwayStep(4);
-          if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 4, { remediation, product_id: runwayProject.id });
-          // Auto-chain: scan & PoC
-          setRunwayLoading(true);
-          try {
-            const { poc, scanCountAfter } = await runScanAndPoCStep(runwayProject, remediation);
-            setRunwayPoC(poc);
-            setRunwayScanCountAfter(scanCountAfter);
-            setRunwayStep(5);
-            if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 5, { poc, scan_count_after: scanCountAfter, product_id: runwayProject.id });
-            // Auto-chain: report
-            setRunwayLoading(true);
-            try {
-              const report = await runReportStep(runwayProject, result, remediation, poc);
-              setRunwayAuditReport(report);
-              setRunwayStep(6);
-              if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 6, { audit_report: report, product_id: runwayProject.id });
-              // Auto-chain: complete
-              setRunwayLoading(true);
-              try {
-                await runCompleteStep(runwayScanCountBefore, scanCountAfter);
-                setRunwayStep(7);
-                if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 7, { status: 'completed', product_id: runwayProject?.id });
-              } catch (e: any) {
-                setRunwayError(e.message || 'Network error logging results.');
-              } finally {
-                setRunwayLoading(false);
-              }
-            } catch (e: any) {
-              setRunwayError(e.message || 'Report compilation failed.');
-              setRunwayLoading(false);
-            }
-          } catch (e: any) {
-            setRunwayError(e.message || 'Verification failed.');
-            setRunwayLoading(false);
-          }
-        } catch (e: any) {
-          setRunwayError(e.message || 'Network error.');
-          setRunwayLoading(false);
-        }
-      } catch (e: any) {
-        setRunwayError(e.message || 'Network error.');
-        setRunwayLoading(false);
-      }
-    } catch (e: any) {
-      setRunwayError(e.message || 'Network error occurred.');
-      setRunwayLoading(false);
-    }
-  };
-
-  const handleGenerateSecurityPlan = async () => {
-    setRunwayLoading(true);
-    setRunwayError('');
-    try {
-      const result = await runSecurityPlanStep(runwayProject, runwayThreatModel);
-      setRunwaySecurityPlan(result);
-      setRunwayStep(3);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 3, { security_plan: result, product_id: runwayProject.id });
-      // Auto-chain: remediation → scan → report → complete
-      setRunwayLoading(true);
-      const remediation = await runRemediationStep(runwayProject, result);
-      setRunwayRemediation(remediation);
-      setRunwayStep(4);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 4, { remediation, product_id: runwayProject.id });
-
-      setRunwayLoading(true);
-      const { poc, scanCountAfter } = await runScanAndPoCStep(runwayProject, remediation);
-      setRunwayPoC(poc);
-      setRunwayScanCountAfter(scanCountAfter);
-      setRunwayStep(5);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 5, { poc, scan_count_after: scanCountAfter, product_id: runwayProject.id });
-
-      setRunwayLoading(true);
-      const report = await runReportStep(runwayProject, runwayThreatModel, remediation, poc);
-      setRunwayAuditReport(report);
-      setRunwayStep(6);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 6, { audit_report: report, product_id: runwayProject.id });
-
-      setRunwayLoading(true);
-      await runCompleteStep(runwayScanCountBefore, scanCountAfter);
-      setRunwayStep(7);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 7, { status: 'completed', product_id: runwayProject?.id });
-    } catch (e: any) {
-      setRunwayError(e.message || 'Pipeline error.');
-    } finally {
-      setRunwayLoading(false);
-    }
-  };
-
-  const handleGenerateRemediation = async () => {
-    setRunwayLoading(true);
-    setRunwayError('');
-    try {
-      const result = await runRemediationStep(runwayProject, runwaySecurityPlan);
-      setRunwayRemediation(result);
-      setRunwayStep(4);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 4, { remediation: result, product_id: runwayProject.id });
-      // Auto-chain: scan → report → complete
-      setRunwayLoading(true);
-      const { poc, scanCountAfter } = await runScanAndPoCStep(runwayProject, result);
-      setRunwayPoC(poc);
-      setRunwayScanCountAfter(scanCountAfter);
-      setRunwayStep(5);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 5, { poc, scan_count_after: scanCountAfter, product_id: runwayProject.id });
-
-      setRunwayLoading(true);
-      const report = await runReportStep(runwayProject, runwayThreatModel, result, poc);
-      setRunwayAuditReport(report);
-      setRunwayStep(6);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 6, { audit_report: report, product_id: runwayProject.id });
-
-      setRunwayLoading(true);
-      await runCompleteStep(runwayScanCountBefore, scanCountAfter);
-      setRunwayStep(7);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 7, { status: 'completed', product_id: runwayProject?.id });
-    } catch (e: any) {
-      setRunwayError(e.message || 'Pipeline error.');
-    } finally {
-      setRunwayLoading(false);
-    }
-  };
-
-  const handleRunScanAndPoC = async () => {
-    setRunwayLoading(true);
-    setRunwayError('');
-    try {
-      const { poc, scanCountAfter } = await runScanAndPoCStep(runwayProject, runwayRemediation);
-      setRunwayPoC(poc);
-      setRunwayScanCountAfter(scanCountAfter);
-      setRunwayStep(5);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 5, { poc, scan_count_after: scanCountAfter, product_id: runwayProject.id });
-      // Auto-chain: report → complete
-      setRunwayLoading(true);
-      const report = await runReportStep(runwayProject, runwayThreatModel, runwayRemediation, poc);
-      setRunwayAuditReport(report);
-      setRunwayStep(6);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 6, { audit_report: report, product_id: runwayProject.id });
-
-      setRunwayLoading(true);
-      await runCompleteStep(runwayScanCountBefore, scanCountAfter);
-      setRunwayStep(7);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 7, { status: 'completed', product_id: runwayProject?.id });
-    } catch (e: any) {
-      setRunwayError(e.message || 'Pipeline error.');
-    } finally {
-      setRunwayLoading(false);
-    }
-  };
-
-  const handleGenerateReport = async () => {
-    setRunwayLoading(true);
-    setRunwayError('');
-    try {
-      const result = await runReportStep(runwayProject, runwayThreatModel, runwayRemediation, runwayPoC);
-      setRunwayAuditReport(result);
-      setRunwayStep(6);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 6, { audit_report: result, product_id: runwayProject.id });
-      // Auto-chain: complete
-      setRunwayLoading(true);
-      await runCompleteStep(runwayScanCountBefore, runwayScanCountAfter);
-      setRunwayStep(7);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 7, { status: 'completed', product_id: runwayProject?.id });
-    } catch (e: any) {
-      setRunwayError(e.message || 'Pipeline error.');
-    } finally {
-      setRunwayLoading(false);
-    }
-  };
-
-  const handleCompleteRunway = async () => {
-    setRunwayLoading(true);
-    setRunwayError('');
-    try {
-      await runCompleteStep(runwayScanCountBefore, runwayScanCountAfter);
-      setRunwayStep(7);
-      if (runwaySessionId) await saveRunwayToDB(runwaySessionId, 7, { status: 'completed', product_id: runwayProject?.id });
-    } catch (e: any) {
-      setRunwayError(e.message || 'Network error logging results.');
-    } finally {
-      setRunwayLoading(false);
-    }
-  };
-
-  // --- AUTO-RUN: One-click full pipeline ---
-
-  const RUNWAY_PHASES = [
-    { label: t('SimpleDashboardPage.runway.phases.init'), shortLabel: 'INIT' },
-    { label: t('SimpleDashboardPage.runway.phases.threatModel'), shortLabel: 'THREAT MODEL' },
-    { label: t('SimpleDashboardPage.runway.phases.plan'), shortLabel: 'SECURITY PLAN' },
-    { label: t('SimpleDashboardPage.runway.phases.remediation'), shortLabel: 'REMEDIATION' },
-    { label: t('SimpleDashboardPage.runway.phases.poc'), shortLabel: 'SCAN & POC' },
-    { label: t('SimpleDashboardPage.runway.phases.report'), shortLabel: 'REPORT' },
-    { label: t('SimpleDashboardPage.runway.phases.sync'), shortLabel: 'SYNC' },
-    { label: t('SimpleDashboardPage.runway.phases.complete'), shortLabel: 'DONE' },
-  ];
-
-  const handleRunwayAutoRun = async () => {
+  const triggerBackendOrchestrator = async () => {
     if (!runwayProject) return;
     setRunwayAutoMode(true);
     setRunwayLoading(true);
     runwayLoadingRef.current = true;
     setRunwayError('');
 
-    // Reset all results
-    setRunwayThreatModel('');
-    setRunwaySecurityPlan('');
-    setRunwayRemediation('');
-    setRunwayPoC('');
-    setRunwayAuditReport('');
-    setRunwayScanCountAfter(0);
-
-    const projectFindings = findings.filter(f => f.product_id === runwayProject.id && f.status !== 'triage');
-    const scanCountBefore = projectFindings.length;
-    setRunwayScanCountBefore(scanCountBefore);
-
-    // Create DB session
     let sessionId = runwaySessionId;
     if (!sessionId) {
       try {
@@ -1280,68 +907,29 @@ Threat Model:\n${threatModel}\n\nRemediation:\n${remediation}\n\nPoC Verificatio
         if (createData.ok && createData.session) {
           sessionId = createData.session.id;
           setRunwaySessionId(sessionId);
+        } else {
+          throw new Error('Failed to create session');
         }
       } catch (e) {
-        console.error('Failed to create runway session in DB:', e);
+        setRunwayError('Failed to create runway session in DB');
+        setRunwayLoading(false);
+        runwayLoadingRef.current = false;
+        return;
       }
     }
 
     try {
-      // Step 1: Threat Model
-      setRunwayStep(1);
-      setRunwayAutoPhase(RUNWAY_PHASES[1].label);
-      const threatModel = await runThreatModelStep(runwayProject, findings);
-      setRunwayThreatModel(threatModel);
-      if (sessionId) await saveRunwayToDB(sessionId, 1, { threat_model: threatModel, scan_count_before: scanCountBefore, product_id: runwayProject.id, auto_mode: true });
-
-      // Step 2: Security Plan
-      setRunwayStep(2);
-      setRunwayAutoPhase(RUNWAY_PHASES[2].label);
-      const securityPlan = await runSecurityPlanStep(runwayProject, threatModel);
-      setRunwaySecurityPlan(securityPlan);
-      if (sessionId) await saveRunwayToDB(sessionId, 2, { security_plan: securityPlan, product_id: runwayProject.id });
-
-      // Step 3: Remediation
-      setRunwayStep(3);
-      setRunwayAutoPhase(RUNWAY_PHASES[3].label);
-      const remediation = await runRemediationStep(runwayProject, securityPlan);
-      setRunwayRemediation(remediation);
-      if (sessionId) await saveRunwayToDB(sessionId, 3, { remediation, product_id: runwayProject.id });
-
-      // Step 4: Scan & PoC
-      setRunwayStep(4);
-      setRunwayAutoPhase(RUNWAY_PHASES[4].label);
-      const { poc, scanCountAfter } = await runScanAndPoCStep(runwayProject, remediation);
-      setRunwayPoC(poc);
-      setRunwayScanCountAfter(scanCountAfter);
-      if (sessionId) await saveRunwayToDB(sessionId, 4, { poc, scan_count_after: scanCountAfter, product_id: runwayProject.id });
-
-      // Step 5: Audit Report
-      setRunwayStep(5);
-      setRunwayAutoPhase(RUNWAY_PHASES[5].label);
-      const report = await runReportStep(runwayProject, threatModel, remediation, poc);
-      setRunwayAuditReport(report);
-      if (sessionId) await saveRunwayToDB(sessionId, 5, { audit_report: report, product_id: runwayProject.id });
-
-      // Step 6: Sync & Complete
-      setRunwayStep(6);
-      setRunwayAutoPhase(RUNWAY_PHASES[6].label);
-      await runCompleteStep(scanCountBefore, scanCountAfter);
-
-      // Done
-      setRunwayStep(7);
-      setRunwayAutoPhase(RUNWAY_PHASES[7].label);
-      if (sessionId) await saveRunwayToDB(sessionId, 7, { status: 'completed', product_id: runwayProject.id });
+      const res = await fetch(`/api/runway/start/${sessionId}`, { method: 'POST' });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Failed to start scan.');
     } catch (e: any) {
-      const errMsg = e.message || 'Auto-run pipeline failed.';
-      setRunwayError(errMsg);
-      if (sessionId) await saveRunwayToDB(sessionId, runwayStep, { status: 'failed', error_message: errMsg, product_id: runwayProject.id });
-    } finally {
+      setRunwayError(e.message || 'Failed to trigger scan on backend.');
       setRunwayLoading(false);
-      setRunwayAutoMode(false);
       runwayLoadingRef.current = false;
     }
   };
+
+  const handleRunwayAutoRun = triggerBackendOrchestrator;
 
   const handleResetRunway = async () => {
     // Delete session from DB
@@ -1364,7 +952,6 @@ Threat Model:\n${threatModel}\n\nRemediation:\n${remediation}\n\nPoC Verificatio
     setRunwayScanCountAfter(0);
     setRunwayError('');
     setRunwayAutoMode(false);
-    setRunwayAutoPhase('');
   };
 
   const handleDownloadMarkdown = () => {
@@ -1487,49 +1074,28 @@ Threat Model:\n${threatModel}\n\nRemediation:\n${remediation}\n\nPoC Verificatio
             })}
           </div>
 
-          {/* Auto-mode phase labels */}
-          {runwayAutoMode && runwayStep > 0 && runwayStep < 7 && (
-            <div className="flex gap-1 -mt-2">
-              {RUNWAY_PHASES.slice(0, -1).map((_phase, i) => (
-                <div key={i} className={`flex-1 text-center text-[7px] font-mono uppercase tracking-wider pt-1 transition-colors duration-300 ${
-                  i < runwayStep ? 'text-[var(--accent-color)]' : i === runwayStep ? 'text-white' : 'text-[#27272a]'
-                }`}>
-                  {i < runwayStep ? '✓' : i === runwayStep ? '◉' : '·'}
-                </div>
-              ))}
-            </div>
-          )}
-
           {/* Auto-mode current status */}
-          {runwayAutoMode && runwayLoading && (
+          {runwaySessionId && runwayStep > 0 && runwayStep < 7 && (
             <div 
-              className="flex items-center gap-3 py-3 px-4 rounded-lg border"
+              className="flex items-center justify-center gap-3 py-12 px-4 rounded-lg border"
               style={{
                 backgroundColor: 'var(--accent-color-soft)',
                 borderColor: 'var(--accent-color-line)'
               }}
             >
-              <div className="w-5 h-5 border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--accent-color)] rounded-full animate-spin shrink-0" />
-              <div className="flex-1">
-                <span className="text-[11px] text-white font-semibold uppercase tracking-wider">{runwayAutoPhase}</span>
-                <span className="text-[10px] text-[#52525b] ml-2 font-mono">{t('SimpleDashboardPage.runway.stepIndicator', { current: runwayStep }).toLowerCase()}</span>
+              <div className="w-8 h-8 border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--accent-color)] rounded-full animate-spin shrink-0" />
+              <div className="flex-col">
+                <span className="text-[14px] text-white font-semibold uppercase tracking-wider block">Running Audit...</span>
+                <span className="text-[11px] text-[#52525b] font-mono mt-1">This might take a few minutes</span>
               </div>
-              <button
-                onClick={() => { setRunwayAutoMode(false); }}
-                className="text-[9px] text-[#ef4444] hover:text-[#f87171] uppercase font-mono font-bold tracking-wider transition-colors"
-              >
-                {t('SimpleDashboardPage.runway.abort')}
-              </button>
             </div>
           )}
 
           {runwayError && (
-            <div className="p-3 bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.15)] rounded text-[11px] text-[#ef4444] font-medium flex items-center gap-2">
+            <div className="p-3 bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.15)] rounded text-[11px] text-[#ef4444] font-medium flex items-center gap-2 mt-4">
               <span className="material-symbols-outlined text-[14px]">error</span>
               {runwayError}
-              {runwayStep > 0 && runwayStep < 7 && (
-                <button onClick={handleRunwayAutoRun} className="ml-auto text-[10px] text-[#ef4444] hover:text-[#f87171] uppercase font-mono font-bold underline">{t('SimpleDashboardPage.runway.retry')}</button>
-              )}
+              <button onClick={handleRunwayAutoRun} className="ml-auto text-[10px] text-[#ef4444] hover:text-[#f87171] uppercase font-mono font-bold underline">{t('SimpleDashboardPage.runway.retry')}</button>
             </div>
           )}
 
@@ -1557,184 +1123,7 @@ Threat Model:\n${threatModel}\n\nRemediation:\n${remediation}\n\nPoC Verificatio
                   className="w-full px-4 py-2.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[12px] font-bold uppercase tracking-wider disabled:opacity-30 transition-all duration-300 flex items-center justify-center gap-2 shadow-[0_0_15px_var(--accent-color-line)] hover:shadow-[0_0_25px_var(--accent-color-soft)]"
                 >
                   <span className="material-symbols-outlined text-[16px]">play_arrow</span>
-                  {t('SimpleDashboardPage.runway.startFullPipeline')}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 1: Threat Model */}
-          {runwayStep === 1 && !runwayAutoMode && (
-            <div className="space-y-3 pt-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-white font-semibold uppercase font-mono">{t('SimpleDashboardPage.runway.step1Title', { name: runwayProject.name })}</span>
-                <span className="text-[9px] text-[#71717a] font-mono">{t('SimpleDashboardPage.runway.foundIssuesCount', { count: runwayScanCountBefore })}</span>
-              </div>
-              {runwayLoading ? (
-                <div className="flex flex-col items-center justify-center py-6 gap-2">
-                  <div className="w-5 h-5 border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--accent-color)] rounded-full animate-spin" />
-                  <span className="text-[10px] text-[#71717a] font-mono uppercase tracking-widest animate-pulse">{t('SimpleDashboardPage.runway.runningStrideThreatModel')}</span>
-                </div>
-              ) : runwayThreatModel ? (
-                <div className="bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.04)] rounded p-3 max-h-56 overflow-y-auto text-[11px] text-[#a1a1aa] leading-relaxed prose prose-invert select-text" style={{ scrollbarWidth: 'thin' }}>
-                  <Markdown>{runwayThreatModel}</Markdown>
-                </div>
-              ) : (
-                <p className="text-[11px] text-[#71717a]">{t('SimpleDashboardPage.runway.readyThreatModel')}</p>
-              )}
-              <div className="flex justify-between pt-1">
-                <button onClick={handleResetRunway} className="text-[10px] text-[#71717a] hover:text-[#a1a1aa] uppercase font-mono font-bold">{t('SimpleDashboardPage.runway.reset')}</button>
-                {!runwayThreatModel ? (
-                  <button onClick={handleGenerateThreatModel} disabled={runwayLoading} className="px-4 py-1.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
-                    {t('SimpleDashboardPage.runway.analyzeThreats')}
-                  </button>
-                ) : (
-                  <button onClick={() => setRunwayStep(2)} className="px-4 py-1.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
-                    {t('SimpleDashboardPage.runway.nextPlan')}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 2: Security Plan */}
-          {runwayStep === 2 && !runwayAutoMode && (
-            <div className="space-y-3 pt-2">
-              <span className="text-[11px] text-white font-semibold uppercase font-mono">{t('SimpleDashboardPage.runway.step2Title')}</span>
-              {runwayLoading ? (
-                <div className="flex flex-col items-center justify-center py-6 gap-2">
-                  <div className="w-5 h-5 border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--accent-color)] rounded-full animate-spin" />
-                  <span className="text-[10px] text-[#71717a] font-mono uppercase tracking-widest animate-pulse">{t('SimpleDashboardPage.runway.runningSecurityPlan')}</span>
-                </div>
-              ) : runwaySecurityPlan ? (
-                <div className="bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.04)] rounded p-3 max-h-56 overflow-y-auto text-[11px] text-[#a1a1aa] leading-relaxed prose prose-invert select-text" style={{ scrollbarWidth: 'thin' }}>
-                  <Markdown>{runwaySecurityPlan}</Markdown>
-                </div>
-              ) : (
-                <p className="text-[11px] text-[#71717a]">{t('SimpleDashboardPage.runway.readySecurityPlan')}</p>
-              )}
-              <div className="flex justify-between pt-1">
-                <button onClick={() => setRunwayStep(1)} className="text-[10px] text-[#71717a] hover:text-[#a1a1aa] uppercase font-mono font-bold">{t('SimpleDashboardPage.runway.reset')}</button>
-                {!runwaySecurityPlan ? (
-                  <button onClick={handleGenerateSecurityPlan} disabled={runwayLoading} className="px-4 py-1.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
-                    {t('SimpleDashboardPage.runway.createPlan')}
-                  </button>
-                ) : (
-                  <button onClick={() => setRunwayStep(3)} className="px-4 py-1.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
-                    {t('SimpleDashboardPage.runway.nextPatch')}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3: Remediation Diffs */}
-          {runwayStep === 3 && !runwayAutoMode && (
-            <div className="space-y-3 pt-2">
-              <span className="text-[11px] text-white font-semibold uppercase font-mono">{t('SimpleDashboardPage.runway.step3Title')}</span>
-              {runwayLoading ? (
-                <div className="flex flex-col items-center justify-center py-6 gap-2">
-                  <div className="w-5 h-5 border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--accent-color)] rounded-full animate-spin" />
-                  <span className="text-[10px] text-[#71717a] font-mono uppercase tracking-widest animate-pulse">{t('SimpleDashboardPage.runway.runningRemediation')}</span>
-                </div>
-              ) : runwayRemediation ? (
-                <div className="bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.04)] rounded p-3 max-h-56 overflow-y-auto text-[11px] text-[#a1a1aa] leading-relaxed prose prose-invert select-text" style={{ scrollbarWidth: 'thin' }}>
-                  <Markdown>{runwayRemediation}</Markdown>
-                </div>
-              ) : (
-                <p className="text-[11px] text-[#71717a]">{t('SimpleDashboardPage.runway.readyRemediation')}</p>
-              )}
-              <div className="flex justify-between pt-1">
-                <button onClick={() => setRunwayStep(2)} className="text-[10px] text-[#71717a] hover:text-[#a1a1aa] uppercase font-mono font-bold">{t('SimpleDashboardPage.runway.reset')}</button>
-                {!runwayRemediation ? (
-                  <button onClick={handleGenerateRemediation} disabled={runwayLoading} className="px-4 py-1.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
-                    {t('SimpleDashboardPage.runway.generatePatches')}
-                  </button>
-                ) : (
-                  <button onClick={() => setRunwayStep(4)} className="px-4 py-1.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
-                    {t('SimpleDashboardPage.runway.nextVerify')}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: Scan & PoC */}
-          {runwayStep === 4 && !runwayAutoMode && (
-            <div className="space-y-3 pt-2">
-              <span className="text-[11px] text-white font-semibold uppercase font-mono">{t('SimpleDashboardPage.runway.step4Title')}</span>
-              {runwayLoading ? (
-                <div className="flex flex-col items-center justify-center py-6 gap-2">
-                  <div className="w-5 h-5 border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--accent-color)] rounded-full animate-spin" />
-                  <span className="text-[10px] text-[#71717a] font-mono uppercase tracking-widest animate-pulse">{t('SimpleDashboardPage.runway.runningScanPoC')}</span>
-                </div>
-              ) : runwayPoC ? (
-                <div className="space-y-2">
-                  <div className="text-[10px] text-[#22c55e] font-mono bg-[rgba(34,197,94,0.08)] border border-[rgba(34,197,94,0.15)] px-2.5 py-1.5 rounded">
-                    {t('SimpleDashboardPage.runway.scanPoCResult', { count: runwayScanCountAfter, fixed: runwayScanCountBefore - runwayScanCountAfter })}
-                  </div>
-                  <div className="bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.04)] rounded p-3 max-h-48 overflow-y-auto text-[11px] text-[#a1a1aa] leading-relaxed prose prose-invert select-text" style={{ scrollbarWidth: 'thin' }}>
-                    <Markdown>{runwayPoC}</Markdown>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-[11px] text-[#71717a]">{t('SimpleDashboardPage.runway.readyScanPoC')}</p>
-              )}
-              <div className="flex justify-between pt-1">
-                <button onClick={() => setRunwayStep(3)} className="text-[10px] text-[#71717a] hover:text-[#a1a1aa] uppercase font-mono font-bold">{t('SimpleDashboardPage.runway.reset')}</button>
-                {!runwayPoC ? (
-                  <button onClick={handleRunScanAndPoC} disabled={runwayLoading} className="px-4 py-1.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
-                    {t('SimpleDashboardPage.runway.verifyFixes')}
-                  </button>
-                ) : (
-                  <button onClick={() => setRunwayStep(5)} className="px-4 py-1.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
-                    {t('SimpleDashboardPage.runway.nextReport')}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 5: Audit Report */}
-          {runwayStep === 5 && !runwayAutoMode && (
-            <div className="space-y-3 pt-2">
-              <span className="text-[11px] text-white font-semibold uppercase font-mono">{t('SimpleDashboardPage.runway.step5Title')}</span>
-              {runwayLoading ? (
-                <div className="flex flex-col items-center justify-center py-6 gap-2">
-                  <div className="w-5 h-5 border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--accent-color)] rounded-full animate-spin" />
-                  <span className="text-[10px] text-[#71717a] font-mono uppercase tracking-widest animate-pulse">{t('SimpleDashboardPage.runway.runningReport')}</span>
-                </div>
-              ) : runwayAuditReport ? (
-                <div className="bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.04)] rounded p-3 max-h-56 overflow-y-auto text-[11px] text-[#a1a1aa] leading-relaxed prose prose-invert select-text" style={{ scrollbarWidth: 'thin' }}>
-                  <Markdown>{runwayAuditReport}</Markdown>
-                </div>
-              ) : (
-                <p className="text-[11px] text-[#71717a]">{t('SimpleDashboardPage.runway.readyReport')}</p>
-              )}
-              <div className="flex justify-between pt-1">
-                <button onClick={() => setRunwayStep(4)} className="text-[10px] text-[#71717a] hover:text-[#a1a1aa] uppercase font-mono font-bold">{t('SimpleDashboardPage.runway.reset')}</button>
-                {!runwayAuditReport ? (
-                  <button onClick={handleGenerateReport} disabled={runwayLoading} className="px-4 py-1.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
-                    {t('SimpleDashboardPage.runway.generateReport')}
-                  </button>
-                ) : (
-                  <button onClick={() => setRunwayStep(6)} className="px-4 py-1.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
-                    {t('SimpleDashboardPage.runway.nextFinish')}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 6: Complete Runway */}
-          {runwayStep === 6 && !runwayAutoMode && (
-            <div className="space-y-3 pt-2">
-              <span className="text-[11px] text-white font-semibold uppercase font-mono">{t('SimpleDashboardPage.runway.step6Title')}</span>
-              <p className="text-[11px] text-[#71717a] leading-relaxed">{t('SimpleDashboardPage.runway.readyComplete')}</p>
-              <div className="flex justify-between pt-1">
-                <button onClick={() => setRunwayStep(5)} className="text-[10px] text-[#71717a] hover:text-[#a1a1aa] uppercase font-mono font-bold">{t('SimpleDashboardPage.runway.reset')}</button>
-                <button onClick={handleCompleteRunway} disabled={runwayLoading} className="px-4 py-1.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
-                  {runwayLoading ? t('SimpleDashboardPage.runway.syncing') : t('SimpleDashboardPage.runway.syncResultsAndFinish')}
+                  Start Automated Audit
                 </button>
               </div>
             </div>
@@ -3869,7 +3258,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
 
               {/* RIGHT: AI IDE Prompts (sticky) */}
               <div className="xl:col-span-1 sticky top-6 space-y-6">
-                <SecureCoderPanel activeProducts={activeProducts} findings={findings} />
+                <SecureCoderPanel activeProducts={activeProducts} />
               </div>
             </div>
           </div>

@@ -487,7 +487,7 @@ func writeGitHubActionsSummary(report scanner.ScanReport) {
 	defer f.Close()
 
 	_, _ = f.WriteString("## AITriage Security Scan Summary\n\n")
-	fmt.Fprintf(f, "**IB Gate:** %s\n\n", strings.ToUpper(report.HealthCheck.Verdict.Status))
+	fmt.Fprintf(f, "**Security Gate:** %s\n\n", strings.ToUpper(report.HealthCheck.Verdict.Status))
 	fmt.Fprintf(f, "**Policy:** `%s` (`fail_on=%s`)\n\n", report.HealthCheck.Policy.Profile, report.HealthCheck.Policy.FailOn)
 	fmt.Fprintf(f, "**Health Check:** %d/100 (%s)\n\n", report.SecurityScore, report.SecurityGrade)
 	hb := report.HealthCheck.Breakdown

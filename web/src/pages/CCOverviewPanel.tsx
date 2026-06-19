@@ -4,13 +4,12 @@ import { useMetrics } from '../hooks/useMetrics';
 import { FileBrowser } from '../components/FileBrowser';
 import { securityService } from '../services/securityService';
 import { useFindings } from '../hooks/useFindings';
+import { usePrompts, interpolatePrompt } from '../hooks/usePrompts';
 import { useCopilotStore } from '../store/CopilotStore';
 import type { Finding } from '../types';
 import { useCountUp } from '../hooks/useCountUp';
 import { ProgressRing } from '../ui/ProgressRing';
 import { useProducts } from '../hooks/useProducts';
-
-
 
 export const CCOverviewPanel: React.FC = () => {
   const { t } = useTranslation('pages');
@@ -55,26 +54,26 @@ export const CCOverviewPanel: React.FC = () => {
   // Product specific filtering
   const productFindings = selectedProductId
     ? (findings || []).filter((f: Finding) => f.product_id === selectedProductId)
-    : (findings || []);
-
-
+    : findings || [];
 
   const workbenchFindings = productFindings.filter((f: Finding) => {
     const status = (f.status || 'open').toLowerCase();
     const isResolved = ['resolved', 'closed', 'false_positive', 'risk_accepted'].includes(status);
-    
+
     if (workbenchTab === 'active' && isResolved) return false;
     if (workbenchTab === 'resolved' && !isResolved) return false;
-    
+
     if (workbenchSeverityFilter) {
       if (f.severity?.toUpperCase() !== workbenchSeverityFilter.toUpperCase()) return false;
     }
-    
+
     return true;
   });
 
   const selectedFinding =
-    workbenchFindings.find((f: Finding) => f.id === selectedFindingId) || workbenchFindings[0] || null;
+    workbenchFindings.find((f: Finding) => f.id === selectedFindingId) ||
+    workbenchFindings[0] ||
+    null;
 
   useEffect(() => {
     if (selectedFindingId === null && workbenchFindings.length > 0) {
@@ -117,34 +116,118 @@ export const CCOverviewPanel: React.FC = () => {
   });
 
   const calculateSecurityScore = (findingsList: Finding[]) => {
-    let score = 100;
-    findingsList.forEach((f: Finding) => {
-      const status = (f.status || 'open').toLowerCase();
-      if (!['resolved', 'closed', 'false_positive', 'risk_accepted'].includes(status)) {
-        const sev = (f.severity || '').toLowerCase();
-        if (sev === 'critical') score -= 10;
-        else if (sev === 'high') score -= 4;
-        else if (sev === 'medium') score -= 1;
+    const severityWeight: Record<string, number> = {
+      CRITICAL: 18,
+      HIGH: 9,
+      MEDIUM: 3,
+      LOW: 1,
+      INFO: 0,
+    };
+
+    const sourceConfidence: Record<string, number> = {
+      core: 1.0,
+      aitriage: 1.0,
+      securecoder: 1.0,
+      semgrep: 1.0,
+      bandit: 1.0,
+      gitleaks: 1.0,
+      trivy: 0.9,
+      deploy: 0.8,
+      network: 0.7,
+      nfr: 0.6,
+    };
+
+    const deduped = new Map<string, Finding>();
+    for (const f of findingsList) {
+      if (['resolved', 'closed'].includes((f.status || 'open').toLowerCase())) {
+        continue;
       }
+
+      const classKey = (f.rule_id || f.cwe_id || 'unknown').toLowerCase();
+      const file = (f.file_path || '').toLowerCase();
+      const line = f.line_number || 0;
+
+      const key =
+        file && line
+          ? `${classKey}|${file}|${line}`
+          : `${f.stack?.toLowerCase() || 'unknown'}|${classKey}`;
+
+      const existing = deduped.get(key);
+      const isIgnored = ['false_positive', 'risk_accepted'].includes(
+        (f.status || '').toLowerCase(),
+      );
+
+      const getWeight = (finding: Finding) => {
+        const s = (finding.severity || 'UNKNOWN').toUpperCase();
+        const src = (finding.stack || 'unknown').toLowerCase();
+        return (severityWeight[s] ?? 2) * (sourceConfidence[src] ?? 1.0);
+      };
+
+      if (existing) {
+        const existingIgnored = ['false_positive', 'risk_accepted'].includes(
+          (existing.status || '').toLowerCase(),
+        );
+        if (existingIgnored && !isIgnored) {
+          deduped.set(key, f);
+        } else if (existingIgnored === isIgnored && getWeight(f) > getWeight(existing)) {
+          deduped.set(key, f);
+        }
+      } else {
+        deduped.set(key, f);
+      }
+    }
+
+    let rawWeight = 0;
+
+    deduped.forEach((f) => {
+      if (['false_positive', 'risk_accepted'].includes((f.status || 'open').toLowerCase())) {
+        return;
+      }
+
+      const sev = (f.severity || 'UNKNOWN').toUpperCase();
+      if (sev === 'CRITICAL' || sev === 'HIGH') {
+      }
+
+      const src = (f.stack || 'unknown').toLowerCase();
+      const w = (severityWeight[sev] ?? 2) * (sourceConfidence[src] ?? 1.0);
+      rawWeight += w;
     });
-    return Math.max(0, score);
+
+    const saturationScale = 55.0;
+    const penalty = 100.0 * (1.0 - Math.exp(-rawWeight / saturationScale));
+
+    let score = Math.round(100.0 - penalty);
+    if (score > 100) score = 100;
+    if (score < 0) score = 0;
+
+    return score;
   };
 
   const getSecurityGrade = (score: number) => {
+    if (score >= 100) return 'A+';
     if (score >= 90) return 'A';
-    if (score >= 75) return 'B';
-    if (score >= 60) return 'C';
-    if (score >= 45) return 'D';
+    if (score >= 80) return 'B';
+    if (score >= 65) return 'C';
+    if (score >= 50) return 'D';
     return 'F';
   };
 
-  const computedScore = selectedProductId ? calculateSecurityScore(productFindings) : (metrics?.security_score ?? 100);
-  const computedGrade = selectedProductId ? getSecurityGrade(computedScore) : (metrics?.security_grade ?? 'A');
+  const computedScore = selectedProductId
+    ? calculateSecurityScore(productFindings)
+    : (metrics?.security_score ?? 100);
+  const computedGrade = selectedProductId
+    ? getSecurityGrade(computedScore)
+    : (metrics?.security_grade ?? 'A');
 
   const totalFindingsCount = productFindings.length;
-  const resolvedFindingsCount = productFindings.filter((f: Finding) => ['resolved', 'closed', 'false_positive', 'risk_accepted'].includes((f.status || 'open').toLowerCase())).length;
+  const resolvedFindingsCount = productFindings.filter((f: Finding) =>
+    ['resolved', 'closed', 'false_positive', 'risk_accepted'].includes(
+      (f.status || 'open').toLowerCase(),
+    ),
+  ).length;
   const openFindingsCount = totalFindingsCount - resolvedFindingsCount;
-  const resolvedPct = totalFindingsCount > 0 ? Math.round((resolvedFindingsCount / totalFindingsCount) * 100) : 0;
+  const resolvedPct =
+    totalFindingsCount > 0 ? Math.round((resolvedFindingsCount / totalFindingsCount) * 100) : 0;
 
   const animatedScore = useCountUp(computedScore);
   const animatedCrit = useCountUp(sc.CRITICAL);
@@ -159,12 +242,17 @@ export const CCOverviewPanel: React.FC = () => {
   const med = sc.MEDIUM;
 
   // Filter scans
-  const filteredScans = selectedProductId && products.find(p => p.id === selectedProductId)
-    ? (metrics?.recent_engagements || []).filter(e => {
-        const prod = products.find(p => p.id === selectedProductId);
-        return prod && (e.name.toLowerCase().includes(prod.name.toLowerCase()) || prod.name.toLowerCase().includes(e.name.toLowerCase()));
-      })
-    : (metrics?.recent_engagements || []);
+  const filteredScans =
+    selectedProductId && products.find((p) => p.id === selectedProductId)
+      ? (metrics?.recent_engagements || []).filter((e) => {
+          const prod = products.find((p) => p.id === selectedProductId);
+          return (
+            prod &&
+            (e.name.toLowerCase().includes(prod.name.toLowerCase()) ||
+              prod.name.toLowerCase().includes(e.name.toLowerCase()))
+          );
+        })
+      : metrics?.recent_engagements || [];
 
   if (loading || !metrics || productsLoading) {
     return (
@@ -177,25 +265,26 @@ export const CCOverviewPanel: React.FC = () => {
   }
 
   const scoreColor =
-    computedScore < 50
-      ? 'text-error'
-      : computedScore < 70
-        ? 'text-warning'
-        : 'text-success';
+    computedScore < 50 ? 'text-error' : computedScore < 70 ? 'text-warning' : 'text-success';
   const gradeBorder =
-    computedScore < 50
-      ? 'border-error'
-      : computedScore < 70
-        ? 'border-warning'
-        : 'border-success';
+    computedScore < 50 ? 'border-error' : computedScore < 70 ? 'border-warning' : 'border-success';
 
+  // Build prompt using server-loaded template (same as CI/CD SecureCoder framework)
+  const { templates } = usePrompts();
   const activePrompt = selectedFinding
-    ? `You are a security engineer assigned to remediate a vulnerability.
+    ? (() => {
+        const fixTemplate = templates.find((t) => t.id === 'fix');
+        if (fixTemplate) {
+          return interpolatePrompt(fixTemplate.template, selectedFinding);
+        }
+        // Fallback if templates haven't loaded yet
+        return `You are a security engineer assigned to remediate a vulnerability.
 Finding: ${selectedFinding.title} (${selectedFinding.severity})
 File: ${selectedFinding.file_path || selectedFinding.file || 'unknown'}:${selectedFinding.line_number || '0'}
 Description: ${selectedFinding.description || selectedFinding.fix_suggestion || selectedFinding.suggestion || 'No description.'}
 
-Provide a secure code patch and step-by-step fix plan.`
+Provide a secure code patch and step-by-step fix plan.`;
+      })()
     : '';
 
   return (
@@ -227,7 +316,9 @@ Provide a secure code patch and step-by-step fix plan.`
             <p className="text-[10px] font-bold text-v2-muted mb-1 tracking-widest uppercase">
               {t('pages.ccoverview.breadcrumb', 'Root // Security')}
             </p>
-            <h1 className="text-2xl font-bold text-white tracking-tight">{t('pages.ccoverview.title', 'Security Dashboard')}</h1>
+            <h1 className="text-2xl font-bold text-white tracking-tight">
+              {t('pages.ccoverview.title', 'Security Dashboard')}
+            </h1>
           </div>
           <div className="h-8 w-[1px] bg-v2-border-soft shrink-0 self-end mb-1" />
           <div className="self-end mb-0.5">
@@ -253,15 +344,21 @@ Provide a secure code patch and step-by-step fix plan.`
             <span className="material-symbols-outlined text-[16px] group-hover:rotate-180 transition-transform duration-500">
               refresh
             </span>
-            <span className="tracking-widest text-[11px] uppercase font-bold">{t('pages.ccoverview.refresh', 'Refresh')}</span>
+            <span className="tracking-widest text-[11px] uppercase font-bold">
+              {t('pages.ccoverview.refresh', 'Refresh')}
+            </span>
           </button>
           <button onClick={() => setShowBrowser(true)} className="v2-btn v2-btn-ghost h-10 px-4">
             <span className="material-symbols-outlined text-[16px]">folder_open</span>
-            <span className="tracking-widest text-[11px] uppercase font-bold">{t('pages.ccoverview.dir', 'Dir')}</span>
+            <span className="tracking-widest text-[11px] uppercase font-bold">
+              {t('pages.ccoverview.dir', 'Dir')}
+            </span>
           </button>
           <button onClick={() => handleStartScan('.')} className="v2-btn v2-btn-red h-10 px-5">
             <span className="material-symbols-outlined text-[16px]">bolt</span>
-            <span className="tracking-widest text-[11px] uppercase font-bold">{t('pages.ccoverview.quickScan', 'Quick Scan')}</span>
+            <span className="tracking-widest text-[11px] uppercase font-bold">
+              {t('pages.ccoverview.quickScan', 'Quick Scan')}
+            </span>
           </button>
         </div>
       </div>
@@ -273,9 +370,7 @@ Provide a secure code patch and step-by-step fix plan.`
             <div
               className={`w-12 h-12 border-2 ${gradeBorder} rounded-lg flex items-center justify-center`}
             >
-              <span className={`text-xl font-black ${scoreColor}`}>
-                {computedGrade || '–'}
-              </span>
+              <span className={`text-xl font-black ${scoreColor}`}>{computedGrade || '–'}</span>
             </div>
             <div>
               <div className="text-[10px] font-bold text-v2-muted tracking-widest uppercase mb-1 font-mono">
@@ -291,7 +386,9 @@ Provide a secure code patch and step-by-step fix plan.`
             </div>
           </div>
           <div className="text-right">
-            <div className="text-[11px] text-v2-muted font-mono">{t('pages.ccoverview.score', 'Score')}</div>
+            <div className="text-[11px] text-v2-muted font-mono">
+              {t('pages.ccoverview.score', 'Score')}
+            </div>
             <div className={`text-2xl font-bold font-mono ${scoreColor}`}>{animatedScore}</div>
           </div>
         </div>
@@ -308,12 +405,18 @@ Provide a secure code patch and step-by-step fix plan.`
             </span>
           </div>
           <div className="flex items-center gap-3 text-[11px] font-bold uppercase font-mono">
-            <span className={crit > 0 ? 'text-error' : 'text-v2-muted'}>{t('pages.ccoverview.crit', 'Crit')}: {animatedCrit}</span>
+            <span className={crit > 0 ? 'text-error' : 'text-v2-muted'}>
+              {t('pages.ccoverview.crit', 'Crit')}: {animatedCrit}
+            </span>
             <span className={high > 0 ? 'text-primary' : 'text-v2-muted'}>
               {t('pages.ccoverview.high', 'High')}: {animatedHigh}
             </span>
-            <span className={med > 0 ? 'text-v2-fg-2' : 'text-v2-muted'}>{t('pages.ccoverview.med', 'Med')}: {animatedMed}</span>
-            <span className="text-v2-muted">{t('pages.ccoverview.low', 'Low')}: {animatedLow}</span>
+            <span className={med > 0 ? 'text-v2-fg-2' : 'text-v2-muted'}>
+              {t('pages.ccoverview.med', 'Med')}: {animatedMed}
+            </span>
+            <span className="text-v2-muted">
+              {t('pages.ccoverview.low', 'Low')}: {animatedLow}
+            </span>
           </div>
         </div>
 
@@ -351,7 +454,9 @@ Provide a secure code patch and step-by-step fix plan.`
                     }`}
                   >
                     <span className="material-symbols-outlined text-[14px]">smart_toy</span>
-                    <span className="text-[11px] tracking-widest uppercase font-mono">{t('pages.ccoverview.aiSummaryTitle', 'AI_SUMMARY')}</span>
+                    <span className="text-[11px] tracking-widest uppercase font-mono">
+                      {t('pages.ccoverview.aiSummaryTitle', 'AI_SUMMARY')}
+                    </span>
                   </button>
                   <button
                     onClick={() => setLeftTab('scans')}
@@ -362,7 +467,9 @@ Provide a secure code patch and step-by-step fix plan.`
                     }`}
                   >
                     <span className="material-symbols-outlined text-[14px]">history</span>
-                    <span className="text-[11px] tracking-widest uppercase font-mono">{t('pages.ccoverview.recentScansTitle', 'RECENT_SCANS')}</span>
+                    <span className="text-[11px] tracking-widest uppercase font-mono">
+                      {t('pages.ccoverview.recentScansTitle', 'RECENT_SCANS')}
+                    </span>
                   </button>
                 </div>
                 {leftTab === 'scans' && (
@@ -380,7 +487,9 @@ Provide a secure code patch and step-by-step fix plan.`
                         {t('pages.ccoverview.statusAnalysis', 'Status Analysis')}
                       </h3>
                       <p className="text-sm text-v2-fg-2 leading-relaxed">
-                        {aiSummaryLoading ? t('pages.ccoverview.analyzingProject', 'Analyzing project state...') : aiSummary}
+                        {aiSummaryLoading
+                          ? t('pages.ccoverview.analyzingProject', 'Analyzing project state...')
+                          : aiSummary}
                       </p>
                     </div>
                   </div>
@@ -407,7 +516,9 @@ Provide a secure code patch and step-by-step fix plan.`
                                 : 'border-v2-red-line bg-v2-red-soft text-primary'
                             }`}
                           >
-                            {e.status === 'completed' ? t('pages.ccoverview.scanDone', 'Done') : t('pages.ccoverview.scanActive', 'Active')}
+                            {e.status === 'completed'
+                              ? t('pages.ccoverview.scanDone', 'Done')
+                              : t('pages.ccoverview.scanActive', 'Active')}
                           </span>
                         </div>
                       ))
@@ -427,53 +538,76 @@ Provide a secure code patch and step-by-step fix plan.`
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <button
-                    onClick={() => { setWorkbenchTab('active'); setWorkbenchSeverityFilter(null); }}
+                    onClick={() => {
+                      setWorkbenchTab('active');
+                      setWorkbenchSeverityFilter(null);
+                    }}
                     className={`flex items-center gap-1.5 pb-0.5 border-b-2 transition-all ${
                       workbenchTab === 'active'
                         ? 'border-primary text-white font-bold'
                         : 'border-transparent text-v2-muted hover:text-white'
                     }`}
                   >
-                    <span className="text-[11px] tracking-widest uppercase font-mono">{t('pages.ccoverview.active', 'ACTIVE')}</span>
+                    <span className="text-[11px] tracking-widest uppercase font-mono">
+                      {t('pages.ccoverview.active', 'ACTIVE')}
+                    </span>
                   </button>
                   <button
-                    onClick={() => { setWorkbenchTab('resolved'); setWorkbenchSeverityFilter(null); }}
+                    onClick={() => {
+                      setWorkbenchTab('resolved');
+                      setWorkbenchSeverityFilter(null);
+                    }}
                     className={`flex items-center gap-1.5 pb-0.5 border-b-2 transition-all ${
                       workbenchTab === 'resolved'
                         ? 'border-primary text-white font-bold'
                         : 'border-transparent text-v2-muted hover:text-white'
                     }`}
                   >
-                    <span className="text-[11px] tracking-widest uppercase font-mono">{t('pages.ccoverview.resolved', 'RESOLVED')}</span>
+                    <span className="text-[11px] tracking-widest uppercase font-mono">
+                      {t('pages.ccoverview.resolved', 'RESOLVED')}
+                    </span>
                   </button>
                   <button
-                    onClick={() => { setWorkbenchTab('all'); setWorkbenchSeverityFilter(null); }}
+                    onClick={() => {
+                      setWorkbenchTab('all');
+                      setWorkbenchSeverityFilter(null);
+                    }}
                     className={`flex items-center gap-1.5 pb-0.5 border-b-2 transition-all ${
                       workbenchTab === 'all'
                         ? 'border-primary text-white font-bold'
                         : 'border-transparent text-v2-muted hover:text-white'
                     }`}
                   >
-                    <span className="text-[11px] tracking-widest uppercase font-mono">{t('pages.ccoverview.all', 'ALL')}</span>
+                    <span className="text-[11px] tracking-widest uppercase font-mono">
+                      {t('pages.ccoverview.all', 'ALL')}
+                    </span>
                   </button>
                 </div>
                 <span className="text-[10px] font-mono text-v2-muted">
                   {workbenchFindings.length}
                 </span>
               </div>
-              
+
               {/* Severity Pills */}
               <div className="flex items-center gap-1.5 pt-1">
-                {(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const).map(sev => {
+                {(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const).map((sev) => {
                   const isActive = workbenchSeverityFilter === sev;
-                  const color = sev === 'CRITICAL' ? 'bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]' :
-                                sev === 'HIGH' ? 'bg-[#f97316]/10 border-[#f97316]/20 text-[#f97316]' :
-                                sev === 'MEDIUM' ? 'bg-[#eab308]/10 border-[#eab308]/20 text-[#eab308]' :
-                                'bg-[#3f3f46]/10 border-[#3f3f46]/20 text-[#a1a1aa]';
-                  const activeColor = sev === 'CRITICAL' ? 'bg-[#ef4444] text-white border-[#ef4444]' :
-                                      sev === 'HIGH' ? 'bg-[#f97316] text-white border-[#f97316]' :
-                                      sev === 'MEDIUM' ? 'bg-[#eab308] text-black border-[#eab308]' :
-                                      'bg-[#a1a1aa] text-black border-[#a1a1aa]';
+                  const color =
+                    sev === 'CRITICAL'
+                      ? 'bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]'
+                      : sev === 'HIGH'
+                        ? 'bg-[#f97316]/10 border-[#f97316]/20 text-[#f97316]'
+                        : sev === 'MEDIUM'
+                          ? 'bg-[#eab308]/10 border-[#eab308]/20 text-[#eab308]'
+                          : 'bg-[#3f3f46]/10 border-[#3f3f46]/20 text-[#a1a1aa]';
+                  const activeColor =
+                    sev === 'CRITICAL'
+                      ? 'bg-[#ef4444] text-white border-[#ef4444]'
+                      : sev === 'HIGH'
+                        ? 'bg-[#f97316] text-white border-[#f97316]'
+                        : sev === 'MEDIUM'
+                          ? 'bg-[#eab308] text-black border-[#eab308]'
+                          : 'bg-[#a1a1aa] text-black border-[#a1a1aa]';
                   return (
                     <button
                       key={sev}
@@ -562,7 +696,9 @@ Provide a secure code patch and step-by-step fix plan.`
                       : 'border-transparent text-v2-muted hover:text-white'
                   }`}
                 >
-                  <span className="text-[11px] tracking-widest uppercase font-mono">{t('pages.ccoverview.aiActionPlan', 'AI ACTION PLAN')}</span>
+                  <span className="text-[11px] tracking-widest uppercase font-mono">
+                    {t('pages.ccoverview.aiActionPlan', 'AI ACTION PLAN')}
+                  </span>
                 </button>
                 <button
                   onClick={() => setRightTab('details')}
@@ -572,7 +708,9 @@ Provide a secure code patch and step-by-step fix plan.`
                       : 'border-transparent text-v2-muted hover:text-white'
                   }`}
                 >
-                  <span className="text-[11px] tracking-widest uppercase font-mono">{t('pages.ccoverview.details', 'DETAILS')}</span>
+                  <span className="text-[11px] tracking-widest uppercase font-mono">
+                    {t('pages.ccoverview.details', 'DETAILS')}
+                  </span>
                 </button>
                 <button
                   onClick={() => setRightTab('code')}
@@ -582,7 +720,9 @@ Provide a secure code patch and step-by-step fix plan.`
                       : 'border-transparent text-v2-muted hover:text-white'
                   }`}
                 >
-                  <span className="text-[11px] tracking-widest uppercase font-mono">{t('pages.ccoverview.codeContext', 'CODE CONTEXT')}</span>
+                  <span className="text-[11px] tracking-widest uppercase font-mono">
+                    {t('pages.ccoverview.codeContext', 'CODE CONTEXT')}
+                  </span>
                 </button>
               </div>
             </div>
@@ -605,9 +745,19 @@ Provide a secure code patch and step-by-step fix plan.`
                                 selectedFinding.id.toString(),
                               );
                               if (res.ok) setRemediationPlan(res.analysis);
-                              else setRemediationPlan(res.error || t('pages.ccoverview.failedToGeneratePlan', 'Failed to generate plan.'));
+                              else
+                                setRemediationPlan(
+                                  res.error ||
+                                    t(
+                                      'pages.ccoverview.failedToGeneratePlan',
+                                      'Failed to generate plan.',
+                                    ),
+                                );
                             } catch (err: any) {
-                              setRemediationPlan(err.message || t('pages.ccoverview.errorOccurred', 'Error occurred.'));
+                              setRemediationPlan(
+                                err.message ||
+                                  t('pages.ccoverview.errorOccurred', 'Error occurred.'),
+                              );
                             } finally {
                               setRemediationLoading(false);
                             }
@@ -667,7 +817,9 @@ Provide a secure code patch and step-by-step fix plan.`
                             <span className="material-symbols-outlined text-[14px]">
                               {copied ? 'check' : 'content_copy'}
                             </span>
-                            {copied ? t('pages.ccoverview.copied', 'Copied') : t('pages.ccoverview.copy', 'Copy')}
+                            {copied
+                              ? t('pages.ccoverview.copied', 'Copied')
+                              : t('pages.ccoverview.copy', 'Copy')}
                           </button>
                         </div>
                       </div>
@@ -677,25 +829,45 @@ Provide a secure code patch and step-by-step fix plan.`
                   {rightTab === 'details' && (
                     <div className="flex-1 p-6 flex flex-col space-y-6 overflow-y-auto h-full">
                       <div className="bg-v2-surface-2 p-5 rounded-lg border border-v2-border-soft">
-                        <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2">{t('pages.ccoverview.description', 'Description')}</h4>
-                        <p className="text-sm text-v2-fg-2 leading-relaxed whitespace-pre-wrap">{selectedFinding.description || t('pages.ccoverview.noDescription', 'No description available.')}</p>
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2">
+                          {t('pages.ccoverview.description', 'Description')}
+                        </h4>
+                        <p className="text-sm text-v2-fg-2 leading-relaxed whitespace-pre-wrap">
+                          {selectedFinding.description ||
+                            t('pages.ccoverview.noDescription', 'No description available.')}
+                        </p>
                       </div>
 
                       {selectedFinding.impact && (
                         <div className="bg-v2-surface-2 p-5 rounded-lg border border-v2-border-soft">
-                          <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2">{t('pages.ccoverview.impact', 'Impact')}</h4>
-                          <p className="text-sm text-v2-fg-2 leading-relaxed whitespace-pre-wrap">{selectedFinding.impact}</p>
+                          <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2">
+                            {t('pages.ccoverview.impact', 'Impact')}
+                          </h4>
+                          <p className="text-sm text-v2-fg-2 leading-relaxed whitespace-pre-wrap">
+                            {selectedFinding.impact}
+                          </p>
                         </div>
                       )}
 
                       <div className="grid grid-cols-2 gap-4">
                         <div className="bg-v2-surface-2 p-4 rounded-lg border border-v2-border-soft">
-                          <div className="text-[10px] font-bold text-v2-muted uppercase tracking-wider mb-1">Rule ID</div>
-                          <div className="font-mono text-[12px] text-white truncate" title={selectedFinding.rule_id}>{selectedFinding.rule_id}</div>
+                          <div className="text-[10px] font-bold text-v2-muted uppercase tracking-wider mb-1">
+                            Rule ID
+                          </div>
+                          <div
+                            className="font-mono text-[12px] text-white truncate"
+                            title={selectedFinding.rule_id}
+                          >
+                            {selectedFinding.rule_id}
+                          </div>
                         </div>
                         <div className="bg-v2-surface-2 p-4 rounded-lg border border-v2-border-soft">
-                          <div className="text-[10px] font-bold text-v2-muted uppercase tracking-wider mb-1">CWE ID</div>
-                          <div className="font-mono text-[12px] text-white">{selectedFinding.cwe_id || 'N/A'}</div>
+                          <div className="text-[10px] font-bold text-v2-muted uppercase tracking-wider mb-1">
+                            CWE ID
+                          </div>
+                          <div className="font-mono text-[12px] text-white">
+                            {selectedFinding.cwe_id || 'N/A'}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -704,22 +876,35 @@ Provide a secure code patch and step-by-step fix plan.`
                   {rightTab === 'code' && (
                     <div className="flex-1 p-6 flex flex-col space-y-4 overflow-y-auto h-full">
                       <div className="bg-v2-surface-2 p-4 rounded-lg border border-v2-border-soft shrink-0">
-                        <div className="text-[10px] font-bold text-v2-muted uppercase tracking-wider mb-1">{t('pages.ccoverview.file', 'File')}</div>
-                        <div className="font-mono text-xs text-white break-all">{selectedFinding.file_path || selectedFinding.file || 'N/A'}</div>
-                        <div className="text-[10px] font-bold text-v2-muted uppercase tracking-wider mt-3 mb-1">{t('pages.ccoverview.line', 'Line')}</div>
-                        <div className="font-mono text-xs text-white">{selectedFinding.line_number || 0}</div>
+                        <div className="text-[10px] font-bold text-v2-muted uppercase tracking-wider mb-1">
+                          {t('pages.ccoverview.file', 'File')}
+                        </div>
+                        <div className="font-mono text-xs text-white break-all">
+                          {selectedFinding.file_path || selectedFinding.file || 'N/A'}
+                        </div>
+                        <div className="text-[10px] font-bold text-v2-muted uppercase tracking-wider mt-3 mb-1">
+                          {t('pages.ccoverview.line', 'Line')}
+                        </div>
+                        <div className="font-mono text-xs text-white">
+                          {selectedFinding.line_number || 0}
+                        </div>
                       </div>
 
                       {selectedFinding.code_snippet ? (
                         <div className="flex-1 flex flex-col overflow-hidden min-h-[200px]">
-                          <div className="text-[10px] font-bold text-v2-muted uppercase tracking-wider mb-2 shrink-0">{t('pages.ccoverview.codeSnippet', 'Code Snippet')}</div>
+                          <div className="text-[10px] font-bold text-v2-muted uppercase tracking-wider mb-2 shrink-0">
+                            {t('pages.ccoverview.codeSnippet', 'Code Snippet')}
+                          </div>
                           <pre className="flex-1 bg-v2-bg border border-v2-border-soft rounded-lg p-4 font-mono text-xs text-[#a1a1aa] overflow-auto whitespace-pre">
                             <code>{selectedFinding.code_snippet}</code>
                           </pre>
                         </div>
                       ) : (
                         <div className="flex-1 border border-dashed border-v2-border-soft rounded-lg flex items-center justify-center p-8 text-center text-xs text-v2-muted font-mono">
-                          {t('pages.ccoverview.noCodeSnippet', 'No code snippet available for this finding.')}
+                          {t(
+                            'pages.ccoverview.noCodeSnippet',
+                            'No code snippet available for this finding.',
+                          )}
                         </div>
                       )}
                     </div>
@@ -727,7 +912,10 @@ Provide a secure code patch and step-by-step fix plan.`
                 </>
               ) : (
                 <div className="flex-1 flex items-center justify-center text-sm text-v2-muted text-center p-8">
-                  {t('pages.ccoverview.selectFinding', 'Select a finding in the Workbench to see remediation details.')}
+                  {t(
+                    'pages.ccoverview.selectFinding',
+                    'Select a finding in the Workbench to see remediation details.',
+                  )}
                 </div>
               )}
             </div>
