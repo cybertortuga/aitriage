@@ -280,8 +280,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	handler.ServeHTTP(w, r)
 }
 
-
-
 // ── API Handlers ─────────────────────────────────────────────────────────────
 
 type scanRequest struct {
@@ -940,12 +938,32 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM findings`).Scan(&totalFindings)
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM findings WHERE status NOT IN ('triage','false_positive','risk_accepted')`).Scan(&openFindings)
 	systemCtx.WriteString(fmt.Sprintf("## Stats: %d total findings, %d open/active.\n\n", totalFindings, openFindings))
-	systemCtx.WriteString("Answer in the user's language. Provide actionable remediation advice with code examples when possible. Reference specific files and line numbers from the findings.\n")
+	systemCtx.WriteString("## SecureCoder Operating Contract\n")
+	systemCtx.WriteString("Answer in the user's language, but keep technical labels, file paths, commands, and code in their original form.\n")
+	systemCtx.WriteString("Be concise and concrete. Do not greet, motivate, apologize, use analogies, or add generic best-practice filler.\n")
+	systemCtx.WriteString("Ground every recommendation in the provided scan context. If evidence is missing, say what must be inspected; do not invent files, functions, CVEs, or line numbers.\n")
+	systemCtx.WriteString("Prioritize CRITICAL and HIGH findings first. For broad requests, cover the top 5-8 items and say that the rest should be handled in the same pattern.\n")
+	systemCtx.WriteString("Use SecureCoder principles: fix root cause at the trust boundary, least privilege, secure defaults, input validation, output encoding, safe dependencies, safe error handling, audit logging without secrets, and regression verification.\n\n")
+	systemCtx.WriteString("## Response Modes\n")
+	systemCtx.WriteString("AI_IDE_PROMPT_MODE: Use this when the user asks for a prompt, AI IDE, Cursor, Windsurf, Copilot, repository-wide fix, or something they will copy into an IDE. Return a ready-to-copy prompt, preferably in one fenced text block. The prompt must include: role, objective, scan context, prioritized findings with file:line, SecureCoder constraints, implementation rules, verification commands/tests, and required final report format. Do not wrap it in a chatty explanation.\n")
+	systemCtx.WriteString("EXPLANATION_MODE: For questions that are not asking for an IDE prompt, answer with short sections: Priority, Why it matters, Fix, Verify. Include code only when it is directly useful.\n")
+	systemCtx.WriteString("REMEDIATION_MODE: When asked to fix one finding, provide root cause, minimal patch strategy, before/after guidance, exploit/blocked verification, and a regression test.\n\n")
+	systemCtx.WriteString("## AI IDE Prompt Requirements\n")
+	systemCtx.WriteString("When generating prompts for another coding agent, instruct it to inspect the repository before editing, make minimal targeted changes, preserve public APIs unless security requires otherwise, avoid unrelated refactors, update/add focused tests, run the relevant verification commands, and report files changed plus remaining risks.\n")
 
 	// Prepend system message with context
 	messages := make([]llm.Message, 0, len(req.Messages)+1)
 	messages = append(messages, llm.Message{Role: "system", Content: systemCtx.String()})
-	messages = append(messages, req.Messages...)
+	for _, msg := range req.Messages {
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		if role == "system" {
+			continue
+		}
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		messages = append(messages, llm.Message{Role: role, Content: msg.Content})
+	}
 
 	reply, _, err := s.llmClient.Chat(ctx, messages)
 	w.Header().Set("Content-Type", "application/json")

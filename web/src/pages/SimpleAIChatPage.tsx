@@ -1,8 +1,7 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Markdown from 'react-markdown';
 import { useTranslation } from 'react-i18next';
-import { useFindings } from '../hooks/useFindings';
 import type { Finding } from '../types';
 
 /* ── Types ── */
@@ -91,7 +90,6 @@ export const SimpleAIChatPage: React.FC<SimpleAIChatPageProps> = ({
   onClearInitialPrompt
 }) => {
   const { t } = useTranslation('pages');
-  const { findings } = useFindings() as any;
 
   // Session state
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -198,13 +196,6 @@ export const SimpleAIChatPage: React.FC<SimpleAIChatPageProps> = ({
     }
   };
 
-  const buildSystemContext = useCallback(() => {
-    const findingsSummary = findings?.slice(0, 20).map((f: Finding) =>
-      `- [${f.severity}] ${f.title} (${f.file_path || t('simpleAIChat.system.fileNotSpecified')})`
-    ).join('\n') || t('simpleAIChat.system.loadingIssues');
-    return t('simpleAIChat.system.systemContext').replace('{{findings}}', findingsSummary);
-  }, [findings, t]);
-
   const sendMessage = async (userMsg: string, forceSessionId?: number) => {
     if (!userMsg.trim() || loading) return;
     setInput('');
@@ -234,7 +225,6 @@ export const SimpleAIChatPage: React.FC<SimpleAIChatPageProps> = ({
 
     try {
       const apiMessages = [
-        { role: 'system', content: buildSystemContext() },
         ...updatedMessages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
       ];
       const res = await fetch('/api/chat', {

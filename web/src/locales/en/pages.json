@@ -234,20 +234,20 @@
   "simpleAIChat": {
     "quickActions": {
       "issues": {
-        "label": "Tell me about the project issues",
-        "prompt": "Explain the current security issues in plain language. What needs to be fixed first?"
+        "label": "AI IDE Prompt",
+        "prompt": "Generate a ready-to-copy SecureCoder prompt for an AI IDE using the current findings. Include CRITICAL/HIGH priority, exact file:line references, root cause, minimal patch plan, security constraints, and verification commands. No filler."
       },
       "improve": {
-        "label": "How to improve security?",
-        "prompt": "What steps can I take to improve project security? Give specific recommendations."
+        "label": "SecureCoder Plan",
+        "prompt": "Give a short SecureCoder security improvement plan: what to fix first, why it is risky, where to inspect code, which tests/commands to run, and what residual risks remain."
       },
       "critical": {
         "label": "Explain the most critical issue",
-        "prompt": "Tell me more about the most critical security issue. Explain what it is, why it is dangerous, and how to fix it."
+        "prompt": "Analyze the most critical open finding in SecureCoder format: file:line, root cause, exploit path, minimal fix, verification, and regression test. Avoid generic advice."
       },
       "report": {
         "label": "Generate an executive report",
-        "prompt": "Prepare a brief security report for management. No technical jargon, with prioritized recommendations."
+        "prompt": "Prepare a brief security report: top risks, affected projects, business impact, immediate next actions, and verification status. Keep it specific and skip the long intro."
       }
     },
     "context": {
@@ -260,7 +260,7 @@
     "system": {
       "fileNotSpecified": "file not specified",
       "loadingIssues": "Issue data is loading...",
-      "systemContext": "You are a helpful AI security assistant. Speak in clear, non-technical language. If you need to explain something technical, use real-world analogies.\\n\\nCurrent project security issues:\\n{{findings}}\\n\\nYour job is to help understand issues and suggest fixes. Be patient and friendly."
+      "systemContext": "You are a SecureCoder AI assistant. Answer briefly, concretely, and grounded in findings. For AI IDE requests, return a ready-to-copy prompt with file:line, root cause, minimal changes, and verification.\\n\\nCurrent project security issues:\\n{{findings}}"
     },
     "chat": {
       "done": "Done!",
