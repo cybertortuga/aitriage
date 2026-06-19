@@ -19,6 +19,15 @@ const PALETTES = [
   { id: 'white', name: 'Quartz White', hex: '#f8fafc' },
 ];
 
+const BACKGROUND_PALETTES = [
+  { id: 'obsidian', name: 'Obsidian Black', hex: '#0a0a0b', surface: '#18181b' },
+  { id: 'graphite', name: 'Graphite Steel', hex: '#101014', surface: '#202028' },
+  { id: 'midnight', name: 'Midnight Navy', hex: '#07111f', surface: '#142238' },
+  { id: 'bordeaux', name: 'Bordeaux Noir', hex: '#13070d', surface: '#25131d' },
+  { id: 'evergreen', name: 'Evergreen Vault', hex: '#06120f', surface: '#142820' },
+  { id: 'indigo', name: 'Indigo Depth', hex: '#0b0a19', surface: '#1d1a35' },
+];
+
 export const Header: React.FC = () => {
   const [scrolled, setScrolled] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
@@ -39,6 +48,13 @@ export const Header: React.FC = () => {
       return 'white';
     }
   });
+  const [background, setBackground] = React.useState(() => {
+    try {
+      return localStorage.getItem('aitriage_background') || 'obsidian';
+    } catch {
+      return 'obsidian';
+    }
+  });
 
   React.useEffect(() => {
     try {
@@ -48,6 +64,13 @@ export const Header: React.FC = () => {
   }, [accent]);
 
   React.useEffect(() => {
+    try {
+      localStorage.setItem('aitriage_background', background);
+    } catch {}
+    document.documentElement.setAttribute('data-bg', background);
+  }, [background]);
+
+  React.useEffect(() => {
     const handleAccentChange = () => {
       try {
         setAccent(localStorage.getItem('aitriage_accent') || 'white');
@@ -55,6 +78,16 @@ export const Header: React.FC = () => {
     };
     window.addEventListener('aitriage_accent_change', handleAccentChange);
     return () => window.removeEventListener('aitriage_accent_change', handleAccentChange);
+  }, []);
+
+  React.useEffect(() => {
+    const handleBackgroundChange = () => {
+      try {
+        setBackground(localStorage.getItem('aitriage_background') || 'obsidian');
+      } catch {}
+    };
+    window.addEventListener('aitriage_background_change', handleBackgroundChange);
+    return () => window.removeEventListener('aitriage_background_change', handleBackgroundChange);
   }, []);
 
   React.useEffect(() => {
@@ -196,7 +229,7 @@ export const Header: React.FC = () => {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.98, y: 15 }}
               transition={{ type: "spring", stiffness: 350, damping: 30 }}
-              className="w-[850px] h-[650px] bg-[#09090b]/90 backdrop-blur-3xl border border-[rgba(255,255,255,0.08)] rounded-2xl flex flex-col overflow-hidden shadow-[0_0_100px_-20px_var(--accent-color-soft)] relative"
+              className="w-[850px] h-[650px] bg-[color-mix(in_srgb,var(--bg-color)_90%,transparent)] backdrop-blur-3xl border border-[rgba(255,255,255,0.08)] rounded-2xl flex flex-col overflow-hidden shadow-[0_0_100px_-20px_var(--accent-color-soft)] relative"
             >
               {/* Subtle top glow */}
               <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-[var(--accent-color-line)] to-transparent" />
@@ -253,39 +286,80 @@ export const Header: React.FC = () => {
                         transition={{ duration: 0.2 }}
                         className="space-y-6"
                       >
-                      <label className="text-[10px] text-[#71717a] tracking-[0.2em] font-semibold uppercase">{t('components.select_accent_palette')}</label>
-                      <div className="grid grid-cols-2 gap-4">
-                        {PALETTES.map((p) => {
-                          const isActive = accent === p.id;
-                          return (
-                            <button
-                              key={p.id}
-                              onClick={() => {
-                                setAccent(p.id);
-                                try {
-                                  localStorage.setItem('aitriage_accent', p.id);
-                                } catch {}
-                                document.documentElement.setAttribute('data-accent', p.id);
-                                window.dispatchEvent(new Event('aitriage_accent_change'));
-                              }}
-                              className={`group flex items-center gap-4 p-4 rounded-xl transition-all duration-300 text-left relative overflow-hidden ${
-                                isActive
-                                  ? 'bg-[rgba(255,255,255,0.03)] border border-[var(--accent-color-line)] shadow-[0_0_20px_var(--accent-color-soft)]'
-                                  : 'bg-[rgba(255,255,255,0.01)] border border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.1)]'
-                              }`}
-                            >
-                              {isActive && <div className="absolute inset-0 bg-gradient-to-r from-[var(--accent-color-soft)] to-transparent opacity-50" />}
-                              <span
-                                className="w-4 h-4 rounded-full shrink-0 relative z-10 shadow-lg"
-                                style={{ backgroundColor: p.hex, boxShadow: isActive ? `0 0 12px ${p.hex}` : 'none' }}
-                              />
-                              <span className={`text-[11px] font-mono tracking-widest truncate relative z-10 transition-colors ${isActive ? 'text-[#f4f4f5] font-bold' : 'text-[#a1a1aa] group-hover:text-[#f4f4f5]'}`}>
-                                {p.name.toUpperCase()}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                        <section className="space-y-4">
+                          <label className="text-[10px] text-[#71717a] tracking-[0.2em] font-semibold uppercase">{t('components.select_accent_palette')}</label>
+                          <div className="grid grid-cols-2 gap-4">
+                            {PALETTES.map((p) => {
+                              const isActive = accent === p.id;
+                              return (
+                                <button
+                                  key={p.id}
+                                  onClick={() => {
+                                    setAccent(p.id);
+                                    try {
+                                      localStorage.setItem('aitriage_accent', p.id);
+                                    } catch {}
+                                    document.documentElement.setAttribute('data-accent', p.id);
+                                    window.dispatchEvent(new Event('aitriage_accent_change'));
+                                  }}
+                                  className={`group flex items-center gap-4 p-4 rounded-xl transition-all duration-300 text-left relative overflow-hidden ${
+                                    isActive
+                                      ? 'bg-[rgba(255,255,255,0.03)] border border-[var(--accent-color-line)] shadow-[0_0_20px_var(--accent-color-soft)]'
+                                      : 'bg-[rgba(255,255,255,0.01)] border border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.1)]'
+                                  }`}
+                                >
+                                  {isActive && <div className="absolute inset-0 bg-gradient-to-r from-[var(--accent-color-soft)] to-transparent opacity-50" />}
+                                  <span
+                                    className="w-4 h-4 rounded-full shrink-0 relative z-10 shadow-lg"
+                                    style={{ backgroundColor: p.hex, boxShadow: isActive ? `0 0 12px ${p.hex}` : 'none' }}
+                                  />
+                                  <span className={`text-[11px] font-mono tracking-widest truncate relative z-10 transition-colors ${isActive ? 'text-[#f4f4f5] font-bold' : 'text-[#a1a1aa] group-hover:text-[#f4f4f5]'}`}>
+                                    {p.name.toUpperCase()}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+
+                        <section className="space-y-4">
+                          <label className="text-[10px] text-[#71717a] tracking-[0.2em] font-semibold uppercase">{t('components.select_background_palette')}</label>
+                          <div className="grid grid-cols-2 gap-4">
+                            {BACKGROUND_PALETTES.map((p) => {
+                              const isActive = background === p.id;
+                              return (
+                                <button
+                                  key={p.id}
+                                  onClick={() => {
+                                    setBackground(p.id);
+                                    try {
+                                      localStorage.setItem('aitriage_background', p.id);
+                                    } catch {}
+                                    document.documentElement.setAttribute('data-bg', p.id);
+                                    window.dispatchEvent(new Event('aitriage_background_change'));
+                                  }}
+                                  className={`group flex items-center gap-4 p-4 rounded-xl transition-all duration-300 text-left relative overflow-hidden ${
+                                    isActive
+                                      ? 'bg-[rgba(255,255,255,0.03)] border border-[var(--accent-color-line)] shadow-[0_0_20px_var(--accent-color-soft)]'
+                                      : 'bg-[rgba(255,255,255,0.01)] border border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.1)]'
+                                  }`}
+                                >
+                                  {isActive && <div className="absolute inset-0 bg-gradient-to-r from-[var(--accent-color-soft)] to-transparent opacity-50" />}
+                                  <span
+                                    className="w-4 h-4 rounded-full shrink-0 relative z-10 shadow-lg border border-white/10"
+                                    style={{
+                                      background: `linear-gradient(135deg, ${p.hex}, ${p.surface})`,
+                                      boxShadow: isActive ? `0 0 12px ${p.surface}` : 'none',
+                                    }}
+                                  />
+                                  <span className={`text-[11px] font-mono tracking-widest truncate relative z-10 transition-colors ${isActive ? 'text-[#f4f4f5] font-bold' : 'text-[#a1a1aa] group-hover:text-[#f4f4f5]'}`}>
+                                    {p.name.toUpperCase()}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
                       </motion.div>
                     )}
 

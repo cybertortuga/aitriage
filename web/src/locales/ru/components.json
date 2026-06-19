@@ -24,6 +24,7 @@
   "database": "База данных",
   "general": "Общие",
   "select_accent_palette": "ВЫБЕРИТЕ ЦВЕТОВУЮ ПАЛИТРУ",
+  "select_background_palette": "ВЫБЕРИТЕ ПАЛИТРУ ФОНА",
   "danger_zone": "Опасная зона",
   "danger_zone_desc": "Эти действия необратимы и навсегда удалят данные из базы данных.",
   "clear_findings_cache": "Очистить кэш уязвимостей",

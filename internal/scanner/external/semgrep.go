@@ -8,15 +8,15 @@ import (
 
 type semgrepOutput struct {
 	Results []struct {
-		RuleID  string `json:"check_id"`
-		Message struct {
-			Text string `json:"text"`
+		RuleID string `json:"check_id"`
+		Extra  struct {
+			Message  string `json:"message"`
+			Severity string `json:"severity"`
 		} `json:"extra"`
 		Path  string `json:"path"`
 		Start struct {
 			Line int `json:"line"`
 		} `json:"start"`
-		Severity string `json:"severity"`
 	} `json:"results"`
 }
 
@@ -42,8 +42,8 @@ func RunSemgrep(ctx context.Context, path, config string) ([]UnifiedFinding, err
 		findings = append(findings, UnifiedFinding{
 			Source:   "semgrep",
 			RuleID:   r.RuleID,
-			Severity: normalizeSeverity(r.Severity),
-			Message:  r.Message.Text,
+			Severity: normalizeSeverity(r.Extra.Severity),
+			Message:  r.Extra.Message,
 			File:     r.Path,
 			Line:     r.Start.Line,
 		})

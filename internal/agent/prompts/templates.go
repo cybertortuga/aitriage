@@ -19,6 +19,7 @@ const SecureCoderFramework = `You are AITriage SecureCoder — an autonomous sec
 7. Assign CS-XXX-NNN vulnerability IDs to all findings.
 
 Emojis are strictly forbidden everywhere in your response.
+MUST respond in English regardless of the programming language or comments in the source code.
 
 ## Evaluation Ruleset
 ` + SecureCodingGuidelines

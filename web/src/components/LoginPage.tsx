@@ -19,7 +19,7 @@ const V2RibbonBg: React.FC = () => {
         <radialGradient id="ribGlow" cx="55%" cy="50%" r="55%">
           <stop offset="0%" stopColor="var(--accent-color)" stopOpacity="0.35" />
           <stop offset="50%" stopColor="var(--accent-color-hover)" stopOpacity="0.15" />
-          <stop offset="100%" stopColor="#000" stopOpacity="0" />
+          <stop offset="100%" stopColor="var(--bg-color-deep)" stopOpacity="0" />
         </radialGradient>
       </defs>
       <rect width="800" height="800" fill="url(#ribGlow)" className="v2-ribbon-layer-3" />
@@ -144,14 +144,20 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0b] font-sans text-body-sm selection:bg-primary-container selection:text-white relative overflow-hidden">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background font-sans text-body-sm selection:bg-primary-container selection:text-white relative overflow-hidden">
       {/* ── Background animation layers ── */}
       <V2RibbonBg />
-      <div className="fixed inset-0 bg-gradient-to-r from-black via-black/80 to-transparent pointer-events-none -z-10" />
-      <div className="fixed inset-0 bg-gradient-to-t from-black via-transparent to-black pointer-events-none -z-10" />
+      <div
+        className="fixed inset-0 pointer-events-none -z-10"
+        style={{ background: 'linear-gradient(to right, var(--bg-color-deep), color-mix(in srgb, var(--bg-color-deep) 80%, transparent), transparent)' }}
+      />
+      <div
+        className="fixed inset-0 pointer-events-none -z-10"
+        style={{ background: 'linear-gradient(to top, var(--bg-color-deep), transparent, var(--bg-color-deep))' }}
+      />
 
       <div className="w-full max-w-md px-8 relative z-10">
-        <div className="luxury-glass p-12 rounded-lg bg-[#111113]/75 border border-white/5 backdrop-blur-xl shadow-2xl">
+        <div className="luxury-glass p-12 rounded-lg bg-surface/75 border border-white/5 backdrop-blur-xl shadow-2xl">
           {/* Header */}
           <div className="mb-10 border-b border-outline-variant/30 pb-6">
             <div className="flex items-center gap-3 mb-2">
@@ -182,7 +188,7 @@ export const LoginPage: React.FC = () => {
                 placeholder={t('login.username_placeholder')}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="cyber-input w-full py-3 px-4 text-mono-data font-mono bg-[#0a0a0b] border border-white/5 rounded-lg focus:outline-none focus:border-primary/45 focus:ring-1 focus:ring-primary/20 transition-all duration-300 ease-out"
+                className="cyber-input w-full py-3 px-4 text-mono-data font-mono bg-background border border-white/5 rounded-lg focus:outline-none focus:border-primary/45 focus:ring-1 focus:ring-primary/20 transition-all duration-300 ease-out"
               />
             </div>
 
@@ -196,7 +202,7 @@ export const LoginPage: React.FC = () => {
                 placeholder="••••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="cyber-input w-full py-3 px-4 text-mono-data font-mono bg-[#0a0a0b] border border-white/5 rounded-lg focus:outline-none focus:border-primary/45 focus:ring-1 focus:ring-primary/20 transition-all duration-300 ease-out"
+                className="cyber-input w-full py-3 px-4 text-mono-data font-mono bg-background border border-white/5 rounded-lg focus:outline-none focus:border-primary/45 focus:ring-1 focus:ring-primary/20 transition-all duration-300 ease-out"
               />
             </div>
 
@@ -237,7 +243,7 @@ export const LoginPage: React.FC = () => {
             <span className="text-[10px] font-mono text-on-surface-variant opacity-40">v1.4.2</span>
 
             {/* Accent Picker */}
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-outline-variant/30 bg-[#0a0a0b]">
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-outline-variant/30 bg-background">
               <button
                 type="button"
                 onClick={() => setAccent('white')}

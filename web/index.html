@@ -22,7 +22,9 @@
       (function() {
         try {
           var accent = localStorage.getItem('aitriage_accent') || 'white';
+          var background = localStorage.getItem('aitriage_background') || 'obsidian';
           document.documentElement.setAttribute('data-accent', accent);
+          document.documentElement.setAttribute('data-bg', background);
         } catch (e) {}
       })();
     </script>

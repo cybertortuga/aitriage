@@ -1040,6 +1040,7 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[]; findings: any[] }> = (
     const projectFindings = findingsArr.filter((f: any) => f.product_id === project.id && f.status !== 'triage');
     const findingsText = projectFindings.map((f: any) => `- [${f.severity?.toUpperCase()}] ${f.title} in ${f.file_path || 'N/A'}:${f.line_number || 'N/A'}`).join('\n');
     const prompt = `You are a threat modeling expert following the determine_threat_model methodology.
+Respond in English regardless of the programming language or comments in the source code.
 Analyze the project: "${project.name}".
 Findings Context:\n${findingsText}\n\nBuild a comprehensive threat model: Identify components, trust boundaries, and sensitive data paths. Provide a STRIDE analysis table and prioritized mitigations in markdown.`;
     const res = await fetch('/api/chat', {
@@ -1053,7 +1054,8 @@ Findings Context:\n${findingsText}\n\nBuild a comprehensive threat model: Identi
   };
 
   const runSecurityPlanStep = async (project: any, threatModel: string): Promise<string> => {
-    const prompt = `You are a security architect. Create a security implementation plan for project "${project.name}" based on the following STRIDE Threat Model:\n\n${threatModel}\n\nOutline high-level fix priorities and specific security verification tests/checkpoints in markdown.`;
+    const prompt = `You are a security architect. Respond in English regardless of the programming language or comments in the source code.
+Create a security implementation plan for project "${project.name}" based on the following STRIDE Threat Model:\n\n${threatModel}\n\nOutline high-level fix priorities and specific security verification tests/checkpoints in markdown.`;
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1065,7 +1067,8 @@ Findings Context:\n${findingsText}\n\nBuild a comprehensive threat model: Identi
   };
 
   const runRemediationStep = async (project: any, securityPlan: string): Promise<string> => {
-    const prompt = `Generate a targeted security patch (before/after code diffs) to fix the security vulnerabilities for project "${project.name}" based on this security plan:\n\n${securityPlan}`;
+    const prompt = `Respond in English regardless of the programming language or comments in the source code.
+Generate a targeted security patch (before/after code diffs) to fix the security vulnerabilities for project "${project.name}" based on this security plan:\n\n${securityPlan}`;
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1086,7 +1089,8 @@ Findings Context:\n${findingsText}\n\nBuild a comprehensive threat model: Identi
     const scanData = await scanRes.json();
     const newCount = scanData.findings ? scanData.findings.length : 0;
 
-    const prompt = `Generate a Proof-of-Concept (PoC) exploit scenario and verification analysis.
+    const prompt = `Respond in English regardless of the programming language or comments in the source code.
+Generate a Proof-of-Concept (PoC) exploit scenario and verification analysis.
 Remediation Diffs:\n${remediation}\n\nDescribe how the exploit works on the unpatched code, and demonstrate why it is now blocked in the patched state in markdown.`;
     const res = await fetch('/api/chat', {
       method: 'POST',
@@ -1099,7 +1103,8 @@ Remediation Diffs:\n${remediation}\n\nDescribe how the exploit works on the unpa
   };
 
   const runReportStep = async (project: any, threatModel: string, remediation: string, poc: string): Promise<string> => {
-    const prompt = `Compile a professional Security Audit Report in CS-XXX-NNN markdown format for project "${project.name}".
+    const prompt = `Respond in English regardless of the programming language or comments in the source code.
+Compile a professional Security Audit Report in CS-XXX-NNN markdown format for project "${project.name}".
 Threat Model:\n${threatModel}\n\nRemediation:\n${remediation}\n\nPoC Verification:\n${poc}`;
     const res = await fetch('/api/chat', {
       method: 'POST',

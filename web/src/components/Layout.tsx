@@ -167,7 +167,7 @@ export const Layout: React.FC = () => {
 
       {/* Simple Mode Tab Bar */}
       <div
-        className={`relative z-20 border-b border-[rgba(255,255,255,0.06)] bg-[#0a0a0b] overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+        className={`relative z-20 border-b border-[rgba(255,255,255,0.06)] bg-background overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
           viewMode === 'simple'
             ? 'max-h-14 opacity-100 translate-y-0'
             : 'max-h-0 opacity-0 -translate-y-2 pointer-events-none'

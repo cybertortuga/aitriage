@@ -13,18 +13,18 @@
   --font-header-md: 'Sora', system-ui, sans-serif;
 
   /* Colors - Silent Luxury Strict Dark Palette */
-  --color-background: #0a0a0b;
+  --color-background: var(--bg-color);
   --color-on-background: #f4f4f5;
 
-  --color-surface: #111113;
-  --color-surface-dim: #0a0a0b;
-  --color-surface-bright: #18181b;
-  --color-surface-variant: #18181b;
-  --color-surface-container-lowest: #0a0a0b;
-  --color-surface-container-low: #0a0a0b;
-  --color-surface-container: #111113;
-  --color-surface-container-high: #18181b;
-  --color-surface-container-highest: #27272a;
+  --color-surface: var(--surface-color);
+  --color-surface-dim: var(--bg-color);
+  --color-surface-bright: var(--surface-color-bright);
+  --color-surface-variant: var(--surface-color-bright);
+  --color-surface-container-lowest: var(--bg-color);
+  --color-surface-container-low: var(--surface-color-low);
+  --color-surface-container: var(--surface-color);
+  --color-surface-container-high: var(--surface-color-bright);
+  --color-surface-container-highest: var(--surface-color-highest);
   
   --color-on-surface: #f4f4f5;
   --color-on-surface-variant: rgba(244, 244, 245, 0.4);
@@ -52,9 +52,9 @@
 
   /* Legacy v2 mappings under @theme for Tailwind v4 utility compatibility */
   --color-v2-bg: transparent;
-  --color-v2-surface: #111113;
-  --color-v2-surface-2: #18181b;
-  --color-v2-elev: #27272a;
+  --color-v2-surface: var(--surface-color);
+  --color-v2-surface-2: var(--surface-color-bright);
+  --color-v2-elev: var(--surface-color-highest);
   --color-v2-border: rgba(255, 255, 255, 0.06);
   --color-v2-border-soft: rgba(255, 255, 255, 0.03);
 
@@ -97,13 +97,48 @@
   inherits: true;
   initial-value: rgba(139, 92, 246, 0.25);
 }
+@property --bg-color {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #0a0a0b;
+}
+@property --bg-color-deep {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #070709;
+}
+@property --bg-color-soft {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #0d0d12;
+}
+@property --surface-color {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #111113;
+}
+@property --surface-color-low {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #0d0d0f;
+}
+@property --surface-color-bright {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #18181b;
+}
+@property --surface-color-highest {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #27272a;
+}
 
 :root {
   /* Colors - AITriage v2 Cyber-Obsidian variables mapped to dynamic themes */
   --v2-bg: transparent;
-  --v2-surface: #111113;
-  --v2-surface-2: #18181b;
-  --v2-elev: #27272a;
+  --v2-surface: var(--surface-color);
+  --v2-surface-2: var(--surface-color-bright);
+  --v2-elev: var(--surface-color-highest);
   --v2-border: rgba(255, 255, 255, 0.06);
   --v2-border-soft: rgba(255, 255, 255, 0.03);
 
@@ -128,7 +163,81 @@
   --accent-color-soft: rgba(139, 92, 246, 0.1);
   --accent-color-line: rgba(139, 92, 246, 0.25);
   --accent-color-on-text: #f4f4f5;
-  transition: --accent-color 0.4s ease, --accent-color-hover 0.4s ease, --accent-color-soft 0.4s ease, --accent-color-line 0.4s ease;
+  --bg-color: #0a0a0b;
+  --bg-color-deep: #070709;
+  --bg-color-soft: #0d0d12;
+  --surface-color: #111113;
+  --surface-color-low: #0d0d0f;
+  --surface-color-bright: #18181b;
+  --surface-color-highest: #27272a;
+  transition:
+    --accent-color 0.4s ease,
+    --accent-color-hover 0.4s ease,
+    --accent-color-soft 0.4s ease,
+    --accent-color-line 0.4s ease,
+    --bg-color 0.4s ease,
+    --bg-color-deep 0.4s ease,
+    --bg-color-soft 0.4s ease,
+    --surface-color 0.4s ease,
+    --surface-color-low 0.4s ease,
+    --surface-color-bright 0.4s ease,
+    --surface-color-highest 0.4s ease;
+}
+
+/* 6 Background Color Palettes - dark-only to preserve contrast */
+html[data-bg="obsidian"] {
+  --bg-color: #0a0a0b;
+  --bg-color-deep: #070709;
+  --bg-color-soft: #0d0d12;
+  --surface-color: #111113;
+  --surface-color-low: #0d0d0f;
+  --surface-color-bright: #18181b;
+  --surface-color-highest: #27272a;
+}
+html[data-bg="graphite"] {
+  --bg-color: #101014;
+  --bg-color-deep: #0b0b0f;
+  --bg-color-soft: #14141a;
+  --surface-color: #17171d;
+  --surface-color-low: #131318;
+  --surface-color-bright: #202028;
+  --surface-color-highest: #30303a;
+}
+html[data-bg="midnight"] {
+  --bg-color: #07111f;
+  --bg-color-deep: #030914;
+  --bg-color-soft: #0b1829;
+  --surface-color: #0e1929;
+  --surface-color-low: #0a1422;
+  --surface-color-bright: #142238;
+  --surface-color-highest: #20304a;
+}
+html[data-bg="bordeaux"] {
+  --bg-color: #13070d;
+  --bg-color-deep: #090306;
+  --bg-color-soft: #1a0b12;
+  --surface-color: #1b0d14;
+  --surface-color-low: #150910;
+  --surface-color-bright: #25131d;
+  --surface-color-highest: #35202b;
+}
+html[data-bg="evergreen"] {
+  --bg-color: #06120f;
+  --bg-color-deep: #020806;
+  --bg-color-soft: #0a1a15;
+  --surface-color: #0d1b17;
+  --surface-color-low: #091611;
+  --surface-color-bright: #142820;
+  --surface-color-highest: #20392f;
+}
+html[data-bg="indigo"] {
+  --bg-color: #0b0a19;
+  --bg-color-deep: #05040d;
+  --bg-color-soft: #111026;
+  --surface-color: #131225;
+  --surface-color-low: #0f0e1f;
+  --surface-color-bright: #1d1a35;
+  --surface-color-highest: #2b274a;
 }
 
 /* 10 Accent Color Palettes - Obsidian Silent Luxury */
@@ -232,7 +341,7 @@ body {
   background: 
     radial-gradient(circle at 10% 20%, color-mix(in srgb, var(--accent-color) 12%, transparent) 0%, transparent 45%),
     radial-gradient(circle at 90% 80%, color-mix(in srgb, var(--accent-color) 8%, transparent) 0%, transparent 45%),
-    linear-gradient(135deg, #070709 0%, #0d0d12 50%, #070709 100%) fixed;
+    linear-gradient(135deg, var(--bg-color-deep) 0%, var(--bg-color-soft) 50%, var(--bg-color-deep) 100%) fixed;
   color: #f4f4f5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -281,14 +390,14 @@ body {
 
 /* ── SILENT LUXURY UTILITIES ── */
 .luxury-glass {
-  background: rgba(17, 17, 19, 0.75) !important;
+  background: color-mix(in srgb, var(--surface-color) 75%, transparent) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
   border: 1px solid rgba(255, 255, 255, 0.06) !important;
 }
 
 .luxury-glass-hover:hover {
-  background: rgba(24, 24, 27, 0.8) !important;
+  background: color-mix(in srgb, var(--surface-color-bright) 80%, transparent) !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
@@ -296,7 +405,7 @@ body {
 .v2-card,
 .cyber-panel,
 .skeuo-panel {
-  background-color: #111113 !important;
+  background-color: var(--surface-color) !important;
   border: 1px solid rgba(255, 255, 255, 0.06) !important;
   border-radius: 8px !important;
   transition: transform 200ms ease, box-shadow 200ms ease, background-color 200ms ease, border-color 200ms ease !important;
@@ -309,7 +418,7 @@ body {
   transform: translateY(-2px) !important;
   box-shadow: 0 0 0 1px var(--accent-color-line), 0 8px 16px -4px rgba(0, 0, 0, 0.4) !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
-  background-color: #18181b !important;
+  background-color: var(--surface-color-bright) !important;
 }
 
 /* ── BUTTON SYSTEM ── */
@@ -352,13 +461,13 @@ body {
 }
 
 .btn-secondary, .btn-mechanical, .skeuo-button {
-  background-color: #111113 !important;
+  background-color: var(--surface-color) !important;
   border: 1px solid rgba(255, 255, 255, 0.06) !important;
   color: #f4f4f5 !important;
 }
 
 .btn-secondary:hover, .btn-mechanical:hover, .skeuo-button:hover {
-  background-color: #18181b !important;
+  background-color: var(--surface-color-bright) !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
   transform: translateY(-1px) !important;
 }
@@ -369,13 +478,13 @@ body {
 }
 
 .btn-ghost:hover, .v2-btn-ghost:hover {
-  background-color: #111113 !important;
+  background-color: var(--surface-color) !important;
   color: #f4f4f5 !important;
 }
 
 /* ── INPUTS ── */
 .v2-input, .cyber-input {
-  background-color: #0a0a0b !important;
+  background-color: var(--bg-color) !important;
   border: 1px solid rgba(255, 255, 255, 0.06) !important;
   border-radius: 8px !important;
   color: #f4f4f5 !important;
@@ -458,7 +567,7 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0a0a0b;
+  background: var(--bg-color);
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
@@ -536,7 +645,7 @@ body {
   100% { background-position: 200% 0; }
 }
 .luxury-shimmer {
-  background: linear-gradient(90deg, #111113 25%, #1c1c1f 50%, #111113 75%);
+  background: linear-gradient(90deg, var(--surface-color) 25%, var(--surface-color-bright) 50%, var(--surface-color) 75%);
   background-size: 200% 100%;
   animation: shimmer-slow 2s infinite linear;
 }
@@ -640,7 +749,7 @@ body {
 
 /* ── SIMPLE MODE CHAT MARKDOWN ── */
 .simple-chat-markdown pre {
-  background-color: #0a0a0b !important;
+  background-color: var(--bg-color) !important;
   border: 1px solid rgba(255, 255, 255, 0.06) !important;
   border-radius: 12px !important;
   padding: 16px !important;
@@ -694,10 +803,10 @@ body {
     ),
     linear-gradient(
       135deg,
-      color-mix(in srgb, var(--accent-color) 5%, #0a0a0b) 0%,
-      #0a0a0b 40%,
-      #0a0a0b 60%,
-      color-mix(in srgb, var(--accent-color) 3%, #0a0a0b) 100%
+      color-mix(in srgb, var(--accent-color) 5%, var(--bg-color)) 0%,
+      var(--bg-color) 40%,
+      var(--bg-color) 60%,
+      color-mix(in srgb, var(--accent-color) 3%, var(--bg-color)) 100%
     );
 }
 
@@ -730,4 +839,3 @@ body {
   background-color: var(--accent-color-line) !important;
   color: #ffffff !important;
 }
-
