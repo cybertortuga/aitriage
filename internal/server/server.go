@@ -803,6 +803,7 @@ func (s *Server) handlePurgeDatabase(w http.ResponseWriter, r *http.Request) {
 		"finding_notes", "findings", "engagements", "product_members",
 		"products", "product_types", "topology_links", "topology_nodes",
 		"reports", "chat_messages", "chat_sessions", "audit_log", "notifications",
+		"runway_sessions",
 	}
 	for _, table := range tables {
 		_, err := s.db.Exec(fmt.Sprintf("DELETE FROM %s", table))

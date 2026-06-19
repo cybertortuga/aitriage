@@ -53,7 +53,7 @@ func (r *RunwayRepository) GetActiveByProductID(ctx context.Context, productID i
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, product_id, status, current_step, auto_mode, threat_model, security_plan, remediation, poc, audit_report, scan_count_before, scan_count_after, error_message, created_at, updated_at
 		FROM runway_sessions
-		WHERE product_id = ? AND status = 'in_progress'
+		WHERE product_id = ?
 		ORDER BY created_at DESC LIMIT 1
 	`, productID)
 
@@ -61,7 +61,7 @@ func (r *RunwayRepository) GetActiveByProductID(ctx context.Context, productID i
 	err := row.Scan(&s.ID, &s.ProductID, &s.Status, &s.CurrentStep, &s.AutoMode, &s.ThreatModel, &s.SecurityPlan, &s.Remediation, &s.PoC, &s.AuditReport, &s.ScanCountBefore, &s.ScanCountAfter, &s.ErrorMessage, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("no active runway session found")
+			return nil, fmt.Errorf("no runway session found")
 		}
 		return nil, err
 	}

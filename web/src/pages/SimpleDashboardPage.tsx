@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Markdown from 'react-markdown';
 import { useTranslation } from 'react-i18next';
@@ -130,7 +130,7 @@ const PathInput: React.FC<{ value: string; onChange: (p: string) => void }> = ({
             )}
             {loading ? (
               <div className="flex items-center justify-center py-4">
-                <div className="w-3 h-3 border border-[#27272a] border-t-[#52525b] rounded-full animate-spin" />
+                <div className="w-3 h-3 border border-surface-container-highest border-t-[#52525b] rounded-full animate-spin" />
               </div>
             ) : entries.length === 0 ? (
               <div className="py-4 text-center text-[11px] text-[#3f3f46]">{t('SimpleDashboardPage.emptyDirectory')}</div>
@@ -152,7 +152,7 @@ const PathInput: React.FC<{ value: string; onChange: (p: string) => void }> = ({
           <div className="flex items-center gap-2 px-3 py-2 border-t border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.01)]">
             <span className="text-[10px] text-[#3f3f46] font-mono truncate flex-1">{displayPath(browsePath)}</span>
             <button onClick={() => setBrowsing(false)} className="text-[11px] text-[#52525b] hover:text-[#a1a1aa] px-2 py-1">{t('SimpleDashboardPage.cancel')}</button>
-            <button onClick={confirmBrowse} className="text-[11px] text-[#f4f4f5] bg-[#27272a] hover:bg-[#3f3f46] px-3 py-1 rounded transition-colors">
+            <button onClick={confirmBrowse} className="text-[11px] text-[#f4f4f5] bg-surface-container-high hover:bg-surface-container-highest border border-outline hover:border-[var(--accent-color-line)] px-3 py-1 rounded transition-colors">
               Select
             </button>
           </div>
@@ -301,9 +301,9 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
   ];
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-surface text-on-surface">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.005)]">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[rgba(255,255,255,0.06)] bg-surface-container-low">
         {currentPath !== '/host' && (
           <button 
             onClick={() => {
@@ -330,7 +330,7 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
 
       {/* Scan progress panel */}
       {isAnyScanRunning && (
-        <div className="border-b border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)]">
+        <div className="border-b border-[rgba(255,255,255,0.06)] bg-surface-container-low/80">
           {/* Current scanner phase */}
           <div className="px-4 py-2.5">
             <div className="flex items-center justify-between mb-1">
@@ -350,7 +350,7 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
             <div className="flex gap-1 mt-2">
               {phases.map((ph, i) => (
                 <div key={ph.name} className={`flex-1 h-1 rounded-full transition-all duration-500 ${
-                  i < scanPhase ? 'bg-[#22c55e]' : i === scanPhase ? 'bg-[#22c55e] animate-pulse' : 'bg-[#18181b]'
+                  i < scanPhase ? 'bg-[#22c55e]' : i === scanPhase ? 'bg-[#22c55e] animate-pulse' : 'bg-surface-bright'
                 }`} />
               ))}
             </div>
@@ -358,14 +358,14 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
             {totalScans > 1 && (
               <div className="flex items-center justify-between mt-2">
                 <span className="text-[9px] text-[#3f3f46]">{t('SimpleDashboardPage.scanProgress', { active: activeScans, total: totalScans })}</span>
-                <div className="w-20 h-0.5 bg-[#18181b] rounded-full overflow-hidden">
+                <div className="w-20 h-0.5 bg-surface-bright rounded-full overflow-hidden">
                   <div className="h-full bg-[#52525b] rounded-full transition-all" style={{ width: `${(activeScans / totalScans) * 100}%` }} />
                 </div>
               </div>
             )}
           </div>
           {/* Mini log */}
-          <div className="px-4 py-1.5 border-t border-[rgba(255,255,255,0.04)] bg-[rgba(0,0,0,0.15)] font-mono">
+          <div className="px-4 py-1.5 border-t border-[rgba(255,255,255,0.04)] bg-background/40 font-mono">
             {scanLogs.slice(-3).map((log, i) => (
               <div key={i} className={`text-[9px] leading-relaxed transition-opacity duration-300 ${i === scanLogs.slice(-3).length - 1 ? 'text-[#52525b]' : 'text-[#27272a]'}`}>
                 <span className="text-[#3f3f46] mr-1">$</span>{log}
@@ -380,7 +380,7 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
         <div className="p-1.5 space-y-0.5">
           {loadingProjects ? (
             <div className="flex items-center justify-center py-8">
-              <div className="w-3 h-3 border border-[#27272a] border-t-[#52525b] rounded-full animate-spin" />
+              <div className="w-3 h-3 border border-surface-container-highest border-t-[#52525b] rounded-full animate-spin" />
             </div>
           ) : projects.length === 0 ? (
             <div className="py-6 text-center text-[11px] text-[#3f3f46]">{t('SimpleDashboardPage.noProjects')}</div>
@@ -395,7 +395,7 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
                     isActive ? 'bg-[rgba(34,197,94,0.06)] border-l-2 border-l-[#22c55e] border-y border-r border-[rgba(34,197,94,0.1)]'
                     : status?.state === 'done' ? 'border-l-2 border-l-[#22c55e]/40 border-y border-r border-transparent'
                     : status?.state === 'error' ? 'border-l-2 border-l-[#ef4444]/40 border-y border-r border-transparent'
-                    : 'border border-transparent hover:bg-[rgba(255,255,255,0.02)]'
+                    : 'border border-transparent hover:bg-surface-bright/40'
                   } ${isDimmed ? 'opacity-30' : ''}`}
                 >
                   <div 
@@ -404,7 +404,7 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
                   >
                     {/* Icon */}
                     {isActive ? (
-                      <div className="w-4 h-4 border-2 border-[#27272a] border-t-[#22c55e] rounded-full animate-spin shrink-0" />
+                      <div className="w-4 h-4 border-2 border-surface-container-highest border-t-[#22c55e] rounded-full animate-spin shrink-0" />
                     ) : status?.state === 'done' ? (
                       <span className="material-symbols-outlined text-[16px] text-[#22c55e] shrink-0">check_circle</span>
                     ) : status?.state === 'error' ? (
@@ -429,7 +429,7 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
                     <button
                       onClick={() => scanOne(p.path)}
                       disabled={isAnyScanRunning}
-                      className="shrink-0 text-[11px] font-medium text-[#f4f4f5] bg-[#27272a] hover:bg-[#3f3f46] border border-[#3f3f46] hover:border-[#52525b] rounded-md px-3 py-1 transition-all disabled:opacity-20 cursor-pointer"
+                      className="shrink-0 text-[11px] font-medium text-[#f4f4f5] bg-surface-container-high hover:bg-surface-container-highest border border-outline hover:border-[var(--accent-color-line)] rounded-md px-3 py-1 transition-all disabled:opacity-20 cursor-pointer"
                     >
                       {status?.state === 'done' ? 'Rescan' : 'Scan'}
                     </button>
@@ -488,10 +488,10 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
                     const installed = toolStatus[t.key];
                     const enabled = (tools as any)[t.key];
                     return (
-                      <div key={t.key} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[rgba(255,255,255,0.02)]">
+                      <div key={t.key} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-bright/40">
                         <button onClick={() => setTools(prev => ({ ...prev, [t.key]: !enabled }))}
                           className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${enabled ? 'bg-[#f4f4f5] border-[#f4f4f5]' : 'border-[#3f3f46]'}`}>
-                          {enabled && <span className="material-symbols-outlined text-[10px] text-[#0a0a0b]">check</span>}
+                          {enabled && <span className="material-symbols-outlined text-[10px] text-[var(--bg-color)]">check</span>}
                         </button>
                         <span className="text-[11px] text-[#a1a1aa] flex-1">{t.label}</span>
                         {installed !== undefined && <span className={`w-1.5 h-1.5 rounded-full ${installed ? 'bg-[#22c55e]' : 'bg-[#ef4444]'}`} />}
@@ -514,15 +514,15 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
       </div>
 
       {/* Action button */}
-      <div className="p-3 border-t border-[rgba(255,255,255,0.06)]">
+      <div className="p-3 border-t border-[rgba(255,255,255,0.06)] bg-surface-container-low">
         <button
           onClick={() => showCustomPath ? scanOne(scanPath) : scanAll()}
           disabled={isAnyScanRunning}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#f4f4f5] text-[#0a0a0b] text-[13px] font-medium hover:bg-[#e4e4e7] disabled:opacity-40 transition-all"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--accent-color)] text-[var(--accent-color-on-text)] text-[13px] font-medium hover:bg-[var(--accent-color-hover)] disabled:opacity-40 transition-all shadow-[0_0_14px_var(--accent-color-soft)]"
         >
           {isAnyScanRunning ? (
             <>
-              <div className="w-3.5 h-3.5 border-2 border-[#0a0a0b]/30 border-t-[#0a0a0b] rounded-full animate-spin" />
+              <div className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
               Scanning {scanningProject?.split('/').pop()}...
             </>
           ) : (
@@ -552,6 +552,7 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[]; findings: any[] }> = (
   const [runwayStep, setRunwayStep] = useState(0); // 0: Select project, 1: Threat Model, 2: Security Plan, 3: Remediation, 4: Scanner & PoC, 5: Report, 6: Complete
   const [runwayProject, setRunwayProject] = useState<any | null>(null);
   const [runwayLoading, setRunwayLoading] = useState(false);
+  const runwayLoadingRef = useRef(false);
   const [runwayError, setRunwayError] = useState('');
   const [runwayAutoMode, setRunwayAutoMode] = useState(false);
   const [runwayAutoPhase, setRunwayAutoPhase] = useState(''); // human-readable current auto phase
@@ -853,14 +854,20 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[]; findings: any[] }> = (
     }
   ) => {
     try {
-      await fetch(`/api/runway/${sessionId}`, {
+      const res = await fetch(`/api/runway/${sessionId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ current_step: step, ...data })
       });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => 'unknown');
+        console.error(`[saveRunwayToDB] HTTP ${res.status} for step ${step}:`, errText);
+        return;
+      }
+      console.log(`[saveRunwayToDB] Step ${step} saved OK for session ${sessionId}`);
       if (data.status === 'completed') {
         fetch(`/api/runway/export/${sessionId}`, { method: 'POST' })
-          .then(res => res.json())
+          .then(r => r.json())
           .then(resData => {
             if (resData.ok) {
               console.log('Runway report auto-saved to project directory:', resData.saved_to);
@@ -871,7 +878,7 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[]; findings: any[] }> = (
           .catch(e => console.error('Error auto-exporting report:', e));
       }
     } catch (e) {
-      console.error('Failed to save runway session:', e);
+      console.error(`[saveRunwayToDB] Network error at step ${step}:`, e);
     }
   }, []);
 
@@ -896,24 +903,35 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[]; findings: any[] }> = (
     }
   }, [activeProducts]);
 
-  // Restore active runway session from DB on mount
+  // Restore runway session from DB on mount + poll for cross-tab sync
   useEffect(() => {
     if (activeProducts.length === 0) return;
     let cancelled = false;
-    (async () => {
-      // Check each product for an active session
+
+    const fetchLatestSession = async () => {
       for (const prod of activeProducts) {
         try {
           const res = await fetch(`/api/runway?product_id=${prod.id}`);
           const data = await res.json();
-          if (!cancelled && data.ok && data.session && data.session.status === 'in_progress' && data.session.current_step > 0) {
+          if (!cancelled && data.ok && data.session && data.session.current_step > 0) {
             restoreRunwayFromSession(data.session);
-            break;
+            return true;
           }
         } catch (e) { /* ignore */ }
       }
-    })();
-    return () => { cancelled = true; };
+      return false;
+    };
+
+    // Initial restore
+    fetchLatestSession();
+
+    // Poll every 5s for cross-tab sync (skip when pipeline is running locally)
+    const pollId = setInterval(() => {
+      if (cancelled || runwayLoadingRef.current) return;
+      fetchLatestSession();
+    }, 5000);
+
+    return () => { cancelled = true; clearInterval(pollId); };
   }, [activeProducts, restoreRunwayFromSession]);
 
   // --- Individual step handlers (used by both manual and auto mode) ---
@@ -1234,6 +1252,7 @@ Threat Model:\n${threatModel}\n\nRemediation:\n${remediation}\n\nPoC Verificatio
     if (!runwayProject) return;
     setRunwayAutoMode(true);
     setRunwayLoading(true);
+    runwayLoadingRef.current = true;
     setRunwayError('');
 
     // Reset all results
@@ -1320,6 +1339,7 @@ Threat Model:\n${threatModel}\n\nRemediation:\n${remediation}\n\nPoC Verificatio
     } finally {
       setRunwayLoading(false);
       setRunwayAutoMode(false);
+      runwayLoadingRef.current = false;
     }
   };
 
