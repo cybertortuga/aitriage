@@ -285,7 +285,7 @@ export const SimpleAIChatPage: React.FC<SimpleAIChatPageProps> = ({
       <motion.div
         animate={{ width: sidebarOpen ? 260 : 0 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="shrink-0 border-r border-[rgba(255,255,255,0.06)] flex flex-col bg-[#0a0a0b] overflow-hidden h-full"
+        className="shrink-0 border-r border-[rgba(255,255,255,0.06)] flex flex-col bg-background overflow-hidden h-full"
       >
         <div className={`w-[260px] h-full flex flex-col shrink-0 transition-opacity duration-200 ${sidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
           {/* New Chat Button */}
@@ -331,7 +331,7 @@ export const SimpleAIChatPage: React.FC<SimpleAIChatPageProps> = ({
                             onChange={e => setEditTitle(e.target.value)}
                             onBlur={() => handleRenameSession(s.id)}
                             autoFocus
-                            className="w-full bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded px-2 py-1 text-[12px] text-[#f4f4f5] outline-none"
+                            className="w-full bg-surface-bright border border-[rgba(255,255,255,0.1)] rounded px-2 py-1 text-[12px] text-[#f4f4f5] outline-none"
                           />
                         </form>
                       ) : (
@@ -345,7 +345,7 @@ export const SimpleAIChatPage: React.FC<SimpleAIChatPageProps> = ({
                       )}
                       {/* Actions */}
                       {editingId !== s.id && (
-                        <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5 bg-[#18181b] rounded-md border border-[rgba(255,255,255,0.06)] px-0.5">
+                        <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5 bg-surface-bright rounded-md border border-[rgba(255,255,255,0.06)] px-0.5">
                           <button
                             onClick={(e) => { e.stopPropagation(); setEditingId(s.id); setEditTitle(s.title); }}
                             className="p-1 text-[#52525b] hover:text-[#a1a1aa] transition-colors"
@@ -418,7 +418,7 @@ export const SimpleAIChatPage: React.FC<SimpleAIChatPageProps> = ({
                 transition={{ duration: 0.2 }}
                 className="flex flex-col items-center justify-center h-full px-6 py-12"
               >
-                <div className="w-10 h-10 rounded-lg bg-[#18181b] flex items-center justify-center mb-4">
+                <div className="w-10 h-10 rounded-lg bg-surface-bright flex items-center justify-center mb-4">
                   <span className="material-symbols-outlined text-[#52525b] text-[24px]">smart_toy</span>
                 </div>
                 <h2 className="text-[15px] font-medium text-[#f4f4f5] mb-1">{t('simpleAIChat.ui.aiAssistant')}</h2>
@@ -463,7 +463,7 @@ export const SimpleAIChatPage: React.FC<SimpleAIChatPageProps> = ({
                       className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
                     >
                       <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${
-                        msg.role === 'user' ? 'bg-[#27272a]' : 'bg-[#18181b]'
+                        msg.role === 'user' ? 'bg-surface-container-highest' : 'bg-surface-bright'
                       }`}>
                         <span className="material-symbols-outlined text-[#71717a] text-[14px]">
                           {msg.role === 'user' ? 'person' : 'smart_toy'}
@@ -472,11 +472,11 @@ export const SimpleAIChatPage: React.FC<SimpleAIChatPageProps> = ({
                       <div className={`max-w-[85%] flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                         <div className={`px-4 py-2.5 rounded-lg text-[13px] leading-relaxed ${
                           msg.role === 'user'
-                            ? 'bg-[#27272a] text-[#f4f4f5] rounded-tr-sm'
+                            ? 'bg-surface-container-highest text-[#f4f4f5] rounded-tr-sm'
                             : 'text-[#a1a1aa] rounded-tl-sm'
                         }`}>
                           {msg.role === 'assistant' ? (
-                            <div className="simple-chat-markdown prose prose-invert prose-sm max-w-none [&_p]:text-[13px] [&_p]:leading-relaxed [&_p]:text-[#a1a1aa] [&_p]:m-0 [&_li]:text-[13px] [&_strong]:text-[#f4f4f5] [&_code]:text-[var(--accent-color)] [&_code]:bg-[#18181b] [&_code]:px-1 [&_code]:rounded">
+                            <div className="simple-chat-markdown prose prose-invert prose-sm max-w-none [&_p]:text-[13px] [&_p]:leading-relaxed [&_p]:text-[#a1a1aa] [&_p]:m-0 [&_li]:text-[13px] [&_strong]:text-[#f4f4f5] [&_code]:text-[var(--accent-color)] [&_code]:bg-surface-bright [&_code]:px-1 [&_code]:rounded">
                               <Markdown>{msg.content}</Markdown>
                             </div>
                           ) : <p>{msg.content}</p>}
@@ -495,7 +495,7 @@ export const SimpleAIChatPage: React.FC<SimpleAIChatPageProps> = ({
                       transition={{ duration: 0.2 }}
                       className="flex gap-3"
                     >
-                      <div className="w-7 h-7 rounded-md flex items-center justify-center bg-[#18181b]">
+                      <div className="w-7 h-7 rounded-md flex items-center justify-center bg-surface-bright">
                         <span className="material-symbols-outlined text-[#71717a] text-[14px]">smart_toy</span>
                       </div>
                       <div className="flex gap-1 items-center px-2 py-3">
@@ -519,13 +519,13 @@ export const SimpleAIChatPage: React.FC<SimpleAIChatPageProps> = ({
               value={input}
               onChange={e => setInput(e.target.value)}
               placeholder={t('simpleAIChat.ui.inputPlaceholder')}
-              className="flex-1 bg-[#18181b] border border-[rgba(255,255,255,0.06)] rounded-lg px-4 py-2.5 text-[13px] text-[#f4f4f5] placeholder:text-[#3f3f46] outline-none focus:border-[rgba(255,255,255,0.12)] transition-colors"
+              className="flex-1 bg-surface-bright border border-[rgba(255,255,255,0.06)] rounded-lg px-4 py-2.5 text-[13px] text-[#f4f4f5] placeholder:text-[#3f3f46] outline-none focus:border-[rgba(255,255,255,0.12)] transition-colors"
               autoFocus
             />
             <button
               type="submit"
               disabled={!input.trim() || loading}
-              className="w-9 h-9 rounded-lg bg-[#f4f4f5] text-[#0a0a0b] flex items-center justify-center disabled:opacity-20 transition-opacity shrink-0"
+              className="w-9 h-9 rounded-lg bg-[#f4f4f5] text-[var(--bg-color)] flex items-center justify-center disabled:opacity-20 transition-opacity shrink-0"
             >
               <span className="material-symbols-outlined text-[18px]">{loading ? 'hourglass_top' : 'arrow_upward'}</span>
             </button>

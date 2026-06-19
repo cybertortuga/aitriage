@@ -81,7 +81,7 @@ const PathInput: React.FC<{ value: string; onChange: (p: string) => void }> = ({
             value={value}
             onChange={e => onChange(e.target.value)}
             placeholder="/host/Desktop/my-project"
-            className="w-full bg-[#18181b] border border-[rgba(255,255,255,0.06)] rounded-lg pl-8 pr-3 py-2 text-[12px] text-[#f4f4f5] font-mono placeholder:text-[#3f3f46] outline-none focus:border-[rgba(255,255,255,0.12)] transition-colors"
+            className="w-full bg-surface-bright border border-[rgba(255,255,255,0.06)] rounded-lg pl-8 pr-3 py-2 text-[12px] text-[#f4f4f5] font-mono placeholder:text-[#3f3f46] outline-none focus:border-[rgba(255,255,255,0.12)] transition-colors"
           />
         </div>
         <button
@@ -948,7 +948,7 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[]; findings: any[] }> = (
         try {
           const res = await fetch(`/api/runway?product_id=${prod.id}`);
           const data = await res.json();
-          if (!cancelled && data.ok && data.session && data.session.status === 'in_progress') {
+          if (!cancelled && data.ok && data.session && data.session.status === 'in_progress' && data.session.current_step > 0) {
             restoreRunwayFromSession(data.session);
             break;
           }
@@ -3502,7 +3502,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
             {/* ── AI COMMAND & SCAN BAR ── */}
             <motion.div 
               variants={itemVariants} 
-              className="border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 bg-[#0a0a0b]/80 backdrop-blur-xl flex flex-col gap-5 shadow-2xl relative overflow-hidden group"
+              className="border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 bg-background/80 backdrop-blur-xl flex flex-col gap-5 shadow-2xl relative overflow-hidden group"
             >
               {/* Subtle glass glow background */}
               <div className="absolute inset-0 bg-gradient-to-br from-[rgba(255,255,255,0.02)] to-[rgba(255,255,255,0.002)] pointer-events-none" />
@@ -3527,7 +3527,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                         }
                       }}
                       placeholder="Ask the security agent to check CORS rules, analyze auth flows, or review code..."
-                      className="w-full bg-[#18181b] border border-[rgba(255,255,255,0.06)] rounded-xl pl-10 pr-4 py-3 text-[13px] text-[#f4f4f5] placeholder:text-[#52525b] outline-none focus:border-[rgba(255,255,255,0.15)] transition-all font-sans"
+                      className="w-full bg-surface-bright border border-[rgba(255,255,255,0.06)] rounded-xl pl-10 pr-4 py-3 text-[13px] text-[#f4f4f5] placeholder:text-[#52525b] outline-none focus:border-[rgba(255,255,255,0.15)] transition-all font-sans"
                     />
                   </div>
                   <button
@@ -3581,7 +3581,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                       value={globalScanPath}
                       onChange={(e) => setGlobalScanPath(e.target.value)}
                       placeholder="/host/my-project"
-                      className="w-full bg-[#18181b] border border-[rgba(255,255,255,0.06)] rounded-xl pl-10 pr-4 py-3 text-[13px] text-[#a1a1aa] placeholder:text-[#3f3f46] outline-none focus:border-[rgba(255,255,255,0.15)] transition-all font-mono"
+                      className="w-full bg-surface-bright border border-[rgba(255,255,255,0.06)] rounded-xl pl-10 pr-4 py-3 text-[13px] text-[#a1a1aa] placeholder:text-[#3f3f46] outline-none focus:border-[rgba(255,255,255,0.15)] transition-all font-mono"
                     />
                   </div>
                   <button
@@ -3601,7 +3601,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
               {/* Score Card */}
               <motion.div 
                 variants={itemVariants} 
-                className="lg:col-span-1 border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 bg-[#0a0a0b]/80 backdrop-blur-xl flex flex-col justify-between shadow-2xl relative overflow-hidden min-h-[260px] h-full group"
+                className="lg:col-span-1 border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 bg-background/80 backdrop-blur-xl flex flex-col justify-between shadow-2xl relative overflow-hidden min-h-[260px] h-full group"
               >
                 {/* Advanced Animated Background Glow */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-2xl">
@@ -4419,8 +4419,8 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
           onClick={handleToggleProjectsPanel}
           className={`absolute -left-6 top-[calc(50%-120px)] -translate-y-1/2 z-40 flex items-center justify-center w-6 h-20 rounded-l-lg transition-all duration-300 ${
             isProjectsPanelOpen
-              ? 'bg-[#18181b] border border-r-0 border-[rgba(255,255,255,0.06)] text-[var(--accent-color)] hover:bg-[#111113]'
-              : 'bg-[#111113] border border-r-0 border-[rgba(255,255,255,0.06)] text-[#71717a] hover:text-[var(--accent-color)] hover:bg-[#18181b]'
+              ? 'bg-surface-bright border border-r-0 border-[rgba(255,255,255,0.06)] text-[var(--accent-color)] hover:bg-surface'
+              : 'bg-surface border border-r-0 border-[rgba(255,255,255,0.06)] text-[#71717a] hover:text-[var(--accent-color)] hover:bg-surface-bright'
           }`}
           title={isProjectsPanelOpen ? t('SimpleDashboardPage.hideProjects') : t('SimpleDashboardPage.showProjects')}
         >
@@ -4439,7 +4439,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
               animate={{ width: 340, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-              className="w-[340px] shrink-0 border-l border-[rgba(255,255,255,0.06)] flex flex-col overflow-hidden bg-[#111113]"
+              className="w-[340px] shrink-0 border-l border-[rgba(255,255,255,0.06)] flex flex-col overflow-hidden bg-surface"
             >
               <ScanPanel onScanComplete={() => { refreshFindings?.(); refreshMetrics?.(); }} />
             </motion.div>
@@ -4504,9 +4504,9 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-[#09090b]/90 backdrop-blur-md"
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-background/90 backdrop-blur-md"
           >
-            <div className="w-[500px] border border-[rgba(255,255,255,0.08)] bg-[#111113] rounded-2xl shadow-2xl overflow-hidden flex flex-col p-6 font-sans">
+            <div className="w-[500px] border border-[rgba(255,255,255,0.08)] bg-surface rounded-2xl shadow-2xl overflow-hidden flex flex-col p-6 font-sans">
               <div className="flex flex-col items-center gap-4 text-center pb-6 border-b border-[rgba(255,255,255,0.06)]">
                 {/* pulsing visual radar/circle */}
                 <div className="relative w-16 h-16 flex items-center justify-center">
@@ -4533,7 +4533,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                   <span>Phase: {scanPhases[globalScanPhase].name}</span>
                   <span>{globalScanElapsed}s elapsed</span>
                 </div>
-                <div className="w-full h-1.5 bg-[#18181b] rounded-full overflow-hidden">
+                <div className="w-full h-1.5 bg-surface-bright rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-[var(--accent-color)] rounded-full transition-all duration-500 shadow-[0_0_8px_var(--accent-color-line)]"
                     style={{ width: `${((globalScanPhase + 1) / scanPhases.length) * 100}%` }}
@@ -4563,4 +4563,3 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
     </div>
   );
 };
-
