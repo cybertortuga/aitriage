@@ -132,6 +132,16 @@
   inherits: true;
   initial-value: #27272a;
 }
+@property --bg-accent-a {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #3f3f46;
+}
+@property --bg-accent-b {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #0f172a;
+}
 
 :root {
   /* Colors - AITriage v2 Cyber-Obsidian variables mapped to dynamic themes */
@@ -170,6 +180,8 @@
   --surface-color-low: #0d0d0f;
   --surface-color-bright: #18181b;
   --surface-color-highest: #27272a;
+  --bg-accent-a: #3f3f46;
+  --bg-accent-b: #0f172a;
   transition:
     --accent-color 0.4s ease,
     --accent-color-hover 0.4s ease,
@@ -181,63 +193,77 @@
     --surface-color 0.4s ease,
     --surface-color-low 0.4s ease,
     --surface-color-bright 0.4s ease,
-    --surface-color-highest 0.4s ease;
+    --surface-color-highest 0.4s ease,
+    --bg-accent-a 0.4s ease,
+    --bg-accent-b 0.4s ease;
 }
 
 /* 6 Background Color Palettes - dark-only to preserve contrast */
 html[data-bg="obsidian"] {
-  --bg-color: #0a0a0b;
-  --bg-color-deep: #070709;
-  --bg-color-soft: #0d0d12;
-  --surface-color: #111113;
-  --surface-color-low: #0d0d0f;
-  --surface-color-bright: #18181b;
-  --surface-color-highest: #27272a;
+  --bg-color: #050506;
+  --bg-color-deep: #010102;
+  --bg-color-soft: #0b0b0d;
+  --surface-color: #101012;
+  --surface-color-low: #09090b;
+  --surface-color-bright: #1a1a1e;
+  --surface-color-highest: #2a2a31;
+  --bg-accent-a: #52525b;
+  --bg-accent-b: #18181b;
 }
 html[data-bg="graphite"] {
-  --bg-color: #101014;
-  --bg-color-deep: #0b0b0f;
-  --bg-color-soft: #14141a;
-  --surface-color: #17171d;
-  --surface-color-low: #131318;
-  --surface-color-bright: #202028;
-  --surface-color-highest: #30303a;
+  --bg-color: #0b111c;
+  --bg-color-deep: #020617;
+  --bg-color-soft: #111827;
+  --surface-color: #111827;
+  --surface-color-low: #0f172a;
+  --surface-color-bright: #1e293b;
+  --surface-color-highest: #334155;
+  --bg-accent-a: #94a3b8;
+  --bg-accent-b: #38bdf8;
 }
 html[data-bg="midnight"] {
-  --bg-color: #07111f;
-  --bg-color-deep: #030914;
-  --bg-color-soft: #0b1829;
-  --surface-color: #0e1929;
-  --surface-color-low: #0a1422;
-  --surface-color-bright: #142238;
-  --surface-color-highest: #20304a;
+  --bg-color: #020b1f;
+  --bg-color-deep: #000514;
+  --bg-color-soft: #04143a;
+  --surface-color: #071631;
+  --surface-color-low: #041025;
+  --surface-color-bright: #0b2454;
+  --surface-color-highest: #123a7a;
+  --bg-accent-a: #0ea5e9;
+  --bg-accent-b: #2563eb;
 }
 html[data-bg="bordeaux"] {
-  --bg-color: #13070d;
-  --bg-color-deep: #090306;
-  --bg-color-soft: #1a0b12;
-  --surface-color: #1b0d14;
-  --surface-color-low: #150910;
-  --surface-color-bright: #25131d;
-  --surface-color-highest: #35202b;
+  --bg-color: #18030b;
+  --bg-color-deep: #070006;
+  --bg-color-soft: #2a0614;
+  --surface-color: #230711;
+  --surface-color-low: #16040b;
+  --surface-color-bright: #3a0d1e;
+  --surface-color-highest: #5b1630;
+  --bg-accent-a: #f43f5e;
+  --bg-accent-b: #be123c;
 }
 html[data-bg="evergreen"] {
-  --bg-color: #06120f;
-  --bg-color-deep: #020806;
-  --bg-color-soft: #0a1a15;
-  --surface-color: #0d1b17;
-  --surface-color-low: #091611;
-  --surface-color-bright: #142820;
-  --surface-color-highest: #20392f;
+  --bg-color: #02120d;
+  --bg-color-deep: #000705;
+  --bg-color-soft: #052318;
+  --surface-color: #062016;
+  --surface-color-low: #03160f;
+  --surface-color-bright: #0a3525;
+  --surface-color-highest: #0f5138;
+  --bg-accent-a: #34d399;
+  --bg-accent-b: #059669;
 }
 html[data-bg="indigo"] {
-  --bg-color: #0b0a19;
-  --bg-color-deep: #05040d;
-  --bg-color-soft: #111026;
-  --surface-color: #131225;
-  --surface-color-low: #0f0e1f;
-  --surface-color-bright: #1d1a35;
-  --surface-color-highest: #2b274a;
+  --bg-color: #0b0520;
+  --bg-color-deep: #030014;
+  --bg-color-soft: #150a38;
+  --surface-color: #160d32;
+  --surface-color-low: #0f0925;
+  --surface-color-bright: #241454;
+  --surface-color-highest: #3b2280;
+  --bg-accent-a: #a855f7;
+  --bg-accent-b: #4f46e5;
 }
 
 /* 10 Accent Color Palettes - Obsidian Silent Luxury */

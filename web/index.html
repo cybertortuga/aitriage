@@ -23,8 +23,10 @@
         try {
           var accent = localStorage.getItem('aitriage_accent') || 'white';
           var background = localStorage.getItem('aitriage_background') || 'obsidian';
+          var backgroundMotion = localStorage.getItem('aitriage_background_motion') || 'on';
           document.documentElement.setAttribute('data-accent', accent);
           document.documentElement.setAttribute('data-bg', background);
+          document.documentElement.setAttribute('data-bg-motion', backgroundMotion);
         } catch (e) {}
       })();
     </script>

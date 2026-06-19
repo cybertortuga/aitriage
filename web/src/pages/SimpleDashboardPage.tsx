@@ -4406,7 +4406,6 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
               {/* RIGHT: AI IDE Prompts (sticky) */}
               <div className="xl:col-span-1 sticky top-6 space-y-6">
                 <SecureCoderPanel activeProducts={activeProducts} findings={findings} />
-                <InlineAIPrompts activeProducts={activeProducts} findings={findings} />
               </div>
             </div>
           </div>
