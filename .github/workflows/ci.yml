@@ -16,10 +16,9 @@ concurrency:
 jobs:
   build-test:
     name: Build & Test
-    # Fail closed: only the configured repository owner may start runner work.
-    if: >-
-      vars.AITRIAGE_ALLOWED_ACTOR_ID != '' &&
-      github.actor_id == vars.AITRIAGE_ALLOWED_ACTOR_ID
+    # Fail closed: only the repository owner's immutable GitHub account ID may
+    # start runner work. This repository deliberately has one operator.
+    if: github.actor_id == '184216056'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
