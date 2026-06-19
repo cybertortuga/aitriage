@@ -2113,7 +2113,10 @@ func (s *Server) handleRunwayStart(w http.ResponseWriter, r *http.Request) {
 		}
 
 		session.Status = "running"
-		s.runwayRepo.Update(bgCtx, session)
+		if err := s.runwayRepo.Update(bgCtx, session); err != nil {
+			slog.Error("Failed to mark runway session running", "session_id", session.ID, "error", err)
+			return
+		}
 
 		err := graph.Run(bgCtx, state, s.llmClient)
 		if err != nil {
@@ -2141,7 +2144,9 @@ func (s *Server) handleRunwayStart(w http.ResponseWriter, r *http.Request) {
 			session.AuditReport = &state.ReportMarkdown
 		}
 
-		s.runwayRepo.Update(bgCtx, session)
+		if err := s.runwayRepo.Update(bgCtx, session); err != nil {
+			slog.Error("Failed to persist runway session result", "session_id", session.ID, "error", err)
+		}
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
