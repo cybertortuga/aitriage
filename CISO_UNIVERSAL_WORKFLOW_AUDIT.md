@@ -20,9 +20,8 @@ guaranteed by a fork-PR guard alone: existing workflows, direct pushes, manual
 dispatch permissions, branch protection, and repository access must be treated
 as one control surface.
 
-No GitHub username is hard-coded in workflow YAML. The designated operator must
-be supplied by repository variable `AITRIAGE_ALLOWED_ACTOR_ID`; this avoids
-silently granting authority to an assumed account name.
+The repository's sole operator is enforced through GitHub numeric account ID
+`184216056`. It is an immutable public identifier, not a username or secret.
 
 ## Scope
 
@@ -126,10 +125,9 @@ silently granting authority to an assumed account name.
 
 - [x] Inventory every workflow and every event that can create a run.
 - [x] Define a fail-closed operator contract: only the immutable GitHub account
-      ID in repository variable `AITRIAGE_ALLOWED_ACTOR_ID` may execute jobs.
-- [x] Add a consistent job-level allowlist using
-      `vars.AITRIAGE_ALLOWED_ACTOR_ID`, including all existing repository
-      workflows that remain enabled.
+      ID `184216056` may execute repository jobs.
+- [x] Add a consistent job-level allowlist using `github.actor_id`, including
+      all existing repository workflows that remain enabled.
 - [x] Verify that unauthorised events result in skipped jobs before checkout,
       Docker, or secrets access.
 - [x] Record the GitHub settings required to enforce this outside YAML:
@@ -164,7 +162,7 @@ silently granting authority to an assumed account name.
 | WF-004 | High | `agent` sends findings/evidence and Git history context to the configured LLM provider. | Running AI triage against untrusted fork code or without an approved data-egress control is unacceptable. | Resolved in template | Fork PRs are skipped; the job targets `ai-triage` so GEMINI_API_KEY can be environment-scoped and reviewer-gated. Environment rules remain an operator prerequisite. |
 | WF-005 | High | AI triage was non-blocking. | A provider outage could leave a pipeline green without the required AI assessment. | Resolved | The AI step is fail-closed: no `continue-on-error`, no fallback summary, and no artifact upload after an AI failure. |
 | WF-006 | High | The initial universal workflow ran `static-scan` for fork PRs. | An external contributor could consume runner time and execute untrusted code through the scanner container. | Resolved | Both jobs now require a same-repository PR, push to `main`, or manual run; fork PR workflow runs contain only skipped jobs. |
-| WF-007 | Critical | Existing repository workflows and consumer examples use automatic triggers; any actor able to push, open an internal PR, or dispatch with write access can cause jobs to run. | Fork guards do not establish sole-operator execution control. | Source fixed; settings pending | Every job now fails closed unless `github.actor_id` equals repository variable `AITRIAGE_ALLOWED_ACTOR_ID`. Repository access and branch rules must prevent a collaborator from changing that guard. |
+| WF-007 | Critical | Existing repository workflows and consumer examples use automatic triggers; any actor able to push, open an internal PR, or dispatch with write access can cause jobs to run. | Fork guards do not establish sole-operator execution control. | Resolved in repository workflows; settings pending | Every repository job now fails closed unless `github.actor_id == '184216056'`. Consumer examples retain a repository variable because their owner differs. Repository access and branch rules must prevent a collaborator from changing the guard. |
 | WF-008 | High | The former universal workflow applied `standard` policy to raw scanner output before AI triage. | A false positive could block a change before the designated classification authority reviewed it. | Resolved | Static collection uses `fail-on: never` and job-level `continue-on-error`; the mandatory agent then applies `--health-profile standard --fail-on any` to post-triage findings. |
 | WF-009 | High | `scan` writes a raw GitHub Step Summary by default when `GITHUB_ACTIONS=true`. | Humans could see unaudited findings and a pre-triage score before the AI has classified true positives and manual-review cases. | Resolved | Static collection passes `--no-summary`. Only a completed agent triage writes its tested three-block actionable summary: human assessment, remediation prompt, and AI Agent Data. A policy-failing TP result still has a summary. |
 | WF-010 | Medium | The user-facing report used `IB Gate` and `IB policy`, an unexplained mixed-language acronym. | An executive or CISO sees an ambiguous control name rather than a clear security decision. | Source fixed; release pending | Active surfaces now say `Security Gate` or `Security Policy`. The old public `@v1` image retains the label until release. |
@@ -217,8 +215,8 @@ silently granting authority to an assumed account name.
 | Static collection and AI triage both run; AI is the sole policy gate | Raw scanner results can be false positives, so collection never blocks. The mandatory agent classifies them, then fails on any remaining true positive or Health Score below 70. | Accepted |
 | AI is skipped for fork PRs | Avoid provider-secret exposure and uncontrolled code-data egress. | Accepted |
 | All jobs are skipped for fork PRs | The user does not permit external PR code to run in this repository at all. A job-level condition prevents checkout and container execution while retaining same-repository PR checks. | Accepted |
-| Use `github.actor_id`, not a username | GitHub account IDs are stable identifiers. The allowlist is externalised as a repository variable so source does not assume or expose the operator's account name. | Accepted |
-| Fail closed when the allowlist is absent | An unset `AITRIAGE_ALLOWED_ACTOR_ID` makes every guarded job skip. This is safer than silently granting execution to all write collaborators. | Accepted |
+| Use `github.actor_id`, not a username | GitHub account IDs are stable identifiers. This single-operator repository pins its owner ID directly; consumer templates keep their owner configurable through a repository variable. | Accepted |
+| Fail closed without a configuration dependency | The actual repository pins `184216056`, so a missing repository variable cannot accidentally suppress the owner's release workflow or tempt a weaker fallback. | Accepted |
 
 ## Release prerequisite and operating checklist
 
@@ -245,22 +243,19 @@ until it is released. This is intentionally outside the scope of this audit.
 
 ## Sole-operator setup checklist
 
-This is required before relying on the new guards:
+The repository guard is already pinned to the sole operator's immutable account
+ID. No Actions variable is required here.
 
-1. Obtain the numeric GitHub account ID for the sole operator, for example with
-   `gh api user --jq .id` while authenticated as that account.
-2. In **Settings → Secrets and variables → Actions → Variables**, create
-   `AITRIAGE_ALLOWED_ACTOR_ID` with that numeric value. It is not a secret.
-3. Keep the workflow triggers if the operator's own pushes/PRs should start
+1. Keep the workflow triggers if the operator's own pushes/PRs should start
    checks automatically. An event created by anyone else will create, at most,
    a workflow record whose jobs are all skipped before a runner is assigned.
-4. If even a skipped workflow record is unacceptable, remove `push` and
+2. If even a skipped workflow record is unacceptable, remove `push` and
    `pull_request` triggers and retain only `workflow_dispatch`. This still
    requires GitHub access control, because every writer can click Run workflow.
-5. Remove every other collaborator's write/admin access. Protect `main` and
+3. Remove every other collaborator's write/admin access. Protect `main` and
    require review for `.github/workflows/**`, `action.yml`, and release files;
    otherwise a collaborator who can change those files can remove the guard.
-6. In GitHub Actions settings, keep the default `GITHUB_TOKEN` read-only and
+4. In GitHub Actions settings, keep the default `GITHUB_TOKEN` read-only and
    allow only required actions. Job-level YAML guards do not constrain an
    administrator who can change repository settings or workflow source.
 
