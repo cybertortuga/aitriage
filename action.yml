@@ -56,7 +56,7 @@ runs:
   using: 'docker'
   # Immutable linux/amd64 image for the v1 Action release. Update this digest
   # only as part of releasing a new Action version.
-  image: 'docker://ghcr.io/cybertortuga/aitriage@sha256:cfba72be295ba54d1807ec8819ff9fbeb4fa57411f6ed0e4d276f8e6e5f4fd6a'
+  image: 'docker://ghcr.io/cybertortuga/aitriage@sha256:1d8301cf11e01b0a85d1e0f8580e34b5d7ba42f695d982eb41ca081369196ff7'
   entrypoint: '/entrypoint.sh'
   env:
     AITRIAGE_COMMAND: ${{ inputs.command }}
