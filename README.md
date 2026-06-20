@@ -11,12 +11,11 @@
 
 **Deterministic Security Scanner & AI-Powered Triage for Modern Codebases**
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/cybertortuga/aitriage?style=flat-square)](https://goreportcard.com/report/github.com/cybertortuga/aitriage)
 [![GitHub Release](https://img.shields.io/github/v/release/cybertortuga/aitriage?style=flat-square&color=blue)](https://github.com/cybertortuga/aitriage/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/cybertortuga/aitriage?style=flat-square)](https://go.dev/)
 [![CI](https://img.shields.io/github/actions/workflow/status/cybertortuga/aitriage/ci.yml?style=flat-square&label=CI)](https://github.com/cybertortuga/aitriage/actions)
-[![Docker Pulls](https://img.shields.io/docker/pulls/cybertortuga/aitriage?style=flat-square)](https://hub.docker.com/r/cybertortuga/aitriage)
+[![GHCR](https://img.shields.io/badge/GHCR-cybertortuga%2Faitriage-2496ED?style=flat-square&logo=github)](https://github.com/cybertortuga/aitriage/pkgs/container/aitriage)
 
 </div>
 
@@ -24,9 +23,9 @@
 
 ## At a Glance
 
-- **Deterministic scans first:** run built-in rules and integrated scanners, then apply a reproducible policy gate.
-- **AI triage is optional:** use an LLM to prioritize findings and produce fix specifications without making the deterministic gate dependent on the model.
-- **Built for local development and CI:** scan a repository, enforce a baseline-aware policy in GitHub Actions, or expose security context through MCP.
+- **Deterministic evidence first:** built-in rules and integrated scanners collect findings, SARIF, annotations, and artifacts without failing a trusted CI run on untriaged results.
+- **Mandatory AI gate in the primary CI workflow:** AI triage removes false positives, writes the authoritative summary, then is the sole policy gate. If the AI provider or agent fails, the workflow fails closed.
+- **Built for local development and CI:** run a deterministic scan locally without an LLM, use the hardened GitHub Actions workflow for trusted code, or expose security context through MCP.
 - **Go 1.25+ for source builds:** released binaries and the Homebrew formula do not require a local Go toolchain.
 
 See the [integration guide](docs/INTEGRATION.md), [architecture](docs/ARCHITECTURE.md), and [API reference](docs/API_REFERENCE.md) for deeper detail.
@@ -64,8 +63,8 @@ Files ──► Loader ──► [ AST Engine + Entropy Engine + Config Auditor 
 | **Silent Luxury TUI** | Professional interactive terminal dashboard for audit triage, code browsing, and real-time review. |
 | **MCP Native** | Model Context Protocol server exposing security context tools directly to AI assistants (Cursor, Claude, Windsurf). |
 | **Orchestration** | Wraps and unifies findings from Semgrep, Trivy, Gitleaks, and Bandit into a single consolidated stream. |
-| **AI Agent Mode** | LLM-driven map-reduce analysis that automates false-positive filtering and compiles prioritizations. |
-| **Auto-Remediation** | Generates fix diffs for detected vulnerabilities using local policies or LLM models. |
+| **AI Agent Mode** | LLM-driven map-reduce triage that classifies findings, suppresses false positives, and produces a full report, actionable summary, and fix specification. |
+| **AI IDE Remediation Brief** | Gives an AI IDE the verified finding context and a secure operating contract: audit and plan first, implement only confirmed true positives, then verify; manual-review items are not changed speculatively. |
 
 ---
 
@@ -164,7 +163,7 @@ docker compose up -d web
 
 # Or scan a mounted host filesystem with the published image
 docker run --rm -p 8080:8080 -v /:/host:ro \
-  ghcr.io/cybertortuga/aitriage web
+  ghcr.io/cybertortuga/aitriage:v1 web
 ```
 
 Open `http://localhost:8080` after the service starts. See the [deployment guide](docs/DEPLOYMENT.md) for production configuration.
@@ -193,142 +192,63 @@ AITriage ships with **180+ static security rules** across 11 technology stacks, 
 
 ## Docker Auto-Escalation
 
-To run comprehensive audits, AITriage orchestrates external scanners (e.g., `semgrep`, `trivy`, `gitleaks`, `bandit`). 
-If these utilities are **missing locally** but a Docker daemon is active, AITriage **transparently re-launches itself in a container** (using the pre-built GHCR image `ghcr.io/cybertortuga/aitriage:latest`). This process is completely seamless and ensures you get full AST and secret audits without manually installing dependencies.
+To run comprehensive audits, AITriage orchestrates external scanners (e.g., `semgrep`, `trivy`, `gitleaks`, `bandit`).
+If these utilities are **missing locally** but a Docker daemon is active, AITriage can transparently re-launch itself in a container. The current local fallback follows `ghcr.io/cybertortuga/aitriage:latest`; this is separate from the published GitHub Action, whose `@v1` metadata pins an immutable GHCR digest for every release.
 
 ---
 
 ## CI/CD Pipeline Architecture
 
-AITriage uses a **Two-Layer Pipeline Model** for GitHub Actions. It is published as a pre-compiled Docker action, bypassing build times and running in seconds instead of minutes.
+AITriage is published as a pre-built Docker Action. Consumers use `cybertortuga/aitriage@v1`; the Action metadata for that release resolves to an immutable GHCR image digest rather than a mutable container tag.
+
+The primary workflow has a deliberate trust boundary: raw scanner output is evidence, not a merge decision. Mandatory AI triage is the only security-policy gate.
 
 ```
-                  ┌──────────────────────────────┐
-                  │      GitHub Actions Run      │
-                  └──────────────┬───────────────┘
-                                 │
-                 ┌───────────────┴───────────────┐
-                 │       actions/checkout        │
-                 └───────────────┬───────────────┘
-                                 │
-                ┌────────────────┴────────────────┐
-                │                                 │
-  ┌─────────────▼─────────────┐     ┌─────────────▼─────────────┐
-  │ Layer 1: Deterministic    │     │ Layer 2: AI Advisor       │
-  │ Gate (Blocks Pull Request)│     │ (Non-blocking review)     │
-  └─────────────┬─────────────┘     └─────────────┬─────────────┘
-                │                                 │
-        aitriage scan .                   aitriage agent --no-chat
-   verdict = health_check.passed                  │
-  SARIF → Security Dashboard                      │
-  Annotations → PR diff             Post triage details & fixspecs
-  Summary → Job step summary        as a comments on the pull request
+trusted same-repository PR / main push / manual dispatch
+                         │
+                         ▼
+       deterministic collection: scan --no-summary --fail-on never
+                         │
+       SARIF + annotations + artifact (evidence only; never blocks)
+                         │
+                         ▼
+     mandatory AI triage: agent --health-profile standard --fail-on any
+                         │
+       authoritative three-block Job Summary after completed triage
+                         │
+       fails on any remaining True Positive or score below 70
 ```
 
-### GitHub Actions Workflow Example
+### Install the primary workflow
 
-Create `.github/workflows/aitriage.yml` in your repository:
+Copy the [canonical workflow](examples/github-actions/aitriage-security.yml) to `.github/workflows/aitriage.yml`. It pins third-party Actions to reviewed commits and contains the complete static evidence, SARIF, artifact, and mandatory AI-triage flow. Do not copy an abbreviated workflow from an old issue or README snippet.
 
-```yaml
-name: AITriage Security Pipeline
+Before the first run:
 
-on:
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  static-scan:
-    name: Static Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Run AITriage Scanner
-        uses: cybertortuga/aitriage@v1
-        with:
-          command: 'scan'
-          args: '--no-summary'
-          format: 'html'
-          output-file: 'report.html'
-          fail-on: never
-
-      - name: Upload HTML Security Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: aitriage-security-report
-          path: report.html
-
-  ai-triage:
-    name: AI Triage & Fix Specs
-    needs: static-scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Run AI Triage Agent (SecureCoder Rules)
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        uses: cybertortuga/aitriage@v1
-        with:
-          command: 'agent'
-          args: '--no-chat --report-out report.md --fixspec-out fixspec.md --summary-out summary.md'
-
-      # Agent auto-writes actionable summary (TP/NR only) to $GITHUB_STEP_SUMMARY.
-      # We only need to append the fix spec (also actionable).
-      - name: Publish Fix Specs to GitHub Summary
-        if: always()
-        run: |
-          if [ -f fixspec.md ]; then
-            echo "### AI IDE Fix Prompt" >> $GITHUB_STEP_SUMMARY
-            echo '```markdown' >> $GITHUB_STEP_SUMMARY
-            cat fixspec.md >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-
-      # Full report (including FP rationale) is downloadable as an artifact.
-      - name: Upload AI Triage Artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: aitriage-ai-triage-results
-          path: |
-            report.md
-            fixspec.md
-            summary.md
-```
-
-> [!IMPORTANT]
-> **AI Keys & Provider Auto-Detection**:
-> - **LLM Key Storage**: Never hardcode API keys. Store them securely in your repository secrets (e.g. `secrets.GEMINI_API_KEY`, `secrets.OPENAI_API_KEY`, or `secrets.ANTHROPIC_API_KEY`) and map them under the `env:` block of your action step.
-> - **Provider Auto-Detection**: The AITriage Agent automatically detects the LLM provider based on which API key environment variable is set (`GEMINI_API_KEY` for Google Gemini, `OPENAI_API_KEY` for OpenAI, `ANTHROPIC_API_KEY` for Anthropic).
+1. Create the repository variable `AITRIAGE_ALLOWED_ACTOR_ID` with the numeric GitHub account ID permitted to start jobs. An empty or mismatched value skips all jobs before checkout or secret access.
+2. Create the `ai-triage` environment and add `GEMINI_API_KEY` as an **environment secret**. Restrict eligible branches and use required reviewers when your GitHub plan supports them.
+3. Protect the workflow file and repository access. YAML cannot stop an administrator or writer from changing the allowlist.
+4. Run `workflow_dispatch` once from the permitted account, then make **AI Triage & Fix Specs** the required branch-protection check. Do not make deterministic collection a required check: it is evidence-only.
 
 ### Dual Output: Actionable Summary vs Full Report
 
-The AI agent produces **two separate outputs** to maximise signal-to-noise ratio:
+The completed AI agent produces separate outputs to maximise signal-to-noise ratio:
 
 | Output | Contains | Destination |
 |---|---|---|
-| **Summary** (`summary.md`) | True Positives + Needs Review only | `$GITHUB_STEP_SUMMARY` (auto) |
-| **Full Report** (`report.md`) | All findings including False Positive rationale | Downloadable artifact |
+| **Job Summary / `summary.md`** | Security assessment, AI IDE implementation brief, and structured TP/Needs Review data | `$GITHUB_STEP_SUMMARY` and optional artifact file |
+| **Full Report** (`report.md`) | All findings, including false-positive rationale | AI-triage artifact on a successful agent run |
+| **Fix Specification** (`fixspec.md`) | Detailed remediation specification | AI-triage artifact on a successful agent run |
 
-- The agent **automatically writes** the actionable summary to `$GITHUB_STEP_SUMMARY` when running in GitHub Actions — no shell scripting needed.
-- False Positives are **counted** in the summary header but their details are only in the full report, serving as an audit trail.
-- Use `--summary-out summary.md` to also persist the summary as a file artifact.
+- The scanner never writes a raw Job Summary. The agent writes the only authoritative summary after all required AI stages complete, even when the resulting policy verdict fails.
+- False positives are counted in the assessment but excluded from the actionable prompt and structured AI data. The full report retains their rationale as an audit trail.
+- The AI IDE brief requires a scoped audit and written plan before changes, implements only confirmed true positives, and leaves `Needs Manual Review` to a human decision.
 
 ---
 
 ## Information Security Policy Gates
 
-Instead of simple pass/fail checks, AITriage calculates a comprehensive Security Score and evaluates a deterministic policy verdict (`health_check.verdict.passed`).
+AITriage calculates a comprehensive Security Score and evaluates a policy verdict (`health_check.verdict.passed`). In the canonical GitHub Actions workflow, that verdict is applied only after AI triage has removed false positives.
 
 ### 1. Built-in Security Profiles
 You can configure a profile via the `health-profile` action parameter or `.aitriage.yaml`:
