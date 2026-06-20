@@ -174,8 +174,14 @@ func TestGenerateSummaryHasThreeBlocks(t *testing.T) {
 	if !strings.Contains(summary, "SecureCoder") {
 		t.Error("Missing Block 2: SecureCoder reference in prompt")
 	}
-	if !strings.Contains(summary, "DO NOT write actual code") {
-		t.Error("Missing Block 2: instruction to not write code")
+	if !strings.Contains(summary, "Do not stop after the plan") {
+		t.Error("Missing Block 2: instruction to implement after planning")
+	}
+	if !strings.Contains(summary, "Needs Manual Review") {
+		t.Error("Missing Block 2: manual-review safety boundary")
+	}
+	if strings.Contains(summary, "DO NOT write actual code") {
+		t.Error("Block 2 must not prohibit implementation")
 	}
 
 	// Block 3: AI Agent Data
