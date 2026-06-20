@@ -609,8 +609,8 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 // for the GitHub Actions Step Summary. The output is split into three blocks:
 //
 //  1. Human Summary — compact health card for quick glance by humans
-//  2. AI Agent Data — structured JSON in a collapsed &lt;details&gt; block
-//  3. AI Remediation Prompt — copy-paste SecureCoder prompt for Cursor/Claude/Antigravity
+//  2. AI Remediation Prompt — copy-paste SecureCoder implementation brief
+//  3. AI Agent Data — structured JSON in a collapsed &lt;details&gt; block
 //
 // False Positives are excluded from actionable sections but mentioned in stats.
 func generateSummary(state *AgentState) {
@@ -898,7 +898,7 @@ func writeAIAgentData(sb *strings.Builder, state *AgentState, actionable []actio
 	sb.WriteString("</details>\n")
 }
 
-// ── Block 3: AI Remediation Prompt ──────────────────────────────────────────
+// ── Block 2: AI Remediation Prompt ──────────────────────────────────────────
 
 func writeAIRemediationPrompt(sb *strings.Builder, state *AgentState, actionable []actionableFinding) {
 	if len(actionable) == 0 {
@@ -908,13 +908,13 @@ func writeAIRemediationPrompt(sb *strings.Builder, state *AgentState, actionable
 	hc := state.HealthCheck
 
 	sb.WriteString("\n### 📋 AI Remediation Prompt\n\n")
-	sb.WriteString("> Copy this prompt into your AI IDE (Cursor, Claude, Antigravity) to generate a remediation plan.\n\n")
+	sb.WriteString("> Copy this implementation brief into your AI IDE. It must audit and plan first, then implement verified fixes.\n\n")
 	sb.WriteString("<details>\n")
 	sb.WriteString("<summary>Click to expand prompt</summary>\n\n")
 	sb.WriteString("```markdown\n")
 
-	sb.WriteString("You are a SecureCoder security engineer. Below is the output of an AITriage security scan.\n")
-	sb.WriteString("Your task is to create a COMPLETE remediation plan — but DO NOT write the actual code fixes.\n\n")
+	sb.WriteString("You are a SecureCoder security engineer working in this repository. Below is triage evidence from an AITriage security scan.\n")
+	sb.WriteString("Your goal is a secure, verified remediation — not merely a checklist. Follow every phase in order.\n\n")
 
 	sb.WriteString("## SCAN METADATA\n")
 	sb.WriteString(fmt.Sprintf("- Score: %d/100 (%s)\n", hc.Score, hc.Grade))
@@ -938,19 +938,29 @@ func writeAIRemediationPrompt(sb *strings.Builder, state *AgentState, actionable
 		sb.WriteString(fmt.Sprintf("   Status: %s\n", f.disposition))
 	}
 
-	sb.WriteString("\n## YOUR TASK\n\n")
-	sb.WriteString("Create a complete step-by-step remediation plan for ALL vulnerabilities listed above.\n\n")
-	sb.WriteString("Requirements:\n")
-	sb.WriteString("1. Group fixes by component/directory (e.g., thirdparty/VAmPI, synthetic/nextjs-terrible)\n")
-	sb.WriteString("2. Prioritize: CRITICAL first, then HIGH, MEDIUM, LOW\n")
-	sb.WriteString("3. For each vulnerability create a task with:\n")
-	sb.WriteString("   - [ ] Main task description\n")
-	sb.WriteString("     - [ ] Subtask: what specific change is needed and why\n")
-	sb.WriteString("     - [ ] Subtask: what to verify after the change\n")
-	sb.WriteString("4. Note dependencies between fixes (e.g., upgrade PyJWT fixes 4 issues at once)\n")
-	sb.WriteString("5. Include a final verification checklist\n")
-	sb.WriteString("6. DO NOT write actual code — describe WHAT needs to change and WHY\n\n")
-	sb.WriteString("Output format: Markdown with checkboxes (- [ ] task)\n")
+	sb.WriteString("\n## OPERATING CONTRACT\n\n")
+	sb.WriteString("### Phase 0 — Audit before code\n")
+	sb.WriteString("- Do not modify code until you have completed a scoped read-only audit of the affected files, dependencies, entry points, configuration, and side effects.\n")
+	sb.WriteString("- Inspect available tools first. Use filesystem, search, git, browser, and MCP capabilities when available; never invent unavailable APIs, libraries, or tool results.\n")
+	sb.WriteString("- For every non-trivial API, framework, dependency, or version change, verify the current official documentation before implementation. Record material sources and compatibility constraints in the plan.\n\n")
+
+	sb.WriteString("### Phase 1 — Create the remediation plan\n")
+	sb.WriteString("- Before editing, create a short lowercase-kebab-case `*.md` plan file in the repository root that names this remediation. Do not overwrite an existing plan.\n")
+	sb.WriteString("- Group correlated findings by root cause and component; do not create duplicate fixes for the same defect. Prioritize CRITICAL, then HIGH, MEDIUM, LOW.\n")
+	sb.WriteString("- For every remediation unit record affected files, the exact intended code/configuration change, security invariant, compatibility or migration risk, dependencies, verification, and acceptance criteria.\n")
+	sb.WriteString("- Track each task and subtask with checkboxes. Do not begin implementation until this plan is complete.\n\n")
+
+	sb.WriteString("### Phase 2 — Implement verified fixes\n")
+	sb.WriteString("- Do not stop after the plan. Implement only findings marked `True Positive`, one remediation unit at a time, and update the plan after every completed unit.\n")
+	sb.WriteString("- For `Needs Manual Review`, do not make speculative changes. Record the evidence, decision required, safe options, and the verification needed from a human owner.\n")
+	sb.WriteString("- Preserve least privilege and secure-by-default behaviour: enforce authentication and authorization server-side, deny by default, validate inputs with allowlists, parameterize data access, encode untrusted output, keep secrets out of code and logs, use narrow CORS/CSP/cookie settings, and remove insecure debug/default behaviour.\n")
+	sb.WriteString("- Use official advisories and documentation for dependency remediation. Preserve lockfiles and compatibility; never suppress a scanner, weaken a policy, disable a test, or hide a finding merely to obtain a green result.\n")
+	sb.WriteString("- Keep changes minimal and scoped. Do not perform unrelated mass refactors. If a safe implementation depends on missing authority, a product decision, or uncertain facts, stop that unit and record the blocker.\n\n")
+
+	sb.WriteString("### Phase 3 — Verify and report\n")
+	sb.WriteString("- After every remediation unit, run the narrowest relevant test, linter, or security check. At the end, run the complete applicable verification suite.\n")
+	sb.WriteString("- Confirm each fixed vulnerability is no longer reproducible and that authorization, negative-path, regression, and compatibility tests cover the intended security invariant.\n")
+	sb.WriteString("- Finish only when every plan item is checked or explicitly marked blocked with an owner decision. Report changed files, finding IDs addressed, commands run, results, and any residual risk.\n")
 
 	sb.WriteString("```\n\n")
 	sb.WriteString("</details>\n")
