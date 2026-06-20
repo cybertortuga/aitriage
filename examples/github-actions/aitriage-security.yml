@@ -81,13 +81,6 @@ jobs:
           sarif_file: aitriage.sarif
           category: aitriage
 
-      - name: Record SARIF upload failure
-        if: always() && steps.upload-sarif.outcome == 'failure'
-        run: |
-          {
-            echo '### AITriage SARIF integration'
-            echo 'SARIF upload failed; this is reporting-only. The mandatory AI triage gate remains authoritative.'
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload deterministic scan artifact
         if: always()
