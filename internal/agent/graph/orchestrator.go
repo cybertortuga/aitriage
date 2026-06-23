@@ -431,6 +431,9 @@ func countDispositions(dispositions []FindingDisposition) (tp, fp, nr int) {
 
 func validateFindingDispositions(dispositions []FindingDisposition, findingCount int) error {
 	if findingCount == 0 {
+		if len(dispositions) != 0 {
+			return fmt.Errorf("threat-model response classified %d of 0 findings", len(dispositions))
+		}
 		return nil
 	}
 	if len(dispositions) != findingCount {

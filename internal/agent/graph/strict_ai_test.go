@@ -27,6 +27,12 @@ func TestValidateFindingDispositionsRequiresOneValidDecisionPerFinding(t *testin
 			wantErr:      true,
 		},
 		{
+			name:         "classification for empty finding set",
+			dispositions: []FindingDisposition{{FindingIndex: 0, Disposition: "True Positive"}},
+			findingCount: 0,
+			wantErr:      true,
+		},
+		{
 			name: "duplicate classification",
 			dispositions: []FindingDisposition{
 				{FindingIndex: 0, Disposition: "True Positive"},
