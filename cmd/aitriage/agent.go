@@ -30,6 +30,7 @@ var (
 	agentReportOut     string
 	agentFixSpecOut    string
 	agentSummaryOut    string
+	agentTriageOut     string
 	agentFailOn        string
 	agentFailScore     int
 	agentHealthProfile string
@@ -71,6 +72,7 @@ func init() {
 	agentCmd.Flags().StringVar(&agentReportOut, "report-out", "", "Write the final Markdown triage report to this file (for CI/CD)")
 	agentCmd.Flags().StringVar(&agentFixSpecOut, "fixspec-out", "", "Write the AI fix specification to this file (for CI/CD)")
 	agentCmd.Flags().StringVar(&agentSummaryOut, "summary-out", "", "Write the actionable summary (TP/NR only, no FP) to this file")
+	agentCmd.Flags().StringVar(&agentTriageOut, "triage-out", "", "Write the canonical JSON inventory of every triaged finding to this file (for CI/CD)")
 	agentCmd.Flags().StringVar(&agentFailOn, "fail-on", "never", "CI gate: exit 1 when 'critical' (active CRITICAL/HIGH after AI triage), 'any' finding, or 'never'")
 	agentCmd.Flags().IntVar(&agentFailScore, "fail-score", 0, "CI gate: exit 1 if the post-AI Health Check score is below this threshold (0 = disabled)")
 	agentCmd.Flags().StringVar(&agentHealthProfile, "health-profile", "", "Health Check policy profile: baseline, standard, strict")
@@ -203,6 +205,12 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to write summary to %s: %w", agentSummaryOut, err)
 		}
 		fmt.Fprintf(os.Stderr, "   ✓ Summary written to %s\n", agentSummaryOut)
+	}
+	if agentTriageOut != "" {
+		if err := writeTriageArtifact(agentTriageOut, state); err != nil {
+			return fmt.Errorf("failed to write triage findings to %s: %w", agentTriageOut, err)
+		}
+		fmt.Fprintf(os.Stderr, "   ✓ Canonical triage findings written to %s\n", agentTriageOut)
 	}
 
 	// Auto-write actionable summary to GitHub Actions Step Summary.
