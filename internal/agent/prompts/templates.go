@@ -143,6 +143,8 @@ and the Secure Coding Rules (MUST/MUST NOT) above.
 
 You MUST return exactly one classification for EVERY finding_index provided
 (0-based, matching the input order). Do NOT skip, merge, or omit any finding.
+Echo the exact finding_id and fingerprint from the input for every entry. Never
+reuse identity, rationale, or evidence from another finding.
 
 For each finding decide:
 - True Positive: a real, exploitable vulnerability given the threat model.
@@ -152,8 +154,15 @@ For each finding decide:
 
 Also provide a confidence ("high" | "medium" | "low") and a one-line rationale.
 
+For a False Positive, evidence is mandatory. Only these evidence bases can
+authorize suppression:
+- test_only: the finding is in a test path; evidence.file must name that path.
+- code_mitigation: evidence.file, evidence.line, and evidence.observed must
+  point to a literal mitigation present in repository source.
+If you cannot provide one of those proofs, return Needs Manual Review instead.
+
 Return ONLY JSON with this exact shape (no prose, no markdown):
-{"finding_dispositions":[{"finding_index":0,"disposition":"True Positive","confidence":"high","rationale":"..."}]}`
+{"finding_dispositions":[{"finding_index":0,"finding_id":"CS-XXX-001","fingerprint":"exact input fingerprint","disposition":"True Positive","confidence":"high","rationale":"...","evidence":{"basis":"code_mitigation","file":"path/file.py","line":12,"observed":"literal source text"}}]}`
 
 const ClassificationUserPromptTemplate = `## Threat Model
 %s

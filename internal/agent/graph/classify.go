@@ -30,8 +30,16 @@ import (
 //
 // The returned slice always has exactly len(findings) entries, ordered by index.
 func ClassifyFindings(ctx context.Context, repoContextText, projectPath string, findings []EnrichedFinding, llmClient llm.Client, usage *llm.Usage) (*ThreatModel, []FindingDisposition, error) {
+	tm, dispositions, _, err := ClassifyFindingsWithAudit(ctx, repoContextText, projectPath, findings, llmClient, usage)
+	return tm, dispositions, err
+}
+
+// ClassifyFindingsWithAudit behaves like ClassifyFindings and additionally
+// returns the raw structured model responses plus their validated mapping. The
+// audit is persisted in triage-findings.json by the CLI pipeline.
+func ClassifyFindingsWithAudit(ctx context.Context, repoContextText, projectPath string, findings []EnrichedFinding, llmClient llm.Client, usage *llm.Usage) (*ThreatModel, []FindingDisposition, []ClassificationAuditEntry, error) {
 	if len(findings) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	// Layer 1: collapse byte-for-byte identical findings.
@@ -40,21 +48,21 @@ func ClassifyFindings(ctx context.Context, repoContextText, projectPath string, 
 	cache := newVerdictCache(strings.TrimSpace(os.Getenv("AITRIAGE_MODEL")))
 	gating := defaultGatingConfig()
 
-	tm, uniqueDisps, err := classifyUnique(ctx, repoContextText, projectPath, unique, llmClient, usage, cache, gating)
+	tm, uniqueDisps, audit, err := classifyUnique(ctx, repoContextText, projectPath, unique, llmClient, usage, cache, gating)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, audit, err
 	}
 
 	// Layer 1 (reverse): project the unique verdicts back onto every original.
 	dispositions := projectDispositions(uniqueDisps, groups, findings)
 
 	logTriageMetrics(findings, unique, uniqueDisps)
-	return tm, dispositions, nil
+	return tm, dispositions, audit, nil
 }
 
 // classifyUnique classifies the deduplicated findings, returning one disposition
 // per unique finding (indexed by unique position).
-func classifyUnique(ctx context.Context, repoContextText, projectPath string, unique []EnrichedFinding, llmClient llm.Client, usage *llm.Usage, cache *verdictCache, gating gatingConfig) (*ThreatModel, []FindingDisposition, error) {
+func classifyUnique(ctx context.Context, repoContextText, projectPath string, unique []EnrichedFinding, llmClient llm.Client, usage *llm.Usage, cache *verdictCache, gating gatingConfig) (*ThreatModel, []FindingDisposition, []ClassificationAuditEntry, error) {
 	n := len(unique)
 	result := make([]*FindingDisposition, n)
 
@@ -67,7 +75,7 @@ func classifyUnique(ctx context.Context, repoContextText, projectPath string, un
 	}
 	tm, _, err := threatModelLLMCall(ctx, repoContextText, projectPath, sample, llmClient, usage)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	tmSummary := threatModelSummary(tm)
 
@@ -76,6 +84,11 @@ func classifyUnique(ctx context.Context, repoContextText, projectPath string, un
 	for i, f := range unique {
 		fp := Fingerprint(f)
 		if cached, ok := cache.Get(fp); ok {
+			if cached.Disposition == "False Positive" {
+				if err := validateFalsePositiveEvidence(projectPath, f, cached.Evidence); err != nil {
+					continue // Invalid cached FP cannot bypass evidence-bound suppression.
+				}
+			}
 			cached.FindingIndex = i
 			cached.DispositionSource = dispositionSourceCache
 			cached.Fingerprint = fp
@@ -111,9 +124,9 @@ func classifyUnique(ctx context.Context, repoContextText, projectPath string, un
 
 	// Layer 4b + 5: classify the remaining findings against the threat model,
 	// in bounded-concurrency batches with per-batch retry of omitted findings.
-	classified, err := classifyWithLLM(ctx, tmSummary, unique, toLLM, llmClient, usage)
+	classified, audit, err := classifyWithLLM(ctx, tmSummary, projectPath, unique, toLLM, llmClient, usage)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, audit, err
 	}
 	for gi, d := range classified {
 		fp := Fingerprint(unique[gi])
@@ -148,16 +161,16 @@ func classifyUnique(ctx context.Context, repoContextText, projectPath string, un
 		result[i].FindingID = unique[i].VulnID
 		disps[i] = *result[i]
 	}
-	return tm, disps, nil
+	return tm, disps, audit, nil
 }
 
 // classifyWithLLM classifies the given unique-index targets in bounded-concurrency
 // batches. It returns a map keyed by unique index. Transport/provider errors are
 // fatal (returned); malformed responses are tolerated (left for the NR fallback).
-func classifyWithLLM(ctx context.Context, tmSummary string, unique []EnrichedFinding, targets []int, llmClient llm.Client, usage *llm.Usage) (map[int]FindingDisposition, error) {
+func classifyWithLLM(ctx context.Context, tmSummary, projectPath string, unique []EnrichedFinding, targets []int, llmClient llm.Client, usage *llm.Usage) (map[int]FindingDisposition, []ClassificationAuditEntry, error) {
 	out := make(map[int]FindingDisposition)
 	if len(targets) == 0 {
-		return out, nil
+		return out, nil, nil
 	}
 
 	var batches [][]int
@@ -175,6 +188,7 @@ func classifyWithLLM(ctx context.Context, tmSummary string, unique []EnrichedFin
 		firstErr error
 		wg       sync.WaitGroup
 	)
+	audit := &classificationAuditCollector{}
 	sem := make(chan struct{}, triageConcurrency())
 
 	addUsageSafe := func(u llm.Usage) {
@@ -202,7 +216,7 @@ func classifyWithLLM(ctx context.Context, tmSummary string, unique []EnrichedFin
 			for li, gi := range batch {
 				subset[li] = unique[gi]
 			}
-			local := classifyBatchWithRetry(ctx, tmSummary, subset, llmClient, addUsageSafe, setErr)
+			local := classifyBatchWithRetry(ctx, tmSummary, projectPath, subset, batch, llmClient, addUsageSafe, setErr, audit)
 
 			mu.Lock()
 			for li, d := range local {
@@ -214,20 +228,27 @@ func classifyWithLLM(ctx context.Context, tmSummary string, unique []EnrichedFin
 	wg.Wait()
 
 	if firstErr != nil {
-		return nil, firstErr
+		return nil, audit.snapshot(), firstErr
 	}
-	return out, nil
+	return out, audit.snapshot(), nil
 }
 
 // classifyBatchWithRetry classifies a single batch, retrying omitted findings up
 // to threatModelMaxRetries times. Returns a map keyed by LOCAL batch index.
-func classifyBatchWithRetry(ctx context.Context, tmSummary string, subset []EnrichedFinding, llmClient llm.Client, addUsageSafe func(llm.Usage), setErr func(error)) map[int]FindingDisposition {
+func classifyBatchWithRetry(ctx context.Context, tmSummary, projectPath string, subset []EnrichedFinding, globalIndices []int, llmClient llm.Client, addUsageSafe func(llm.Usage), setErr func(error), audit *classificationAuditCollector) map[int]FindingDisposition {
 	res := make(map[int]FindingDisposition)
 
-	pass := func(items []EnrichedFinding, localMap []int) {
-		disps, u, err := classifyBatchLLM(ctx, tmSummary, items, llmClient)
+	pass := func(attempt int, items []EnrichedFinding, localMap []int) {
+		disps, rawResponse, u, err := classifyBatchLLM(ctx, tmSummary, items, llmClient)
 		addUsageSafe(u)
+		requestIndices := make([]int, len(localMap))
+		for i, localIndex := range localMap {
+			requestIndices[i] = globalIndices[localIndex]
+		}
+		entry := newClassificationAuditEntry(attempt, requestIndices, items, rawResponse)
 		if err != nil {
+			entry.ParseError = err.Error()
+			audit.record(entry)
 			// Malformed responses are tolerated (NR fallback covers them); only
 			// transport/provider failures abort the whole pipeline.
 			if !errors.Is(err, errThreatModelParse) {
@@ -237,28 +258,34 @@ func classifyBatchWithRetry(ctx context.Context, tmSummary string, subset []Enri
 		}
 		for _, d := range disps {
 			if d.FindingIndex < 0 || d.FindingIndex >= len(items) {
+				entry.Rejected = append(entry.Rejected, AuditRejection{FindingIndex: d.FindingIndex, Reason: "out-of-range finding_index"})
 				continue
 			}
 			if !isSupportedDisposition(d.Disposition) {
+				entry.Rejected = append(entry.Rejected, AuditRejection{FindingIndex: requestIndices[d.FindingIndex], Reason: "unsupported disposition"})
 				continue
 			}
 			gi := localMap[d.FindingIndex]
 			if _, done := res[gi]; done {
+				entry.Rejected = append(entry.Rejected, AuditRejection{FindingIndex: globalIndices[gi], Reason: "duplicate disposition"})
 				continue
 			}
-			res[gi] = FindingDisposition{
-				Disposition: d.Disposition,
-				Rationale:   d.Rationale,
-				Confidence:  normalizeConfidence(d.Confidence),
+			validated, reason := validateLLMDisposition(projectPath, items[d.FindingIndex], d)
+			if reason != "" {
+				entry.Rejected = append(entry.Rejected, AuditRejection{FindingIndex: globalIndices[gi], Reason: reason})
+				continue
 			}
+			res[gi] = validated
+			entry.AcceptedFindingIndices = append(entry.AcceptedFindingIndices, globalIndices[gi])
 		}
+		audit.record(entry)
 	}
 
 	full := make([]int, len(subset))
 	for i := range full {
 		full[i] = i
 	}
-	pass(subset, full)
+	pass(0, subset, full)
 
 	for attempt := 0; attempt < threatModelMaxRetries; attempt++ {
 		var missing []int
@@ -274,7 +301,7 @@ func classifyBatchWithRetry(ctx context.Context, tmSummary string, subset []Enri
 		for j, li := range missing {
 			items[j] = subset[li]
 		}
-		pass(items, missing)
+		pass(attempt+1, items, missing)
 	}
 	return res
 }
@@ -282,8 +309,17 @@ func classifyBatchWithRetry(ctx context.Context, tmSummary string, subset []Enri
 // classifyBatchLLM sends one batch to the LLM using the SecureCoder classification
 // prompt (which references the prebuilt threat model and the MUST/MUST NOT
 // ruleset) and returns the raw per-finding dispositions.
-func classifyBatchLLM(ctx context.Context, tmSummary string, batch []EnrichedFinding, llmClient llm.Client) ([]rawDisposition, llm.Usage, error) {
-	findingsJSON, _ := json.MarshalIndent(batch, "", "  ")
+func classifyBatchLLM(ctx context.Context, tmSummary string, batch []EnrichedFinding, llmClient llm.Client) ([]rawDisposition, string, llm.Usage, error) {
+	promptFindings := make([]classificationPromptFinding, len(batch))
+	for i, finding := range batch {
+		promptFindings[i] = classificationPromptFinding{
+			FindingIndex: i,
+			FindingID:    findingIdentity(finding),
+			Fingerprint:  Fingerprint(finding),
+			Finding:      finding,
+		}
+	}
+	findingsJSON, _ := json.MarshalIndent(promptFindings, "", "  ")
 	userPrompt := fmt.Sprintf(prompts.ClassificationUserPromptTemplate, tmSummary, len(batch), string(findingsJSON))
 
 	messages := []llm.Message{
@@ -293,32 +329,38 @@ func classifyBatchLLM(ctx context.Context, tmSummary string, batch []EnrichedFin
 
 	response, u, err := llmClient.Chat(ctx, messages)
 	if err != nil {
-		return nil, u, fmt.Errorf("classification LLM call failed: %w", err)
+		return nil, "", u, fmt.Errorf("classification LLM call failed: %w", err)
 	}
 
 	jsonText := extractJSON(response)
 	var raw struct {
 		FindingDispositions []struct {
-			FindingIndex int    `json:"finding_index"`
-			Disposition  string `json:"disposition"`
-			Confidence   string `json:"confidence"`
-			Rationale    string `json:"rationale"`
+			FindingIndex int                  `json:"finding_index"`
+			FindingID    string               `json:"finding_id"`
+			Fingerprint  string               `json:"fingerprint"`
+			Disposition  string               `json:"disposition"`
+			Confidence   string               `json:"confidence"`
+			Rationale    string               `json:"rationale"`
+			Evidence     *DispositionEvidence `json:"evidence"`
 		} `json:"finding_dispositions"`
 	}
 	if err := json.Unmarshal([]byte(jsonText), &raw); err != nil {
-		return nil, u, fmt.Errorf("%w: %v", errThreatModelParse, err)
+		return nil, response, u, fmt.Errorf("%w: %v", errThreatModelParse, err)
 	}
 
 	disps := make([]rawDisposition, 0, len(raw.FindingDispositions))
 	for _, d := range raw.FindingDispositions {
 		disps = append(disps, rawDisposition{
 			FindingIndex: d.FindingIndex,
+			FindingID:    d.FindingID,
+			Fingerprint:  d.Fingerprint,
 			Disposition:  d.Disposition,
 			Confidence:   d.Confidence,
 			Rationale:    d.Rationale,
+			Evidence:     d.Evidence,
 		})
 	}
-	return disps, u, nil
+	return disps, response, u, nil
 }
 
 // threatModelSummary renders a compact text view of the threat model for use as

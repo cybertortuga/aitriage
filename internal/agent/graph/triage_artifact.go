@@ -19,6 +19,10 @@ type TriageFindingsArtifact struct {
 	TotalFindings int                `json:"total_findings"`
 	HealthCheck   healthcheck.Result `json:"health_check"`
 	Findings      []TriagedFinding   `json:"findings"`
+	// ClassificationAudit records raw structured model responses and their
+	// validation outcome. It is sensitive triage evidence and follows the same
+	// artifact retention policy as the finding inventory.
+	ClassificationAudit []ClassificationAuditEntry `json:"classification_audit"`
 }
 
 // TriagedFinding pairs one original scanner finding with its one validated
@@ -51,10 +55,11 @@ func BuildTriageFindingsArtifact(state *AgentState) (TriageFindingsArtifact, err
 	}
 
 	return TriageFindingsArtifact{
-		SchemaVersion: TriageArtifactSchemaVersion,
-		TriageStatus:  "complete",
-		TotalFindings: len(findings),
-		HealthCheck:   state.HealthCheck,
-		Findings:      findings,
+		SchemaVersion:       TriageArtifactSchemaVersion,
+		TriageStatus:        "complete",
+		TotalFindings:       len(findings),
+		HealthCheck:         state.HealthCheck,
+		Findings:            findings,
+		ClassificationAudit: state.ClassificationAudit,
 	}, nil
 }

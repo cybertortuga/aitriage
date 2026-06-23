@@ -49,9 +49,10 @@ type AgentState struct {
 	TriagedResults   []string            // Deprecated: runWorkers removed (June 2026)
 
 	// SecureCoder-enhanced fields
-	ThreatModel         *ThreatModel         // Structured threat model analysis
-	FindingDispositions []FindingDisposition // TP/FP/NR classification per finding
-	PoCResults          []PoCResult          // PoC verification results
+	ThreatModel         *ThreatModel               // Structured threat model analysis
+	FindingDispositions []FindingDisposition       // TP/FP/NR classification per finding
+	ClassificationAudit []ClassificationAuditEntry // Raw structured LLM responses and validation decisions
+	PoCResults          []PoCResult                // PoC verification results
 
 	// LLM usage tracking (accumulated across all Chat calls)
 	TotalUsage llm.Usage
@@ -118,6 +119,40 @@ type PrivAction struct {
 	Guard    string `json:"guard"`
 }
 
+// DispositionEvidence is the structured, checkable basis for an LLM verdict.
+// Only evidence that passes deterministic validation may suppress a finding.
+type DispositionEvidence struct {
+	// Basis is one of: test_only or code_mitigation. Other values are retained
+	// in the audit trail but cannot authorize a False Positive suppression.
+	Basis string `json:"basis"`
+	File  string `json:"file,omitempty"`
+	Line  int    `json:"line,omitempty"`
+	// Observed is a literal source fragment for code_mitigation.
+	Observed string `json:"observed,omitempty"`
+}
+
+// ClassificationAuditEntry preserves the exact response and index mapping for
+// one LLM classification request. It is intentionally stored in the canonical
+// artifact so a weak model's output can be audited without relying on logs.
+type ClassificationAuditEntry struct {
+	Attempt int `json:"attempt"`
+	// UniqueFindingIndices are indexes after exact-fingerprint deduplication.
+	// Fingerprints link them back to every original record in findings.
+	UniqueFindingIndices   []int            `json:"unique_finding_indices"`
+	FindingIDs             []string         `json:"finding_ids"`
+	Fingerprints           []string         `json:"fingerprints"`
+	RawResponse            string           `json:"raw_response"`
+	ParseError             string           `json:"parse_error,omitempty"`
+	AcceptedFindingIndices []int            `json:"accepted_finding_indices,omitempty"`
+	Rejected               []AuditRejection `json:"rejected,omitempty"`
+}
+
+// AuditRejection records why an LLM item was not trusted and became NR.
+type AuditRejection struct {
+	FindingIndex int    `json:"finding_index"`
+	Reason       string `json:"reason"`
+}
+
 // FindingDisposition records the TP/FP/NR classification for a single finding.
 type FindingDisposition struct {
 	FindingIndex int    `json:"finding_index"`
@@ -131,6 +166,9 @@ type FindingDisposition struct {
 	DispositionSource string `json:"disposition_source,omitempty"`
 	// Fingerprint is the stable content hash used for dedup/caching.
 	Fingerprint string `json:"fingerprint,omitempty"`
+	// Evidence is required and deterministically validated before an LLM may
+	// classify a finding as False Positive.
+	Evidence *DispositionEvidence `json:"evidence,omitempty"`
 }
 
 // PoCResult holds reasoning-based PoC verification for a finding.
