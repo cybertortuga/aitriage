@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -287,29 +288,73 @@ func classifyVulnCode(message string) string {
 
 // ── Threat Model Step ────────────────────────────────────────────────────────
 
+// threatModelBatchSize caps how many findings are sent to the LLM in a single
+// threat-model request to stay within token limits. ALL findings are processed
+// by iterating over batches — findings beyond the first batch are never dropped.
+const threatModelBatchSize = 150
+
+// threatModelMaxRetries bounds how many extra LLM passes are made to classify
+// findings the model omitted in earlier passes before they default to NR.
+const threatModelMaxRetries = 2
+
+// nrFallbackRationale is recorded for findings the LLM never classified, even
+// after bounded retries. They default to Needs Manual Review (never False
+// Positive) so they keep penalising the Health Check score.
+const nrFallbackRationale = "LLM did not classify this finding after retries; defaulting to Needs Manual Review for safety."
+
+// errThreatModelParse marks a malformed (unparseable) threat-model response.
+// Transport errors are returned unwrapped so they always fail the pipeline,
+// whereas a malformed retry response is tolerated and handled by the NR fallback.
+var errThreatModelParse = errors.New("parse threat-model JSON")
+
+// rawDisposition is the LLM's unvalidated classification for a single finding,
+// indexed relative to the batch that was sent.
+type rawDisposition struct {
+	FindingIndex int
+	Disposition  string
+	Confidence   string
+	Rationale    string
+}
+
 func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	if len(state.EnrichedFindings) == 0 {
 		fmt.Fprintf(os.Stderr, "   ℹ️ No findings — skipping threat model\n")
 		return nil
 	}
 
-	// Serialize findings for the prompt (cap at 150 to stay within token limits)
-	findingsToSend := state.EnrichedFindings
-	if len(findingsToSend) > 150 {
-		findingsToSend = findingsToSend[:150]
-	}
-	findingsJSON, _ := json.MarshalIndent(findingsToSend, "", "  ")
-
-	// Build repo context summary for the prompt.
 	repoContextText := ""
 	if state.RepoContext != nil {
 		repoContextText = state.RepoContext.FormatForLLM(5000) // ~5K tokens for threat model
 	}
 
+	tm, dispositions, err := ClassifyFindings(ctx, repoContextText, state.ProjectPath, state.EnrichedFindings, llmClient, &state.TotalUsage)
+	if err != nil {
+		return err
+	}
+
+	state.ThreatModel = tm
+	state.FindingDispositions = dispositions
+
+	// Final invariant: every finding has exactly one valid disposition.
+	if err := validateFindingDispositions(state.FindingDispositions, len(state.EnrichedFindings)); err != nil {
+		return err
+	}
+
+	tp, fp, nr := countDispositions(state.FindingDispositions)
+	fmt.Fprintf(os.Stderr, "   ✅ Threat model: %d True Positives, %d False Positives, %d Needs Review\n", tp, fp, nr)
+
+	return nil
+}
+
+// threatModelLLMCall sends a single batch of findings to the LLM and returns the
+// parsed threat model plus the raw (unvalidated) dispositions. Transport errors
+// are wrapped plainly; malformed JSON is wrapped with errThreatModelParse.
+func threatModelLLMCall(ctx context.Context, repoContextText, projectPath string, batch []EnrichedFinding, llmClient llm.Client, usage *llm.Usage) (*ThreatModel, []rawDisposition, error) {
+	findingsJSON, _ := json.MarshalIndent(batch, "", "  ")
 	userPrompt := fmt.Sprintf(prompts.ThreatModelUserPromptTemplate,
 		repoContextText,
-		state.ProjectPath,
-		len(state.EnrichedFindings),
+		projectPath,
+		len(batch),
 		string(findingsJSON),
 	)
 
@@ -318,10 +363,10 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 		{Role: "user", Content: userPrompt},
 	}
 
-	response, usage, err := llmClient.Chat(ctx, messages)
-	addUsage(&state.TotalUsage, usage)
+	response, u, err := llmClient.Chat(ctx, messages)
+	addUsage(usage, u)
 	if err != nil {
-		return fmt.Errorf("threat model LLM call failed: %w", err)
+		return nil, nil, fmt.Errorf("threat model LLM call failed: %w", err)
 	}
 
 	// Parse JSON from response (handle markdown code fences)
@@ -342,10 +387,10 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 	}
 
 	if err := json.Unmarshal([]byte(jsonText), &rawResult); err != nil {
-		return fmt.Errorf("parse threat-model JSON: %w", err)
+		return nil, nil, fmt.Errorf("%w: %v", errThreatModelParse, err)
 	}
 
-	state.ThreatModel = &ThreatModel{
+	tm := &ThreatModel{
 		ComponentOverview:  rawResult.ComponentOverview,
 		EntryPoints:        rawResult.EntryPoints,
 		TrustBoundaries:    rawResult.TrustBoundaries,
@@ -354,26 +399,24 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 		PriorityAreas:      rawResult.PriorityAreas,
 	}
 
+	disps := make([]rawDisposition, 0, len(rawResult.FindingDispositions))
 	for _, d := range rawResult.FindingDispositions {
-		findingID := ""
-		if d.FindingIndex < len(state.EnrichedFindings) {
-			findingID = state.EnrichedFindings[d.FindingIndex].VulnID
-		}
-		state.FindingDispositions = append(state.FindingDispositions, FindingDisposition{
-			FindingIndex: d.FindingIndex,
-			FindingID:    findingID,
-			Disposition:  d.Disposition,
-			Rationale:    d.Rationale,
-		})
+		disps = append(disps, rawDisposition{FindingIndex: d.FindingIndex, Disposition: d.Disposition, Rationale: d.Rationale})
 	}
-	if err := validateFindingDispositions(state.FindingDispositions, len(state.EnrichedFindings)); err != nil {
-		return err
-	}
+	return tm, disps, nil
+}
 
-	tp := 0
-	fp := 0
-	nr := 0
-	for _, d := range state.FindingDispositions {
+func isSupportedDisposition(d string) bool {
+	switch d {
+	case "True Positive", "False Positive", "Needs Manual Review":
+		return true
+	default:
+		return false
+	}
+}
+
+func countDispositions(dispositions []FindingDisposition) (tp, fp, nr int) {
+	for _, d := range dispositions {
 		switch d.Disposition {
 		case "True Positive":
 			tp++
@@ -383,9 +426,7 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 			nr++
 		}
 	}
-	fmt.Fprintf(os.Stderr, "   ✅ Threat model: %d True Positives, %d False Positives, %d Needs Review\n", tp, fp, nr)
-
-	return nil
+	return tp, fp, nr
 }
 
 func validateFindingDispositions(dispositions []FindingDisposition, findingCount int) error {
@@ -445,36 +486,11 @@ func runPoCVerification(ctx context.Context, state *AgentState, llmClient llm.Cl
 		return nil
 	}
 
-	// Cap at 75 findings for PoC to stay within token limits
-	if len(tpFindings) > 75 {
-		tpFindings = tpFindings[:75]
-	}
-
-	findingsJSON, _ := json.MarshalIndent(tpFindings, "", "  ")
-	userPrompt := fmt.Sprintf(prompts.PoCUserPromptTemplate, len(tpFindings), string(findingsJSON))
-
-	messages := []llm.Message{
-		{Role: "system", Content: prompts.PoCSystemPrompt},
-		{Role: "user", Content: userPrompt},
-	}
-
-	response, usage, err := llmClient.Chat(ctx, messages)
-	addUsage(&state.TotalUsage, usage)
+	// Phase 5b: verify ALL true positives (deduped, batched, bounded concurrency,
+	// budget-capped) instead of silently dropping everything past the 75th.
+	pocResults, err := verifyPoCs(ctx, tpFindings, llmClient, &state.TotalUsage)
 	if err != nil {
 		return fmt.Errorf("PoC verification LLM call failed: %w", err)
-	}
-
-	// Parse JSON response
-	jsonText := extractJSON(response)
-	var pocResults []PoCResult
-	if err := json.Unmarshal([]byte(jsonText), &pocResults); err != nil {
-		// If we can't parse as array, try single object
-		var single PoCResult
-		if err2 := json.Unmarshal([]byte(jsonText), &single); err2 == nil {
-			pocResults = []PoCResult{single}
-		} else {
-			return fmt.Errorf("parse PoC JSON: %w", err)
-		}
 	}
 
 	state.PoCResults = pocResults
@@ -488,7 +504,7 @@ func runPoCVerification(ctx context.Context, state *AgentState, llmClient llm.Cl
 			incomplete++
 		}
 	}
-	fmt.Fprintf(os.Stderr, "   ✅ PoC: %d exploitable, %d blocked/unknown\n", verified, incomplete)
+	fmt.Fprintf(os.Stderr, "   ✅ PoC: %d unique TPs → %d exploitable, %d blocked/unknown\n", len(pocResults), verified, incomplete)
 
 	return nil
 }
@@ -541,6 +557,19 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 			}
 		}
 		dispositionBlock = fmt.Sprintf("\n## Finding Dispositions (Threat Model)\n- True Positives: %d\n- False Positives: %d\n- Needs Manual Review: %d\n", tp, fp, nr)
+
+		// Audit trail: how each disposition was produced (scale transparency).
+		srcCounts := map[string]int{}
+		for _, d := range state.FindingDispositions {
+			if d.DispositionSource != "" {
+				srcCounts[d.DispositionSource]++
+			}
+		}
+		if len(srcCounts) > 0 {
+			dispositionBlock += fmt.Sprintf("- Disposition sources: %d LLM, %d cached, %d deterministic, %d NR-fallback\n",
+				srcCounts[dispositionSourceLLM], srcCounts[dispositionSourceCache],
+				srcCounts[dispositionSourceDeterministic], srcCounts[dispositionSourceNRFallback])
+		}
 
 		// Include False Positive rationales
 		var fpLines []string

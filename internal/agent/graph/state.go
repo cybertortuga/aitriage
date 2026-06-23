@@ -124,6 +124,13 @@ type FindingDisposition struct {
 	FindingID    string `json:"finding_id"`
 	Disposition  string `json:"disposition"` // "True Positive", "False Positive", "Needs Manual Review"
 	Rationale    string `json:"rationale"`
+	// Confidence is the model's self-reported certainty: "high" | "medium" | "low".
+	Confidence string `json:"confidence,omitempty"`
+	// DispositionSource records how the disposition was produced for the audit
+	// trail: "llm" | "cache" | "deterministic" | "nr-fallback".
+	DispositionSource string `json:"disposition_source,omitempty"`
+	// Fingerprint is the stable content hash used for dedup/caching.
+	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
 // PoCResult holds reasoning-based PoC verification for a finding.

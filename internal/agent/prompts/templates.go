@@ -127,6 +127,42 @@ Scanner findings (%d total):
 
 Build the threat model based on the repository context above and classify each finding.`
 
+// ── Classification Prompt (threat-model-once, structured 1:1) ────────────────
+//
+// Used after the threat model is built ONCE. It classifies a batch of findings
+// against that prebuilt model and the SecureCoder ruleset, requiring exactly one
+// entry per finding_index so no finding is ever silently dropped.
+
+const ClassificationSystemPrompt = SecureCoderFramework + `
+
+## Current Task: Finding Classification (against a prebuilt threat model)
+
+You are given a prebuilt threat model and a list of scanner findings.
+Evaluate EACH finding against the threat model, the actual code snippet provided,
+and the Secure Coding Rules (MUST/MUST NOT) above.
+
+You MUST return exactly one classification for EVERY finding_index provided
+(0-based, matching the input order). Do NOT skip, merge, or omit any finding.
+
+For each finding decide:
+- True Positive: a real, exploitable vulnerability given the threat model.
+- False Positive: not exploitable due to trust boundaries, auth, framework
+  protections, or intended functionality.
+- Needs Manual Review: insufficient context to decide confidently.
+
+Also provide a confidence ("high" | "medium" | "low") and a one-line rationale.
+
+Return ONLY JSON with this exact shape (no prose, no markdown):
+{"finding_dispositions":[{"finding_index":0,"disposition":"True Positive","confidence":"high","rationale":"..."}]}`
+
+const ClassificationUserPromptTemplate = `## Threat Model
+%s
+
+## Findings to classify (%d total)
+%s
+
+Classify EVERY finding by its 0-based index. Return one entry per finding.`
+
 // ── Triage Prompt (enhanced with SecureCoder guidelines) ─────────────────────
 
 const TriageSystemPrompt = SecureCoderFramework + `

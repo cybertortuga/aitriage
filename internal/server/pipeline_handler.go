@@ -214,81 +214,17 @@ func runWebThreatModel(ctx context.Context, state *graph.AgentState, llmClient l
 		return nil
 	}
 
-	findingsToSend := state.EnrichedFindings
-	if len(findingsToSend) > 150 {
-		findingsToSend = findingsToSend[:150]
-	}
-	findingsJSON, _ := json.MarshalIndent(findingsToSend, "", "  ")
-
-	userPrompt := fmt.Sprintf(prompts.ThreatModelUserPromptTemplate,
-		"", // No repo context in web mode
-		"web-scan",
-		len(state.EnrichedFindings),
-		string(findingsJSON),
-	)
-
-	messages := []llm.Message{
-		{Role: "system", Content: prompts.ThreatModelSystemPrompt},
-		{Role: "user", Content: userPrompt},
-	}
-
-	response, usage, err := llmClient.Chat(ctx, messages)
-	addPipelineUsage(&state.TotalUsage, usage)
+	// Reuse the same robust classifier as the CLI/CI pipeline: it batches over
+	// ALL findings (no silent drop), retries omitted findings, and defaults any
+	// still-unclassified finding to Needs Manual Review (never False Positive).
+	// Transport/provider failures are returned so the caller can surface them.
+	tm, dispositions, err := graph.ClassifyFindings(ctx, "", "web-scan", state.EnrichedFindings, llmClient, &state.TotalUsage)
 	if err != nil {
-		return fmt.Errorf("threat model LLM call failed: %w", err)
+		return err
 	}
 
-	jsonText := extractPipelineJSON(response)
-
-	var rawResult struct {
-		ComponentOverview   string            `json:"component_overview"`
-		EntryPoints         []graph.EntryPoint `json:"entry_points"`
-		TrustBoundaries     graph.TrustBounds  `json:"trust_boundaries"`
-		SensitiveDataPaths  []graph.DataPath   `json:"sensitive_data_paths"`
-		PrivilegedActions   []graph.PrivAction `json:"privileged_actions"`
-		PriorityAreas       []string           `json:"priority_areas"`
-		FindingDispositions []struct {
-			FindingIndex int    `json:"finding_index"`
-			Disposition  string `json:"disposition"`
-			Rationale    string `json:"rationale"`
-		} `json:"finding_dispositions"`
-	}
-
-	if err := json.Unmarshal([]byte(jsonText), &rawResult); err != nil {
-		// Default all to True Positive
-		for i, f := range state.EnrichedFindings {
-			state.FindingDispositions = append(state.FindingDispositions, graph.FindingDisposition{
-				FindingIndex: i,
-				FindingID:    f.VulnID,
-				Disposition:  "True Positive",
-				Rationale:    "Could not build threat model; defaulting to True Positive.",
-			})
-		}
-		return nil
-	}
-
-	state.ThreatModel = &graph.ThreatModel{
-		ComponentOverview:  rawResult.ComponentOverview,
-		EntryPoints:        rawResult.EntryPoints,
-		TrustBoundaries:    rawResult.TrustBoundaries,
-		SensitiveDataPaths: rawResult.SensitiveDataPaths,
-		PrivilegedActions:  rawResult.PrivilegedActions,
-		PriorityAreas:      rawResult.PriorityAreas,
-	}
-
-	for _, d := range rawResult.FindingDispositions {
-		findingID := ""
-		if d.FindingIndex < len(state.EnrichedFindings) {
-			findingID = state.EnrichedFindings[d.FindingIndex].VulnID
-		}
-		state.FindingDispositions = append(state.FindingDispositions, graph.FindingDisposition{
-			FindingIndex: d.FindingIndex,
-			FindingID:    findingID,
-			Disposition:  d.Disposition,
-			Rationale:    d.Rationale,
-		})
-	}
-
+	state.ThreatModel = tm
+	state.FindingDispositions = dispositions
 	return nil
 }
 
