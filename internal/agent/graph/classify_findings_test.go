@@ -41,33 +41,69 @@ func (m *fakeLLM) Chat(ctx context.Context, messages []llm.Message) (string, llm
 	if strings.Contains(system, "Finding Classification") {
 		call := m.classifyCalls
 		m.classifyCalls++
-		batch := parseBatchFromUser(user)
+		promptBatch := parsePromptBatchFromUser(user)
+		batch := make([]EnrichedFinding, len(promptBatch))
+		for i, item := range promptBatch {
+			batch[i] = item.Finding
+		}
 		if m.classifyHandler == nil {
-			return classifyAll(len(batch), "True Positive"), llm.Usage{}, nil
+			return classifyAll(promptBatch, "True Positive"), llm.Usage{}, nil
 		}
 		body, err := m.classifyHandler(call, batch)
-		return body, llm.Usage{}, err
+		return bindPromptIdentities(body, promptBatch), llm.Usage{}, err
 	}
 
 	m.t.Fatalf("unexpected LLM call with system prompt: %.80s", system)
 	return "", llm.Usage{}, nil
 }
 
-// parseBatchFromUser extracts the findings JSON array embedded in a classification
-// user prompt so the mock can respond per finding index.
+// parsePromptBatchFromUser extracts the identity-bound findings JSON array
+// embedded in a classification user prompt.
+func parsePromptBatchFromUser(user string) []classificationPromptFinding {
+	findingsMarker := strings.Index(user, "## Findings to classify")
+	if findingsMarker < 0 {
+		return nil
+	}
+	i := strings.Index(user[findingsMarker:], "[")
+	if i < 0 {
+		return nil
+	}
+	i += findingsMarker
+	dec := json.NewDecoder(strings.NewReader(user[i:]))
+	var fs []classificationPromptFinding
+	_ = dec.Decode(&fs)
+	return fs
+}
+
+// parseBatchFromUser remains available to the PoC test mock, whose prompt uses
+// the older plain EnrichedFinding array.
 func parseBatchFromUser(user string) []EnrichedFinding {
 	i := strings.Index(user, "[")
 	if i < 0 {
 		return nil
 	}
 	dec := json.NewDecoder(strings.NewReader(user[i:]))
-	var fs []EnrichedFinding
-	_ = dec.Decode(&fs)
-	return fs
+	var findings []EnrichedFinding
+	_ = dec.Decode(&findings)
+	return findings
 }
 
-// classifyAll builds a classification response covering local indices [0,count).
-func classifyAll(count int, disposition string) string {
+// classifyAll builds an identity-bound classification response covering every
+// local prompt finding.
+func classifyAll(batch []classificationPromptFinding, disposition string) string {
+	var sb strings.Builder
+	sb.WriteString(`{"finding_dispositions":[`)
+	for i, finding := range batch {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(`{"finding_index":%d,"finding_id":%q,"fingerprint":%q,"disposition":%q,"confidence":"high","rationale":"r"}`, i, finding.FindingID, finding.Fingerprint, disposition))
+	}
+	sb.WriteString(`]}`)
+	return sb.String()
+}
+
+func classifyAllByCount(count int, disposition string) string {
 	var sb strings.Builder
 	sb.WriteString(`{"finding_dispositions":[`)
 	for i := 0; i < count; i++ {
@@ -78,6 +114,42 @@ func classifyAll(count int, disposition string) string {
 	}
 	sb.WriteString(`]}`)
 	return sb.String()
+}
+
+// bindPromptIdentities emulates the exact identity echo required from a real
+// provider while preserving test handlers that focus only on index behavior.
+func bindPromptIdentities(body string, batch []classificationPromptFinding) string {
+	var raw struct {
+		FindingDispositions []struct {
+			FindingIndex int                  `json:"finding_index"`
+			FindingID    string               `json:"finding_id"`
+			Fingerprint  string               `json:"fingerprint"`
+			Disposition  string               `json:"disposition"`
+			Confidence   string               `json:"confidence"`
+			Rationale    string               `json:"rationale"`
+			Evidence     *DispositionEvidence `json:"evidence,omitempty"`
+		} `json:"finding_dispositions"`
+	}
+	if err := json.Unmarshal([]byte(body), &raw); err != nil {
+		return body
+	}
+	for i := range raw.FindingDispositions {
+		d := &raw.FindingDispositions[i]
+		if d.FindingIndex < 0 || d.FindingIndex >= len(batch) {
+			continue
+		}
+		if d.FindingID == "" {
+			d.FindingID = batch[d.FindingIndex].FindingID
+		}
+		if d.Fingerprint == "" {
+			d.Fingerprint = batch[d.FindingIndex].Fingerprint
+		}
+	}
+	out, err := json.Marshal(raw)
+	if err != nil {
+		return body
+	}
+	return string(out)
 }
 
 func classifyIndices(pairs map[int]string) string {
@@ -285,7 +357,7 @@ func TestClassifyFindingsDedupProjectsVerdict(t *testing.T) {
 		t: t,
 		classifyHandler: func(call int, batch []EnrichedFinding) (string, error) {
 			batchSizes = append(batchSizes, len(batch))
-			return classifyAll(len(batch), "True Positive"), nil
+			return classifyAllByCount(len(batch), "True Positive"), nil
 		},
 	}
 	var usage llm.Usage

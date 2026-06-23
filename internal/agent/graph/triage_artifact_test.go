@@ -20,6 +20,14 @@ func TestBuildTriageFindingsArtifactPreservesEveryFindingAndDisposition(t *testi
 			{FindingIndex: 0, FindingID: "CS-SECRETS-001", Disposition: "True Positive", Rationale: "Secret committed in source", Confidence: "high", DispositionSource: "cache", Fingerprint: "fp-secret"},
 			{FindingIndex: 1, FindingID: "CS-CRYPTO-002", Disposition: "False Positive", Rationale: "Only controls animation", Confidence: "high", DispositionSource: "deterministic", Fingerprint: "fp-random"},
 		},
+		ClassificationAudit: []ClassificationAuditEntry{{
+			Attempt:                0,
+			UniqueFindingIndices:   []int{0},
+			FindingIDs:             []string{"CS-SECRETS-001"},
+			Fingerprints:           []string{"fp-secret"},
+			RawResponse:            `{"finding_dispositions":[...]}`,
+			AcceptedFindingIndices: []int{0},
+		}},
 	}
 
 	artifact, err := BuildTriageFindingsArtifact(state)
@@ -34,6 +42,9 @@ func TestBuildTriageFindingsArtifactPreservesEveryFindingAndDisposition(t *testi
 	}
 	if artifact.TotalFindings != 3 || len(artifact.Findings) != 3 {
 		t.Fatalf("total/findings = %d/%d, want 3/3", artifact.TotalFindings, len(artifact.Findings))
+	}
+	if len(artifact.ClassificationAudit) != 1 || artifact.ClassificationAudit[0].RawResponse == "" {
+		t.Fatalf("classification audit = %+v, want persisted raw response", artifact.ClassificationAudit)
 	}
 
 	for index, want := range []struct {
@@ -56,7 +67,7 @@ func TestBuildTriageFindingsArtifactPreservesEveryFindingAndDisposition(t *testi
 		t.Fatalf("marshal artifact: %v", err)
 	}
 	jsonText := string(data)
-	for _, want := range []string{"\"schema_version\":1", "\"triage_status\":\"complete\"", "\"code_snippet\":\"token = 'x'\"", "\"rationale\":\"Only controls animation\"", "\"disposition_source\":\"deterministic\""} {
+	for _, want := range []string{"\"schema_version\":1", "\"triage_status\":\"complete\"", "\"code_snippet\":\"token = 'x'\"", "\"rationale\":\"Only controls animation\"", "\"disposition_source\":\"deterministic\"", "\"classification_audit\"", "\"raw_response\""} {
 		if !strings.Contains(jsonText, want) {
 			t.Errorf("serialized artifact does not contain %s: %s", want, jsonText)
 		}

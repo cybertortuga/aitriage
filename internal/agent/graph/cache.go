@@ -20,12 +20,13 @@ import (
 // The cache is OFF unless AITRIAGE_CACHE_DIR is set, so default behaviour is
 // unchanged and tests are hermetic.
 
-const verdictCacheSchemaVersion = 1
+const verdictCacheSchemaVersion = 2
 
 type cachedVerdict struct {
-	Disposition string `json:"disposition"`
-	Rationale   string `json:"rationale"`
-	Confidence  string `json:"confidence"`
+	Disposition string               `json:"disposition"`
+	Rationale   string               `json:"rationale"`
+	Confidence  string               `json:"confidence"`
+	Evidence    *DispositionEvidence `json:"evidence,omitempty"`
 }
 
 type verdictCache struct {
@@ -77,6 +78,7 @@ func (c *verdictCache) Get(fingerprint string) (FindingDisposition, bool) {
 		Disposition: v.Disposition,
 		Rationale:   v.Rationale,
 		Confidence:  v.Confidence,
+		Evidence:    v.Evidence,
 	}, true
 }
 
@@ -89,6 +91,7 @@ func (c *verdictCache) Set(fingerprint string, d FindingDisposition) {
 		Disposition: d.Disposition,
 		Rationale:   d.Rationale,
 		Confidence:  d.Confidence,
+		Evidence:    d.Evidence,
 	}
 	c.dirty = true
 }

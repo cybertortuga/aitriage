@@ -83,6 +83,7 @@ func projectDispositions(uniqueDisps []FindingDisposition, groups [][]int, findi
 				Confidence:        d.Confidence,
 				DispositionSource: d.DispositionSource,
 				Fingerprint:       Fingerprint(findings[gi]),
+				Evidence:          d.Evidence,
 			}
 		}
 	}

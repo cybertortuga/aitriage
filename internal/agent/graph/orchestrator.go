@@ -311,9 +311,12 @@ var errThreatModelParse = errors.New("parse threat-model JSON")
 // indexed relative to the batch that was sent.
 type rawDisposition struct {
 	FindingIndex int
+	FindingID    string
+	Fingerprint  string
 	Disposition  string
 	Confidence   string
 	Rationale    string
+	Evidence     *DispositionEvidence
 }
 
 func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Client) error {
@@ -327,13 +330,14 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 		repoContextText = state.RepoContext.FormatForLLM(5000) // ~5K tokens for threat model
 	}
 
-	tm, dispositions, err := ClassifyFindings(ctx, repoContextText, state.ProjectPath, state.EnrichedFindings, llmClient, &state.TotalUsage)
+	tm, dispositions, audit, err := ClassifyFindingsWithAudit(ctx, repoContextText, state.ProjectPath, state.EnrichedFindings, llmClient, &state.TotalUsage)
 	if err != nil {
 		return err
 	}
 
 	state.ThreatModel = tm
 	state.FindingDispositions = dispositions
+	state.ClassificationAudit = audit
 
 	// Final invariant: every finding has exactly one valid disposition.
 	if err := validateFindingDispositions(state.FindingDispositions, len(state.EnrichedFindings)); err != nil {
