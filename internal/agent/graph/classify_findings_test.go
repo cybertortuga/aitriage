@@ -1,0 +1,366 @@
+package graph
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/cybertortuga/aitriage/internal/agent/llm"
+)
+
+// fakeLLM is a content-aware mock. It distinguishes threat-model build requests
+// from classification requests by inspecting the system prompt, so it is robust
+// to the bounded-concurrency batching (which is pinned to 1 worker in tests).
+type fakeLLM struct {
+	t               *testing.T
+	tmBody          string
+	tmErr           error
+	tmCalls         int
+	classifyHandler func(call int, batch []EnrichedFinding) (string, error)
+	classifyCalls   int
+}
+
+func (m *fakeLLM) Chat(ctx context.Context, messages []llm.Message) (string, llm.Usage, error) {
+	system := messages[0].Content
+	user := messages[1].Content
+
+	if strings.Contains(system, "Threat Model & Finding Classification") {
+		m.tmCalls++
+		if m.tmErr != nil {
+			return "", llm.Usage{}, m.tmErr
+		}
+		body := m.tmBody
+		if body == "" {
+			body = `{"component_overview":"c","priority_areas":["p"]}`
+		}
+		return body, llm.Usage{}, nil
+	}
+
+	if strings.Contains(system, "Finding Classification") {
+		call := m.classifyCalls
+		m.classifyCalls++
+		batch := parseBatchFromUser(user)
+		if m.classifyHandler == nil {
+			return classifyAll(len(batch), "True Positive"), llm.Usage{}, nil
+		}
+		body, err := m.classifyHandler(call, batch)
+		return body, llm.Usage{}, err
+	}
+
+	m.t.Fatalf("unexpected LLM call with system prompt: %.80s", system)
+	return "", llm.Usage{}, nil
+}
+
+// parseBatchFromUser extracts the findings JSON array embedded in a classification
+// user prompt so the mock can respond per finding index.
+func parseBatchFromUser(user string) []EnrichedFinding {
+	i := strings.Index(user, "[")
+	if i < 0 {
+		return nil
+	}
+	dec := json.NewDecoder(strings.NewReader(user[i:]))
+	var fs []EnrichedFinding
+	_ = dec.Decode(&fs)
+	return fs
+}
+
+// classifyAll builds a classification response covering local indices [0,count).
+func classifyAll(count int, disposition string) string {
+	var sb strings.Builder
+	sb.WriteString(`{"finding_dispositions":[`)
+	for i := 0; i < count; i++ {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(`{"finding_index":%d,"disposition":%q,"confidence":"high","rationale":"r"}`, i, disposition))
+	}
+	sb.WriteString(`]}`)
+	return sb.String()
+}
+
+func classifyIndices(pairs map[int]string) string {
+	var sb strings.Builder
+	sb.WriteString(`{"finding_dispositions":[`)
+	first := true
+	for idx, disp := range pairs {
+		if !first {
+			sb.WriteString(",")
+		}
+		first = false
+		sb.WriteString(fmt.Sprintf(`{"finding_index":%d,"disposition":%q,"confidence":"medium","rationale":"r"}`, idx, disp))
+	}
+	sb.WriteString(`]}`)
+	return sb.String()
+}
+
+func makeFindings(n int) []EnrichedFinding {
+	fs := make([]EnrichedFinding, n)
+	for i := range fs {
+		fs[i] = EnrichedFinding{
+			ID:       fmt.Sprintf("R-%d", i),
+			VulnID:   fmt.Sprintf("CS-MISC-%03d", i+1),
+			Type:     "core",
+			Severity: "HIGH",
+			File:     fmt.Sprintf("file_%d.go", i),
+			Line:     i + 1,
+			Message:  "m",
+		}
+	}
+	return fs
+}
+
+func pinConcurrency(t *testing.T) {
+	t.Helper()
+	t.Setenv("AITRIAGE_CONCURRENCY", "1")
+}
+
+// Req: >150 findings must all be classified across batches, none dropped.
+func TestClassifyFindingsClassifiesAllAcrossBatches(t *testing.T) {
+	pinConcurrency(t)
+	findings := makeFindings(218)
+	mock := &fakeLLM{t: t} // default handler classifies everything TP
+	var usage llm.Usage
+
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(disps) != 218 {
+		t.Fatalf("want 218 dispositions, got %d", len(disps))
+	}
+	if mock.tmCalls != 1 {
+		t.Fatalf("threat model must be built exactly once, got %d calls", mock.tmCalls)
+	}
+	tp, fp, nr := countDispositions(disps)
+	if tp != 218 || fp != 0 || nr != 0 {
+		t.Fatalf("want all 218 TP, got tp=%d fp=%d nr=%d", tp, fp, nr)
+	}
+	for i, d := range disps {
+		if d.FindingIndex != i {
+			t.Fatalf("disposition %d has wrong index %d", i, d.FindingIndex)
+		}
+		if d.DispositionSource != dispositionSourceLLM {
+			t.Fatalf("disposition %d source = %q, want llm", i, d.DispositionSource)
+		}
+	}
+}
+
+// Req: omitted findings are retried; anything still missing defaults to NR
+// (never FP), and the pipeline does not crash.
+func TestClassifyFindingsPartialResponseFallsBackToNeedsReview(t *testing.T) {
+	pinConcurrency(t)
+	findings := makeFindings(3)
+	mock := &fakeLLM{
+		t: t,
+		classifyHandler: func(call int, batch []EnrichedFinding) (string, error) {
+			switch call {
+			case 0: // first pass over [0,1,2]: classify only local 0
+				return classifyIndices(map[int]string{0: "True Positive"}), nil
+			case 1: // retry over missing [1,2]: classify only local 0 -> global 1
+				return classifyIndices(map[int]string{0: "True Positive"}), nil
+			default: // retry over [2]: classify nothing
+				return `{"finding_dispositions":[]}`, nil
+			}
+		},
+	}
+	var usage llm.Usage
+
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if disps[0].Disposition != "True Positive" || disps[1].Disposition != "True Positive" {
+		t.Fatalf("disps[0],[1] should be TP, got %q,%q", disps[0].Disposition, disps[1].Disposition)
+	}
+	if disps[2].Disposition != "Needs Manual Review" {
+		t.Fatalf("disps[2] should be NR, got %q", disps[2].Disposition)
+	}
+	if disps[2].DispositionSource != dispositionSourceNRFallback {
+		t.Fatalf("disps[2] source = %q, want nr-fallback", disps[2].DispositionSource)
+	}
+	if _, fp, _ := countDispositions(disps); fp != 0 {
+		t.Fatalf("no finding may default to False Positive, got fp=%d", fp)
+	}
+}
+
+// Req: unsupported disposition strings are rejected and default to NR, never FP.
+func TestClassifyFindingsRejectsUnsupportedDisposition(t *testing.T) {
+	pinConcurrency(t)
+	findings := makeFindings(1)
+	mock := &fakeLLM{
+		t: t,
+		classifyHandler: func(call int, batch []EnrichedFinding) (string, error) {
+			return classifyIndices(map[int]string{0: "Maybe"}), nil
+		},
+	}
+	var usage llm.Usage
+
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if disps[0].Disposition != "Needs Manual Review" {
+		t.Fatalf("unsupported disposition should fall back to NR, got %q", disps[0].Disposition)
+	}
+}
+
+// Req: a malformed classification response is tolerated (NR fallback), not fatal.
+func TestClassifyFindingsToleratesMalformedClassification(t *testing.T) {
+	pinConcurrency(t)
+	findings := makeFindings(2)
+	mock := &fakeLLM{
+		t: t,
+		classifyHandler: func(call int, batch []EnrichedFinding) (string, error) {
+			return "not json at all", nil
+		},
+	}
+	var usage llm.Usage
+
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	if err != nil {
+		t.Fatalf("malformed classification should be tolerated, got error: %v", err)
+	}
+	for i, d := range disps {
+		if d.Disposition != "Needs Manual Review" {
+			t.Fatalf("disps[%d] should be NR, got %q", i, d.Disposition)
+		}
+	}
+}
+
+// Req: a malformed THREAT MODEL response is fatal (don't mask a broken provider).
+func TestClassifyFindingsThreatModelParseErrorFails(t *testing.T) {
+	pinConcurrency(t)
+	findings := makeFindings(2)
+	mock := &fakeLLM{t: t, tmBody: "garbage, not json"}
+	var usage llm.Usage
+
+	_, _, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	if err == nil {
+		t.Fatal("expected error on malformed threat-model response")
+	}
+}
+
+// Req: transport failure building the threat model must fail the pipeline.
+func TestClassifyFindingsThreatModelTransportErrorFails(t *testing.T) {
+	pinConcurrency(t)
+	findings := makeFindings(2)
+	mock := &fakeLLM{t: t, tmErr: fmt.Errorf("network down")}
+	var usage llm.Usage
+
+	_, _, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	if err == nil {
+		t.Fatal("expected error on threat-model transport failure")
+	}
+}
+
+// Req: transport failure during classification must fail the pipeline (no masking).
+func TestClassifyFindingsClassificationTransportErrorFails(t *testing.T) {
+	pinConcurrency(t)
+	findings := makeFindings(2)
+	mock := &fakeLLM{
+		t: t,
+		classifyHandler: func(call int, batch []EnrichedFinding) (string, error) {
+			return "", fmt.Errorf("network down")
+		},
+	}
+	var usage llm.Usage
+
+	_, _, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	if err == nil {
+		t.Fatal("expected error on classification transport failure")
+	}
+}
+
+// Layer 1: identical findings are deduped and the verdict is projected to all.
+func TestClassifyFindingsDedupProjectsVerdict(t *testing.T) {
+	pinConcurrency(t)
+	dup := EnrichedFinding{ID: "R-x", VulnID: "CS-MISC-001", Type: "core", Severity: "HIGH", File: "a.go", Line: 10, Message: "same"}
+	other := EnrichedFinding{ID: "R-y", VulnID: "CS-MISC-002", Type: "core", Severity: "HIGH", File: "b.go", Line: 20, Message: "diff"}
+	findings := []EnrichedFinding{dup, dup, other}
+
+	var batchSizes []int
+	mock := &fakeLLM{
+		t: t,
+		classifyHandler: func(call int, batch []EnrichedFinding) (string, error) {
+			batchSizes = append(batchSizes, len(batch))
+			return classifyAll(len(batch), "True Positive"), nil
+		},
+	}
+	var usage llm.Usage
+
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(disps) != 3 {
+		t.Fatalf("want 3 projected dispositions, got %d", len(disps))
+	}
+	// Only 2 unique findings should have been classified by the LLM.
+	if len(batchSizes) == 0 || batchSizes[0] != 2 {
+		t.Fatalf("expected LLM to classify 2 unique findings, got batch sizes %v", batchSizes)
+	}
+	if disps[0].Fingerprint != disps[1].Fingerprint {
+		t.Fatalf("identical findings must share a fingerprint")
+	}
+	if disps[0].Disposition != disps[1].Disposition {
+		t.Fatalf("identical findings must share a disposition")
+	}
+}
+
+// Layer 5: exceeding the LLM budget defaults the overflow to NR, never dropping.
+func TestClassifyFindingsBudgetOverflowToNR(t *testing.T) {
+	pinConcurrency(t)
+	t.Setenv("AITRIAGE_LLM_BUDGET", "1")
+	findings := makeFindings(3)
+	mock := &fakeLLM{t: t}
+	var usage llm.Usage
+
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	llmCount, nrCount := 0, 0
+	for _, d := range disps {
+		switch d.DispositionSource {
+		case dispositionSourceLLM:
+			llmCount++
+		case dispositionSourceNRFallback:
+			nrCount++
+		}
+	}
+	if llmCount != 1 || nrCount != 2 {
+		t.Fatalf("budget=1 should yield 1 llm + 2 nr-fallback, got llm=%d nr=%d", llmCount, nrCount)
+	}
+	if _, fp, _ := countDispositions(disps); fp != 0 {
+		t.Fatalf("budget overflow must never become FP, got fp=%d", fp)
+	}
+}
+
+// Layer 3: gating sends only HIGH/CRITICAL to the LLM; the rest get a
+// deterministic NR (never a silent FP).
+func TestClassifyFindingsGatingDeterministicForLowSeverity(t *testing.T) {
+	pinConcurrency(t)
+	t.Setenv("AITRIAGE_GATING", "on")
+	findings := []EnrichedFinding{
+		{ID: "R-1", VulnID: "CS-MISC-001", Type: "core", Severity: "HIGH", File: "a.go", Line: 1, Message: "m1"},
+		{ID: "R-2", VulnID: "CS-MISC-002", Type: "core", Severity: "LOW", File: "b.go", Line: 2, Message: "m2"},
+	}
+	mock := &fakeLLM{t: t}
+	var usage llm.Usage
+
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if disps[0].DispositionSource != dispositionSourceLLM {
+		t.Fatalf("HIGH finding should be triaged by LLM, source=%q", disps[0].DispositionSource)
+	}
+	if disps[1].DispositionSource != dispositionSourceDeterministic {
+		t.Fatalf("LOW finding should be deterministic, source=%q", disps[1].DispositionSource)
+	}
+	if disps[1].Disposition == "False Positive" {
+		t.Fatalf("gated-out finding must never be auto-FP")
+	}
+}
