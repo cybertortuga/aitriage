@@ -329,7 +329,7 @@ func (e *Engine) Run(ctx *core.ProjectContext) []core.CheckResult {
 
 func (e *Engine) matchesExtension(r Rule, f *core.FileInfo) bool {
 	for _, ext := range r.Extensions {
-		if strings.ToLower(ext) == f.Extension || strings.ToLower(ext) == strings.ToLower(filepath.Base(f.Path)) {
+		if strings.EqualFold(ext, f.Extension) || strings.EqualFold(ext, filepath.Base(f.Path)) {
 			return true
 		}
 	}
