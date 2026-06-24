@@ -106,3 +106,103 @@ func TestEngine_InlineIgnore(t *testing.T) {
 		t.Errorf("Rule ENTR-01 should have been ignored by inline comment")
 	}
 }
+
+func TestEngine_ExtensionlessDockerfileRuleRecognizesUser(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "Dockerfile"), []byte("FROM python:3.12-slim\nUSER 65534:65534\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, err := core.NewWorkspace(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+
+	eng, err := NewEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := eng.Run(&core.ProjectContext{RootPath: tmpDir, Files: ws.Files, Stack: "universal", Config: ws.Config})
+	for _, result := range results {
+		if result.ID == "DOCKER-NO-USER" {
+			t.Fatalf("Dockerfile with USER must not report DOCKER-NO-USER: %+v", result)
+		}
+	}
+}
+
+func TestEngine_NotContainsConditionSuppressesMatchingRule(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "llm.py"), []byte("client.messages.create(max_tokens=200)\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, err := core.NewWorkspace(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+
+	eng, err := NewEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := eng.Run(&core.ProjectContext{RootPath: tmpDir, Files: ws.Files, Stack: "universal", Config: ws.Config})
+	for _, result := range results {
+		if result.ID == "LLM-NO-TOKEN-LIMIT" {
+			t.Fatalf("max_tokens must suppress LLM-NO-TOKEN-LIMIT: %+v", result)
+		}
+	}
+}
+
+func TestEngine_FastAPISecurityRulesNeedRelevantRuntimeEvidence(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.py"), []byte("from fastapi import FastAPI\napp = FastAPI()\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, err := core.NewWorkspace(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+
+	eng, err := NewEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := eng.Run(&core.ProjectContext{RootPath: tmpDir, Files: ws.Files, Stack: "fastapi", Config: ws.Config})
+	for _, result := range results {
+		if result.ID == "FAST-CSRF" || result.ID == "FAST-ORM" {
+			t.Fatalf("%s must require cookie/session or database evidence: %+v", result.ID, result)
+		}
+	}
+}
+
+func TestEngine_FastAPISecurityRulesFlagRelevantRuntimeEvidence(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.py"), []byte("import sqlite3\nresponse.set_cookie('session', 'value')\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, err := core.NewWorkspace(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+
+	eng, err := NewEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := eng.Run(&core.ProjectContext{RootPath: tmpDir, Files: ws.Files, Stack: "fastapi", Config: ws.Config})
+	found := map[string]bool{}
+	for _, result := range results {
+		found[result.ID] = true
+	}
+	for _, id := range []string{"FAST-CSRF", "FAST-ORM"} {
+		if !found[id] {
+			t.Fatalf("expected %s for relevant runtime evidence", id)
+		}
+	}
+}

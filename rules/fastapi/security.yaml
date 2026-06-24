@@ -150,13 +150,13 @@ rules:
     suggestion: "HIGH: No secret management found. Use pydantic-settings or python-dotenv."
 
   - id: FAST-ORM
-    name: "Missing ORM (Parameterized Queries)"
+    name: "Raw Database Access Without ORM"
     stack: fastapi
-    extensions: [".py", ".txt", ".toml"]
-    target: raw
-    condition: "required_pattern"
-    pattern: '(?i)(sqlalchemy|sqlmodel|tortoise|peewee|prisma)'
-    suggestion: "HIGH: No ORM detected. Raw SQL is risky."
+    extensions: [".py"]
+    target: all
+    pattern: '(?i)\b(sqlite3|psycopg|asyncpg|pymysql|mysql\.connector|pymongo|motor)\b'
+    condition: "not_contains:sqlalchemy"
+    suggestion: "HIGH: Database driver detected without an ORM. Use parameterized queries or an ORM; do not interpolate untrusted SQL."
 
   - id: FAST-LOGGING
     name: "Missing Security Logging"
@@ -170,11 +170,11 @@ rules:
   - id: FAST-CSRF
     name: "Missing CSRF Protection"
     stack: fastapi
-    extensions: [".py", ".txt", ".toml"]
-    target: raw
-    condition: "required_pattern"
-    pattern: '(?i)(fastapi-csrf-protect|crsf)'
-    suggestion: "HIGH: No CSRF protection library configured."
+    extensions: [".py"]
+    target: all
+    pattern: '(?i)(set_cookie|SessionMiddleware|request\.session|response\.set_cookie)'
+    condition: "not_contains:csrf"
+    suggestion: "HIGH: Cookie/session authentication detected without CSRF protection. Validate an origin-bound CSRF token for state-changing requests."
 
   - id: FAST-SSRF
     name: "SSRF Risk"

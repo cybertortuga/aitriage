@@ -88,7 +88,7 @@ rules:
     extensions: ["Dockerfile"]
     target: all
     condition: "required_pattern"
-    pattern: '^USER\s+'
+    pattern: '(?m)^USER\s+'
     suggestion: "HIGH: No USER instruction in Dockerfile. Container runs as root by default. Add USER nonroot."
 
   - id: DOCKER-EXPOSE-ALL

@@ -267,7 +267,10 @@ func (ctx *ProjectContext) FindFilesByExtension(extensions ...string) []*FileInf
 
 	var matched []*FileInfo
 	for _, f := range ctx.Files {
-		if extMap[strings.ToLower(f.Extension)] {
+		// Most rules match extensions (for example, ".go"), but some
+		// configuration files such as Dockerfile have no extension. Let those
+		// rules match the filename without changing FileInfo.Extension semantics.
+		if extMap[strings.ToLower(f.Extension)] || extMap[strings.ToLower(filepath.Base(f.Path))] {
 			matched = append(matched, f)
 		}
 	}
