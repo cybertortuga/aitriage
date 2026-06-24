@@ -3,6 +3,7 @@ package detector
 import (
 	"encoding/json"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/cybertortuga/aitriage/internal/engine/core"
@@ -45,7 +46,7 @@ func DetectProjects(ws *core.Workspace) []*core.ProjectContext {
 		if base == "package.json" {
 			if hasPackageJSONWithDep(f, "next") {
 				sc.scores[NextJS] += 100
-			} else if hasPackageJSONWithDep(f, "express") {
+			} else if hasPackageJSONWithDep(f, "express") && hasExpressRuntimeImport(ws.Files, dir) {
 				sc.scores[Express] += 100
 			} else {
 				sc.scores[UnknownStack] += 50 // Generic Node project
@@ -183,6 +184,28 @@ func hasPackageJSONWithDep(f *core.FileInfo, dep string) bool {
 	_, hasDep := pkg.Dependencies[dep]
 	_, hasDevDep := pkg.DevDependencies[dep]
 	return hasDep || hasDevDep
+}
+
+var expressRuntimeImport = regexp.MustCompile(`(?m)(?:\bfrom\s*["']express["']|\brequire\s*\(\s*["']express["']\s*\))`)
+
+// hasExpressRuntimeImport prevents a transitive or unused express dependency
+// from activating the full Express rule pack for a frontend-only project.
+func hasExpressRuntimeImport(files []*core.FileInfo, projectRoot string) bool {
+	for _, f := range files {
+		if !isSubPath(f.Path, projectRoot) {
+			continue
+		}
+		switch f.Extension {
+		case ".js", ".cjs", ".mjs", ".ts", ".tsx":
+		default:
+			continue
+		}
+		content, err := f.GetContent()
+		if err == nil && expressRuntimeImport.Match(content) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasPythonDep(f *core.FileInfo, dep string) bool {

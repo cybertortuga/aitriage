@@ -329,7 +329,7 @@ func (e *Engine) Run(ctx *core.ProjectContext) []core.CheckResult {
 
 func (e *Engine) matchesExtension(r Rule, f *core.FileInfo) bool {
 	for _, ext := range r.Extensions {
-		if strings.ToLower(ext) == f.Extension {
+		if strings.EqualFold(ext, f.Extension) || strings.EqualFold(ext, filepath.Base(f.Path)) {
 			return true
 		}
 	}
@@ -702,6 +702,11 @@ func (e *Engine) evaluateFile(rule Rule, f *core.FileInfo) (string, int) {
 	}
 
 	if err != nil {
+		return "", 0
+	}
+
+	if token, ok := strings.CutPrefix(rule.Condition, "not_contains:"); ok &&
+		strings.Contains(strings.ToLower(targetStr), strings.ToLower(token)) {
 		return "", 0
 	}
 

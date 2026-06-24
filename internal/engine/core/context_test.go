@@ -103,6 +103,7 @@ func TestProjectContext_FindFilesByExtension(t *testing.T) {
 			{Path: "test.py", Extension: ".py"},
 			{Path: "test2.go", Extension: ".go"},
 			{Path: "test3.Go", Extension: ".Go"},
+			{Path: "Dockerfile", Extension: ""},
 		},
 	}
 
@@ -117,6 +118,12 @@ func TestProjectContext_FindFilesByExtension(t *testing.T) {
 			extensions: []string{".go"},
 			wantCount:  3,
 			wantPaths:  []string{"test.go", "test2.go", "test3.Go"},
+		},
+		{
+			name:       "Extensionless filename",
+			extensions: []string{"Dockerfile"},
+			wantCount:  1,
+			wantPaths:  []string{"Dockerfile"},
 		},
 		{
 			name:       "Multiple extensions",

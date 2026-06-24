@@ -109,3 +109,32 @@ func TestDetectProjects_Isolation(t *testing.T) {
 		t.Error("FastAPI project missing other/main.py")
 	}
 }
+
+func TestDetectProjects_ExpressDependencyNeedsRuntimeImport(t *testing.T) {
+	tmpDir := t.TempDir()
+	files := map[string]string{
+		"package.json": `{"dependencies": {"express": "^4.0.0", "react": "^19.0.0"}}`,
+		"src/App.tsx":  "export function App() { return null }",
+	}
+	for path, content := range files {
+		fullPath := filepath.Join(tmpDir, path)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ws, err := core.NewWorkspace(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+
+	for _, project := range DetectProjects(ws) {
+		if project.Stack == string(Express) {
+			t.Fatal("unused express dependency must not activate Express rules")
+		}
+	}
+}
