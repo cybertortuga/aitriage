@@ -54,9 +54,10 @@ inputs:
 
 runs:
   using: 'docker'
-  # Immutable linux/amd64 image for the v1 Action release. Update this digest
-  # only as part of releasing a new Action version.
-  image: 'docker://ghcr.io/cybertortuga/aitriage@sha256:f1232e0e14f515890d22368c4184d3c609b833f09264fe70eb2afe40d730303d'
+  # Major-version runtime image. The v1 tag is moved only by the release
+  # workflow on main so downstream workflows can consume fixes without
+  # hand-repinning an image digest on every rollout.
+  image: 'docker://ghcr.io/cybertortuga/aitriage:v1'
   entrypoint: '/entrypoint.sh'
   env:
     AITRIAGE_COMMAND: ${{ inputs.command }}
