@@ -2087,8 +2087,10 @@ func (s *Server) handleRunwayStart(w http.ResponseWriter, r *http.Request) {
 			path = *product.RepoURL
 		}
 
+		cfg := config.LoadConfig(".")
 		state := &graph.AgentState{
 			ProjectPath: path,
+			BatchSize:   cfg.LLM.BatchSize,
 		}
 
 		for _, f := range findings {

@@ -50,10 +50,19 @@ func (c *openAIClient) Chat(ctx context.Context, messages []Message) (string, Us
 		model = string(openai.ChatModelGPT4o)
 	}
 
+	// Build per-request options for reasoning-model control.
+	var reqOpts []openai_option.RequestOption
+	if c.cfg.DisableThinking {
+		// Disable thinking/reasoning traces for providers that support it
+		// (Z.ai GLM-5.x, Xiaomi MiMo). Sends top-level {"thinking":{"type":"disabled"}}
+		// in the request body via the openai-go SDK's extra-field mechanism.
+		reqOpts = append(reqOpts, openai_option.WithJSONSet("thinking", map[string]string{"type": "disabled"}))
+	}
+
 	completion, err := c.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Messages: oaiMessages,
 		Model:    openai.ChatModel(model),
-	})
+	}, reqOpts...)
 	if err != nil {
 		return "", Usage{}, fmt.Errorf("openai chat error: %w", err)
 	}

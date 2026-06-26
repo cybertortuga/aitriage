@@ -18,6 +18,7 @@ import (
 type AgentState struct {
 	ProjectPath string
 	DeepScan    bool
+	BatchSize   int
 
 	// Deterministic Go findings
 	CoreFindings     []core.CheckResult

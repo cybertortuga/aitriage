@@ -103,11 +103,12 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Create LLM client
 	client, err := llm.NewClient(llm.Config{
-		Provider: llmCfg.Provider,
-		Model:    llmCfg.Model,
-		APIKey:   llmCfg.APIKey,
-		BaseURL:  llmCfg.BaseURL,
-		Timeout:  llmCfg.Timeout,
+		Provider:        llmCfg.Provider,
+		Model:           llmCfg.Model,
+		APIKey:          llmCfg.APIKey,
+		BaseURL:         llmCfg.BaseURL,
+		Timeout:         llmCfg.Timeout,
+		DisableThinking: llmCfg.DisableThinking,
 	})
 	if err != nil {
 		cmd.SilenceUsage = true
@@ -167,6 +168,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	state := &graph.AgentState{
 		ProjectPath:      projectPath,
 		DeepScan:         true,
+		BatchSize:        llmCfg.BatchSize,
 		CoreFindings:     richResult.Report.Results,
 		ExternalFindings: richResult.External,
 		NFRFindings:      richResult.NFR,

@@ -1,36 +1,89 @@
+# =============================================================================
+# AITriage .gitignore  —  public / open-source repository
+# Rule of thumb: commit source + checked-in examples; never commit secrets,
+# build output, dependencies, local scratch, or scan artifacts.
+# =============================================================================
+
+# =========================
+# Secrets & Environment (CRITICAL — public repo)
+# =========================
+# Ignore every .env variant, but ALWAYS keep the checked-in templates.
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+!.env.example
+!.env.*.example
+!**/.env.example
+!**/.env.*.example
+
+# Credentials / key material that must never be committed.
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.keystore
+*_rsa
+*_rsa.pub
+secrets.*
+credentials.json
+gha-creds-*.json
+
 # =========================
 # AITriage Specific
 # =========================
+# Compiled CLI binary (built into the Docker image / via `go build`).
 /aitriage
 /aitriage_bin
 /aitriage_dev
 /tmp_aitriage
 /bin/
+# Runtime state dir and active config (the *.example variants stay tracked).
 .aitriage/
 .aitriage.yaml
+.aitriage.yml
 aitriage.yaml
+aitriage.yml
 
+# Local-only working docs & scan artifacts (NEVER commit — public repo).
+# Tracked docs in README.md / docs/ are unaffected; this only ignores these
+# specific local paths.
+/local/
+/artifacts/
+/data/
+LOCAL_DOCKER_DUAL_KEY_PLAN.md
+
+# =========================
 # Dev scratch / temp outputs
+# =========================
 output.html
 output.txt
 scan_audit.txt
 scratch/
-coverage.txt
-*.log
 ansi2html.sh
 fix_*.py
 max-*.txt
-*.md.bak
 
 # =========================
-# Python Agent
+# Logs
 # =========================
-agent/.venv/
-agent/__pycache__/
-agent/*.pyc
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Databases & local data stores
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+data.db
 agent/agent_state.db
-agent/aitriage_agent_report_*.md
-.env
 
 # =========================
 # Go
@@ -41,17 +94,15 @@ agent/aitriage_agent_report_*.md
 *.dll
 *.so
 *.dylib
-
 # Test binary, built with `go test -c`
 *.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
+# Output of the go coverage tool
 *.out
-
-# Dependency directories (remove the comment below to include it)
+coverage.txt
+coverage.html
+# Dependency vendoring (uncomment if you choose to NOT vendor)
 # vendor/
-
-# Go workspace file
+# Go workspace files (machine-local)
 go.work
 go.work.sum
 
@@ -61,19 +112,12 @@ go.work.sum
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
 .Python
-build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
-parts/
 sdist/
-var/
 wheels/
 share/python-wheels/
 *.egg-info/
@@ -86,14 +130,48 @@ env/
 ENV/
 env.bak/
 venv.bak/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+# Python agent local files
+agent/.venv/
+agent/__pycache__/
+agent/*.pyc
+agent/aitriage_agent_report_*.md
+agent/.env
 
 # =========================
-# Web Frontend (React/Vite)
+# Node / Web Frontend (React/Vite)
 # =========================
 node_modules/
 /web/node_modules/
 /web/dist/
+dist/
+build/
 .eslintcache
+.cache/
+.parcel-cache/
+.vite/
+*.tsbuildinfo
+
+# =========================
+# Docker
+# =========================
+*.tar
+docker-compose.override.yml
+docker-compose.override.yaml
+
+# =========================
+# Merge / backup / patch leftovers
+# =========================
+*.orig
+*.rej
+*.bak
+*.tmp
+*.md.bak
 
 # =========================
 # OS & Environment
@@ -110,6 +188,9 @@ Icon
 .Trashes
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
 # =========================
 # IDEs and Editors
@@ -121,13 +202,5 @@ Icon
 *~
 .fleet/
 .cursor/
-
-# =========================
-# Environment Variables
-# =========================
-.env
-.env.local
-.env.development
-.env.test
-.env.production
-agent/.env
+.windsurf/
+*.code-workspace

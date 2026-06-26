@@ -12,6 +12,7 @@ import (
 	"github.com/cybertortuga/aitriage/internal/agent/graph"
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
 	"github.com/cybertortuga/aitriage/internal/agent/prompts"
+	"github.com/cybertortuga/aitriage/internal/config"
 	"github.com/cybertortuga/aitriage/internal/models"
 )
 
@@ -75,8 +76,10 @@ func (s *Server) handlePipeline(w http.ResponseWriter, r *http.Request) {
 	graph.AssignVulnIDsPublic(enriched)
 
 	// Build agent state (reuse CI/CD pipeline structures)
+	cfg := config.LoadConfig(".")
 	state := &graph.AgentState{
 		EnrichedFindings: enriched,
+		BatchSize:        cfg.LLM.BatchSize,
 	}
 
 	// ── Step 1: Threat Model ─────────────────────────────────────────
@@ -218,7 +221,7 @@ func runWebThreatModel(ctx context.Context, state *graph.AgentState, llmClient l
 	// ALL findings (no silent drop), retries omitted findings, and defaults any
 	// still-unclassified finding to Needs Manual Review (never False Positive).
 	// Transport/provider failures are returned so the caller can surface them.
-	tm, dispositions, err := graph.ClassifyFindings(ctx, "", "web-scan", state.EnrichedFindings, llmClient, &state.TotalUsage)
+	tm, dispositions, err := graph.ClassifyFindings(ctx, "", "web-scan", state.EnrichedFindings, llmClient, &state.TotalUsage, graph.GetBatchSize(state))
 	if err != nil {
 		return err
 	}

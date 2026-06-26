@@ -4,6 +4,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -29,11 +31,13 @@ type HealthCheckPolicyConfig struct {
 }
 
 type LLMConfig struct {
-	Provider string `yaml:"provider"`
-	Model    string `yaml:"model"`
-	APIKey   string `yaml:"api_key"`
-	BaseURL  string `yaml:"base_url"`
-	Timeout  int    `yaml:"timeout"`
+	Provider        string `yaml:"provider"`
+	Model           string `yaml:"model"`
+	APIKey          string `yaml:"api_key"`
+	BaseURL         string `yaml:"base_url"`
+	Timeout         int    `yaml:"timeout"`
+	DisableThinking bool   `yaml:"disable_thinking"` // Send thinking:{type:disabled} for reasoning models
+	BatchSize       int    `yaml:"batch_size,omitempty"`
 }
 
 type CustomRule struct {
@@ -133,6 +137,26 @@ func applyEnvLLMConfig(llm *LLMConfig) {
 	}
 	if v := os.Getenv("AITRIAGE_LLM_BASE_URL"); v != "" {
 		llm.BaseURL = v
+	}
+	// Disable thinking/reasoning for reasoning models (Z.ai GLM, Xiaomi MiMo, etc.)
+	// Sends {"thinking":{"type":"disabled"}} in the request body.
+	if v := strings.TrimSpace(os.Getenv("AITRIAGE_LLM_DISABLE_THINKING")); v != "" {
+		llm.DisableThinking = v == "1" || strings.EqualFold(v, "true")
+	}
+	// Request timeout (seconds). Prevents hung reasoning calls from blocking forever.
+	if v := strings.TrimSpace(os.Getenv("AITRIAGE_LLM_TIMEOUT")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			llm.Timeout = n
+		}
+	}
+	// LLM Batch size. Default is 150.
+	if v := strings.TrimSpace(os.Getenv("AITRIAGE_BATCH_SIZE")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			llm.BatchSize = n
+		}
+	}
+	if llm.BatchSize <= 0 {
+		llm.BatchSize = 150
 	}
 }
 

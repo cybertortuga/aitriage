@@ -288,10 +288,13 @@ func classifyVulnCode(message string) string {
 
 // ── Threat Model Step ────────────────────────────────────────────────────────
 
-// threatModelBatchSize caps how many findings are sent to the LLM in a single
-// threat-model request to stay within token limits. ALL findings are processed
-// by iterating over batches — findings beyond the first batch are never dropped.
-const threatModelBatchSize = 150
+// GetBatchSize returns the batch size to use, falling back to 150 if not configured.
+func GetBatchSize(state *AgentState) int {
+	if state != nil && state.BatchSize > 0 {
+		return state.BatchSize
+	}
+	return 150
+}
 
 // threatModelMaxRetries bounds how many extra LLM passes are made to classify
 // findings the model omitted in earlier passes before they default to NR.
@@ -330,7 +333,7 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 		repoContextText = state.RepoContext.FormatForLLM(5000) // ~5K tokens for threat model
 	}
 
-	tm, dispositions, audit, err := ClassifyFindingsWithAudit(ctx, repoContextText, state.ProjectPath, state.EnrichedFindings, llmClient, &state.TotalUsage)
+	tm, dispositions, audit, err := ClassifyFindingsWithAudit(ctx, repoContextText, state.ProjectPath, state.EnrichedFindings, llmClient, &state.TotalUsage, GetBatchSize(state))
 	if err != nil {
 		return err
 	}

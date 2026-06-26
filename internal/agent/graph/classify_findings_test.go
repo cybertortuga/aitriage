@@ -195,7 +195,7 @@ func TestClassifyFindingsClassifiesAllAcrossBatches(t *testing.T) {
 	mock := &fakeLLM{t: t} // default handler classifies everything TP
 	var usage llm.Usage
 
-	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage, 150)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestClassifyFindingsPartialResponseFallsBackToNeedsReview(t *testing.T) {
 	}
 	var usage llm.Usage
 
-	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage, 150)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestClassifyFindingsRejectsUnsupportedDisposition(t *testing.T) {
 	}
 	var usage llm.Usage
 
-	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage, 150)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestClassifyFindingsToleratesMalformedClassification(t *testing.T) {
 	}
 	var usage llm.Usage
 
-	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage, 150)
 	if err != nil {
 		t.Fatalf("malformed classification should be tolerated, got error: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestClassifyFindingsThreatModelParseErrorFails(t *testing.T) {
 	mock := &fakeLLM{t: t, tmBody: "garbage, not json"}
 	var usage llm.Usage
 
-	_, _, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	_, _, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage, 150)
 	if err == nil {
 		t.Fatal("expected error on malformed threat-model response")
 	}
@@ -321,7 +321,7 @@ func TestClassifyFindingsThreatModelTransportErrorFails(t *testing.T) {
 	mock := &fakeLLM{t: t, tmErr: fmt.Errorf("network down")}
 	var usage llm.Usage
 
-	_, _, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	_, _, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage, 150)
 	if err == nil {
 		t.Fatal("expected error on threat-model transport failure")
 	}
@@ -339,7 +339,7 @@ func TestClassifyFindingsClassificationTransportErrorFails(t *testing.T) {
 	}
 	var usage llm.Usage
 
-	_, _, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	_, _, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage, 150)
 	if err == nil {
 		t.Fatal("expected error on classification transport failure")
 	}
@@ -362,7 +362,7 @@ func TestClassifyFindingsDedupProjectsVerdict(t *testing.T) {
 	}
 	var usage llm.Usage
 
-	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage, 150)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -389,7 +389,7 @@ func TestClassifyFindingsBudgetOverflowToNR(t *testing.T) {
 	mock := &fakeLLM{t: t}
 	var usage llm.Usage
 
-	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage, 150)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -422,7 +422,7 @@ func TestClassifyFindingsGatingDeterministicForLowSeverity(t *testing.T) {
 	mock := &fakeLLM{t: t}
 	var usage llm.Usage
 
-	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage)
+	_, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage, 150)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

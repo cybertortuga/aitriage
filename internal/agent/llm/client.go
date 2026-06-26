@@ -22,9 +22,10 @@ type Client interface {
 
 // Config holds the LLM provider configuration from .aitriage.yaml or env.
 type Config struct {
-	Provider string `yaml:"provider"` // "gemini" | "anthropic" | "openai" | "ollama" | "groq"
-	Model    string `yaml:"model"`
-	APIKey   string `yaml:"api_key"`
-	BaseURL  string `yaml:"base_url"` // для ollama и openai-compatible
-	Timeout  int    `yaml:"timeout"`  // секунды, default 120
+	Provider        string `yaml:"provider"` // "gemini" | "anthropic" | "openai" | "ollama" | "groq"
+	Model           string `yaml:"model"`
+	APIKey          string `yaml:"api_key"`
+	BaseURL         string `yaml:"base_url"`         // для ollama и openai-compatible
+	Timeout         int    `yaml:"timeout"`           // секунды, default 120
+	DisableThinking bool   `yaml:"disable_thinking"` // Send thinking:{type:disabled} for reasoning models
 }
