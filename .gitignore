@@ -53,6 +53,7 @@ aitriage.yml
 /local/
 /artifacts/
 /data/
+/.codex-work/
 LOCAL_DOCKER_DUAL_KEY_PLAN.md
 
 # =========================

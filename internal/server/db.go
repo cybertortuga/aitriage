@@ -128,7 +128,12 @@ CREATE TABLE IF NOT EXISTS findings (
   fp_reason         TEXT,
   stack             TEXT,
   ai_triage_status  TEXT,
-  ai_triage_summary TEXT
+  ai_triage_summary TEXT,
+  agent_prompt      TEXT,
+  agent_prompt_generated_at DATETIME,
+  verification_status TEXT,
+  verification_summary TEXT,
+  verification_last_run_at DATETIME
 );
 
 CREATE TABLE IF NOT EXISTS finding_notes (
@@ -277,6 +282,11 @@ func InitDB(dbPath string) (*sql.DB, error) {
 	_, _ = db.Exec("ALTER TABLE findings ADD COLUMN stack TEXT")
 	_, _ = db.Exec("ALTER TABLE findings ADD COLUMN ai_triage_status TEXT")
 	_, _ = db.Exec("ALTER TABLE findings ADD COLUMN ai_triage_summary TEXT")
+	_, _ = db.Exec("ALTER TABLE findings ADD COLUMN agent_prompt TEXT")
+	_, _ = db.Exec("ALTER TABLE findings ADD COLUMN agent_prompt_generated_at DATETIME")
+	_, _ = db.Exec("ALTER TABLE findings ADD COLUMN verification_status TEXT")
+	_, _ = db.Exec("ALTER TABLE findings ADD COLUMN verification_summary TEXT")
+	_, _ = db.Exec("ALTER TABLE findings ADD COLUMN verification_last_run_at DATETIME")
 
 	// 2b. Patch old engine_llm_model to gemini-2.5-flash
 	_, _ = db.Exec("UPDATE system_config SET config_val = 'gemini-2.5-flash' WHERE config_key = 'engine_llm_model' AND config_val = 'gemini-2.0-flash'")
@@ -317,16 +327,16 @@ func SeedDefaultData(db *sql.DB) error {
 
 	// Seed default config
 	defaultConfigs := map[string]string{
-		"engine_llm_provider":   "gemini",
-		"engine_llm_model":      "gemini-2.5-flash",
-		"engine_concurrency":    "5",
-		"engine_scan_depth":     "thorough",
-		"sla_critical":          "1",
-		"sla_high":              "7",
-		"sla_medium":            "30",
-		"sla_low":               "90",
-		"enterprise_name":       "AITriage Enterprise",
-		"enterprise_support":    "support@cybertortuga.io",
+		"engine_llm_provider": "gemini",
+		"engine_llm_model":    "gemini-2.5-flash",
+		"engine_concurrency":  "5",
+		"engine_scan_depth":   "thorough",
+		"sla_critical":        "1",
+		"sla_high":            "7",
+		"sla_medium":          "30",
+		"sla_low":             "90",
+		"enterprise_name":     "AITriage Enterprise",
+		"enterprise_support":  "support@cybertortuga.io",
 	}
 
 	for k, v := range defaultConfigs {

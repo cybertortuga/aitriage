@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import confetti from 'canvas-confetti';
@@ -9,16 +9,27 @@ import { useCopilotStore } from '../store/CopilotStore';
 
 interface Finding {
   id: number;
+  rule_id?: string;
   title: string;
   severity: string;
   stack: string;
   status: string;
   file_path?: string;
   file?: string;
+  line_number?: number;
+  cwe_id?: string;
+  cve_id?: string;
   description?: string;
   code_snippet?: string;
   fix_suggestion?: string;
   suggestion?: string;
+  agent_prompt?: string;
+  agent_prompt_generated_at?: string;
+  verification_status?: string;
+  verification_summary?: string;
+  verification_last_run_at?: string;
+  is_verified?: boolean;
+  verified_at?: string;
 }
 
 const SEV_COLORS: Record<string, { dot: string; text: string; badge: string }> = {
@@ -48,7 +59,7 @@ export const FindingsPage: React.FC = () => {
     findings: Finding[];
     loading: boolean;
     error: string | null;
-    refresh: () => void;
+    refresh: (options?: { silent?: boolean }) => void;
   };
 
   const getSeverityLabel = (severity: string) => {
@@ -62,10 +73,23 @@ export const FindingsPage: React.FC = () => {
 
   const getStatusLabel = (status: string | undefined) => {
     const s = status?.toLowerCase() || 'open';
+    if (s === 'sent_to_agent') return t('status_sent_to_agent');
+    if (s === 'pending_verification') return t('status_pending_verification');
+    if (s === 'verification_failed') return t('status_verification_failed');
+    if (s === 'resolved' || s === 'fixed') return t('status_fixed');
     if (s === 'triage') return t('status_triage');
     if (s === 'false_positive') return t('status_false_positive');
     if (s === 'risk_accepted' || s === 'accepted_risk') return t('status_accepted_risk');
     return t('status_open');
+  };
+
+  const getStatusTone = (status: string | undefined) => {
+    const s = status?.toLowerCase() || 'open';
+    if (s === 'resolved' || s === 'fixed') return 'text-success';
+    if (s === 'verification_failed') return 'text-error';
+    if (s === 'pending_verification') return 'text-severity-medium';
+    if (s === 'sent_to_agent' || s === 'triage') return 'text-[#38bdf8]';
+    return 'text-primary';
   };
 
   useTitle(t('findings_title'));
@@ -73,6 +97,10 @@ export const FindingsPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [selectedSeverity, setSelectedSeverity] = useState('ALL_SEVERITIES');
   const [triageStatus, setTriageStatus] = useState<Record<number, 'IDLE' | 'PROCESSING'>>({});
+  const [agentPrompt, setAgentPrompt] = useState('');
+  const [agentPromptStatus, setAgentPromptStatus] = useState<Record<number, 'IDLE' | 'PROCESSING'>>({});
+  const [verificationStatus, setVerificationStatus] = useState<Record<number, 'IDLE' | 'PROCESSING'>>({});
+  const [verificationResult, setVerificationResult] = useState<string | null>(null);
 
   const stacks = Array.from(new Set(findings.map((f: Finding) => f.stack)))
     .filter(Boolean)
@@ -109,6 +137,16 @@ export const FindingsPage: React.FC = () => {
   const selectedFinding =
     filtered.find((f: Finding) => f.id === selectedId) ??
     (filtered.length > 0 ? filtered[0] : null);
+  const showSelectedVerificationStatus =
+    selectedFinding?.verification_status &&
+    (selectedFinding.status?.toLowerCase() || 'open') === 'open';
+
+  useEffect(() => {
+    setAgentPrompt(selectedFinding?.agent_prompt ?? '');
+    const status = selectedFinding?.status?.toLowerCase();
+    const canShowVerificationResult = status === 'verification_failed' || status === 'resolved' || status === 'fixed';
+    setVerificationResult(canShowVerificationResult ? selectedFinding?.verification_summary ?? null : null);
+  }, [selectedFinding?.id, selectedFinding?.agent_prompt, selectedFinding?.verification_summary, selectedFinding?.status]);
 
   const severities = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 
@@ -145,6 +183,58 @@ export const FindingsPage: React.FC = () => {
       console.error('Triage failed', err);
     } finally {
       setTriageStatus((prev) => ({ ...prev, [id]: 'IDLE' }));
+    }
+  };
+
+  const generateAgentPrompt = async () => {
+    if (!selectedFinding) return;
+    const id = selectedFinding.id;
+    setAgentPromptStatus((prev) => ({ ...prev, [id]: 'PROCESSING' }));
+    try {
+      const res = await fetch(`/api/findings/${id}/agent-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        throw new Error(data.error || 'Failed to generate prompt');
+      }
+      setAgentPrompt(data.prompt || '');
+      setVerificationResult(null);
+      try {
+        await navigator.clipboard.writeText(data.prompt || '');
+      } catch {}
+      refresh({ silent: true });
+    } catch (err) {
+      console.error('Agent prompt generation failed', err);
+      setVerificationResult(err instanceof Error ? err.message : 'Prompt generation failed');
+    } finally {
+      setAgentPromptStatus((prev) => ({ ...prev, [id]: 'IDLE' }));
+    }
+  };
+
+  const verifyFinding = async () => {
+    if (!selectedFinding) return;
+    const id = selectedFinding.id;
+    setVerificationStatus((prev) => ({ ...prev, [id]: 'PROCESSING' }));
+    setVerificationResult(t('verification_running'));
+    try {
+      const res = await fetch(`/api/findings/${id}/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        throw new Error(data.error || 'Verification failed');
+      }
+      setVerificationResult(data.summary || '');
+      refresh({ silent: true });
+    } catch (err) {
+      console.error('Verification failed', err);
+      setVerificationResult(err instanceof Error ? err.message : 'Verification failed');
+    } finally {
+      setVerificationStatus((prev) => ({ ...prev, [id]: 'IDLE' }));
     }
   };
 
@@ -362,7 +452,7 @@ export const FindingsPage: React.FC = () => {
                     {t('status_report')}
                   </span>
                   <span
-                    className={`text-mono-data font-bold ${selectedFinding.status === 'triage' ? 'text-[#38bdf8]' : 'text-primary'}`}
+                    className={`text-mono-data font-bold ${getStatusTone(selectedFinding.status)}`}
                   >
                     {getStatusLabel(selectedFinding.status).toUpperCase()}
                   </span>
@@ -426,6 +516,97 @@ export const FindingsPage: React.FC = () => {
                   {selectedFinding.fix_suggestion ??
                     selectedFinding.suggestion ??
                     t('follow_standard')}
+                </div>
+              </div>
+
+              {/* Agent handoff */}
+              <div>
+                <div className="text-label-xs text-on-surface-variant tracking-widest mb-3 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[14px] text-primary">
+                    smart_toy
+                  </span>
+                  {t('agent_handoff')}
+                </div>
+                <div className="cyber-widget p-4 border-outline-variant/30 flex flex-col gap-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`text-label-xs px-2.5 py-1 border border-outline-variant tracking-widest font-bold ${getStatusTone(selectedFinding.status)}`}
+                      >
+                        {getStatusLabel(selectedFinding.status).toUpperCase()}
+                      </span>
+                      {showSelectedVerificationStatus && (
+                        <span className="text-[10px] text-on-surface-variant uppercase tracking-widest truncate">
+                          {selectedFinding.verification_status}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={generateAgentPrompt}
+                        className="btn-primary px-3 py-2 rounded-lg text-label-xs flex items-center justify-center gap-2 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-300 ease-out cursor-pointer"
+                        disabled={agentPromptStatus[selectedFinding.id] === 'PROCESSING'}
+                      >
+                        {agentPromptStatus[selectedFinding.id] === 'PROCESSING' ? (
+                          <div className="flex gap-0.5 items-center">
+                            {[0, 1, 2].map((i) => (
+                              <div
+                                key={i}
+                                className="w-0.5 h-2.5 bg-current animate-pulse"
+                                style={{ animationDelay: `${i * 0.15}s` }}
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="material-symbols-outlined text-[14px]">content_paste</span>
+                        )}
+                        {t('agent_prompt')}
+                      </button>
+                      <button
+                        onClick={verifyFinding}
+                        className="btn-mechanical px-3 py-2 rounded-lg text-label-xs flex items-center justify-center gap-2 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-300 ease-out cursor-pointer"
+                        disabled={verificationStatus[selectedFinding.id] === 'PROCESSING'}
+                      >
+                        {verificationStatus[selectedFinding.id] === 'PROCESSING' ? (
+                          <div className="flex gap-0.5 items-center">
+                            {[0, 1, 2].map((i) => (
+                              <div
+                                key={i}
+                                className="w-0.5 h-2.5 bg-current animate-pulse"
+                                style={{ animationDelay: `${i * 0.15}s` }}
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="material-symbols-outlined text-[14px]">fact_check</span>
+                        )}
+                        {verificationStatus[selectedFinding.id] === 'PROCESSING'
+                          ? t('verification_running_short')
+                          : t('verify_fix')}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="text-xs text-on-surface-variant leading-relaxed border-l border-success/20 pl-3">
+                    {t('verification_rescan_hint')}
+                  </div>
+                  {agentPrompt && (
+                    <textarea
+                      readOnly
+                      value={agentPrompt}
+                      className="w-full min-h-40 resize-y bg-surface-container-lowest border border-outline-variant/70 rounded-lg p-3 text-xs leading-relaxed text-on-surface font-mono outline-none focus:border-primary cyber-scrollbar"
+                    />
+                  )}
+                  {verificationResult && (verificationStatus[selectedFinding.id] === 'PROCESSING' || ['verification_failed', 'resolved', 'fixed'].includes(selectedFinding.status.toLowerCase())) && (
+                    <div
+                      className={`border-l-2 pl-3 py-2 text-body-sm leading-relaxed ${
+                        selectedFinding.status === 'verification_failed'
+                          ? 'border-error text-error'
+                          : 'border-primary text-on-surface'
+                      }`}
+                    >
+                      {verificationResult}
+                    </div>
+                  )}
                 </div>
               </div>
 

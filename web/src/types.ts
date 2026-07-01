@@ -71,6 +71,11 @@ export interface Finding {
   stack: string;
   ai_triage_status?: 'true_positive' | 'false_positive' | 'needs_review';
   ai_triage_summary?: string;
+  agent_prompt?: string;
+  agent_prompt_generated_at?: string;
+  verification_status?: 'running' | 'fixed' | 'not_fixed';
+  verification_summary?: string;
+  verification_last_run_at?: string;
   // Legacy properties
   audit_status?: string;
   ai_analysis?: string;

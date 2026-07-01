@@ -2,10 +2,14 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -185,6 +189,148 @@ func TestHandleScan(t *testing.T) {
 	// scanResponse does not include Path — verify via scan_id presence
 	if resp.ScanID == "" {
 		t.Errorf("expected ScanID to be non-empty, got %q", resp.ScanID)
+	}
+}
+
+func seedFindingForRemediation(t *testing.T, s *Server, scanPath string) int64 {
+	t.Helper()
+
+	res, err := s.db.Exec(`INSERT INTO products (name, repo_url, business_criticality) VALUES (?, ?, ?)`, "Demo", scanPath, "high")
+	if err != nil {
+		t.Fatalf("failed to insert product: %v", err)
+	}
+	productID, _ := res.LastInsertId()
+
+	res, err = s.db.Exec(`INSERT INTO engagements (product_id, name, scan_path, status) VALUES (?, ?, ?, ?)`, productID, "Demo scan", scanPath, "completed")
+	if err != nil {
+		t.Fatalf("failed to insert engagement: %v", err)
+	}
+	engagementID, _ := res.LastInsertId()
+
+	desc := "Unsanitized user input reaches a sink."
+	fix := "Validate input at the boundary."
+	res, err = s.db.Exec(`
+		INSERT INTO findings (engagement_id, product_id, rule_id, title, severity, file_path, line_number, description, fix_suggestion, status, kanban_column, stack)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, engagementID, productID, "TEST-RULE", "Unsafe input handling", "HIGH", "src/app.go", 2, desc, fix, "open", "backlog", "go")
+	if err != nil {
+		t.Fatalf("failed to insert finding: %v", err)
+	}
+	findingID, _ := res.LastInsertId()
+	return findingID
+}
+
+func TestFindingAgentPromptMarksSentToAgent(t *testing.T) {
+	s := setupTestServer(t)
+	tempDir := t.TempDir()
+	srcDir := filepath.Join(tempDir, "src")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	jwt := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
+		"eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkRlbW8ifQ." +
+		"fake_signature_here"
+	if err := os.WriteFile(filepath.Join(srcDir, "app.go"), []byte("package main\n// token: "+jwt+"\nfunc handler(input string) {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	findingID := seedFindingForRemediation(t, s, tempDir)
+
+	req, _ := http.NewRequest("POST", "/api/findings/"+strconv.FormatInt(findingID, 10)+"/agent-prompt", nil)
+	addAuthCookie(req)
+	rr := httptest.NewRecorder()
+	s.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Fatalf("expected ok response, got %#v", resp)
+	}
+	prompt, _ := resp["prompt"].(string)
+	if !strings.Contains(prompt, "Unsafe input handling") || !strings.Contains(prompt, "src/app.go:2") {
+		t.Fatalf("prompt missing finding context: %s", prompt)
+	}
+	if !strings.Contains(prompt, "AITriage generated this AGENT PROMPT") ||
+		!strings.Contains(prompt, "## Remediation Guidance") ||
+		!strings.Contains(prompt, "## Source Excerpt (redacted)") {
+		t.Fatalf("prompt missing expected sections: %s", prompt)
+	}
+	if strings.Contains(prompt, jwt) || !strings.Contains(prompt, "[REDACTED]") {
+		t.Fatalf("prompt did not redact source secret: %s", prompt)
+	}
+
+	finding, err := s.findingRepo.GetByID(req.Context(), findingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finding.Status != "sent_to_agent" || finding.KanbanColumn != "in_progress" {
+		t.Fatalf("unexpected finding lifecycle: status=%q kanban=%q", finding.Status, finding.KanbanColumn)
+	}
+	if finding.AgentPrompt == nil || !strings.Contains(*finding.AgentPrompt, "Required Workflow") {
+		t.Fatalf("expected stored agent prompt, got %#v", finding.AgentPrompt)
+	}
+}
+
+func TestLocalPathForHostPrefixUsesDockerMountInfo(t *testing.T) {
+	mountInfo := "315 306 0:43 /example/workspace /host rw,nosuid,nodev,relatime - fakeowner /run/host_mark/home rw,fakeowner"
+	got, ok := localPathForHostPrefix("/host", "/host/demo-app/app.py", mountInfo)
+	if !ok {
+		t.Fatal("expected host path to be derived from mount info")
+	}
+	want := "/home/example/workspace/demo-app/app.py"
+	if got != want {
+		t.Fatalf("unexpected local path: got %q want %q", got, want)
+	}
+}
+
+func TestRepositoryRelativePathPrefersPathInsideScanRoot(t *testing.T) {
+	got := repositoryRelativePath("/host/demo-app", "/host/demo-app/thirdparty/VAmPI/app.py", "/host/demo-app/thirdparty/VAmPI/app.py")
+	want := "thirdparty/VAmPI/app.py"
+	if got != want {
+		t.Fatalf("unexpected repository-relative path: got %q want %q", got, want)
+	}
+}
+
+func TestFindingVerificationTransitions(t *testing.T) {
+	s := setupTestServer(t)
+	findingID := seedFindingForRemediation(t, s, t.TempDir())
+
+	if err := s.findingRepo.MarkPendingVerification(context.Background(), findingID); err != nil {
+		t.Fatalf("MarkPendingVerification failed: %v", err)
+	}
+	finding, err := s.findingRepo.GetByID(context.Background(), findingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finding.Status != "pending_verification" || finding.VerificationStatus == nil || *finding.VerificationStatus != "running" {
+		t.Fatalf("unexpected pending state: status=%q verification=%v", finding.Status, finding.VerificationStatus)
+	}
+
+	if err := s.findingRepo.MarkVerificationResult(context.Background(), findingID, false, "still detected"); err != nil {
+		t.Fatalf("MarkVerificationResult(false) failed: %v", err)
+	}
+	finding, err = s.findingRepo.GetByID(context.Background(), findingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finding.Status != "verification_failed" || finding.IsVerified {
+		t.Fatalf("unexpected failed verification state: status=%q verified=%v", finding.Status, finding.IsVerified)
+	}
+
+	if err := s.findingRepo.MarkVerificationResult(context.Background(), findingID, true, "not detected"); err != nil {
+		t.Fatalf("MarkVerificationResult(true) failed: %v", err)
+	}
+	finding, err = s.findingRepo.GetByID(context.Background(), findingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finding.Status != "resolved" || !finding.IsVerified || finding.ResolvedAt == nil || finding.VerifiedAt == nil {
+		t.Fatalf("unexpected resolved state: status=%q verified=%v resolved_at=%v verified_at=%v", finding.Status, finding.IsVerified, finding.ResolvedAt, finding.VerifiedAt)
 	}
 }
 

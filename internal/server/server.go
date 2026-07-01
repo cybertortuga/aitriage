@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -167,6 +168,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/ai-triage") {
 			if r.Method == "POST" {
 				s.handleAITriage(w, r)
+			} else {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
+		} else if strings.HasSuffix(r.URL.Path, "/agent-prompt") {
+			if r.Method == http.MethodGet || r.Method == http.MethodPost {
+				s.handleFindingAgentPrompt(w, r)
+			} else {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
+		} else if strings.HasSuffix(r.URL.Path, "/verify") {
+			if r.Method == http.MethodPost {
+				s.handleFindingVerification(w, r)
 			} else {
 				w.WriteHeader(http.StatusMethodNotAllowed)
 			}
@@ -879,6 +892,587 @@ func (s *Server) handleTriage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+}
+
+func findingIDFromActionPath(path, suffix string) (int64, error) {
+	raw := strings.TrimPrefix(path, "/api/findings/")
+	raw = strings.TrimSuffix(raw, suffix)
+	raw = strings.Trim(raw, "/")
+	if raw == "" {
+		return 0, fmt.Errorf("missing finding id")
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid finding id")
+	}
+	return id, nil
+}
+
+func (s *Server) handleFindingAgentPrompt(w http.ResponseWriter, r *http.Request) {
+	findingID, err := findingIDFromActionPath(r.URL.Path, "/agent-prompt")
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	finding, err := s.findingRepo.GetByID(ctx, findingID)
+	if err != nil {
+		jsonError(w, fmt.Sprintf("failed to get finding: %v", err), http.StatusNotFound)
+		return
+	}
+
+	prompt, sourceAvailable := s.buildAgentPrompt(ctx, finding)
+	if r.Method == http.MethodPost {
+		if err := s.findingRepo.MarkAgentPromptGenerated(ctx, findingID, prompt); err != nil {
+			jsonError(w, fmt.Sprintf("failed to update finding status: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":               true,
+		"prompt":           prompt,
+		"status":           "sent_to_agent",
+		"source_available": sourceAvailable,
+	})
+}
+
+func (s *Server) handleFindingVerification(w http.ResponseWriter, r *http.Request) {
+	findingID, err := findingIDFromActionPath(r.URL.Path, "/verify")
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		External *bool `json:"external,omitempty"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+
+	ctx := r.Context()
+	finding, err := s.findingRepo.GetByID(ctx, findingID)
+	if err != nil {
+		jsonError(w, fmt.Sprintf("failed to get finding: %v", err), http.StatusNotFound)
+		return
+	}
+
+	scanPath, err := s.resolveFindingScanPath(ctx, finding)
+	if err != nil {
+		summary := fmt.Sprintf("Verification could not start: %v", err)
+		_ = s.findingRepo.MarkVerificationResult(ctx, findingID, false, summary)
+		jsonError(w, summary, http.StatusBadRequest)
+		return
+	}
+
+	if err := s.findingRepo.MarkPendingVerification(ctx, findingID); err != nil {
+		jsonError(w, fmt.Sprintf("failed to update finding status: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	runExternal := shouldRunExternalForFinding(finding)
+	if req.External != nil {
+		runExternal = *req.External
+	}
+
+	slog.Info("Finding verification started", "finding_id", findingID, "scan_path", scanPath, "external", runExternal)
+	rich := orchestrator.RunAllScanners(ctx, orchestrator.Options{
+		ProjectPath: scanPath,
+		RunExternal: runExternal,
+		ProbeHost:   "localhost",
+	})
+
+	stillPresent, matchedBy := findingStillPresent(finding, scanPath, &rich)
+	var status string
+	var summary string
+	if stillPresent {
+		status = "not_fixed"
+		summary = fmt.Sprintf("Verification failed: AITriage still detects this finding (%s). The vulnerability is back in work.", matchedBy)
+	} else {
+		status = "fixed"
+		summary = "Verification passed: AITriage did not detect this finding in the repeated scan."
+	}
+
+	if err := s.findingRepo.MarkVerificationResult(ctx, findingID, !stillPresent, summary); err != nil {
+		jsonError(w, fmt.Sprintf("failed to save verification result: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":         true,
+		"status":     status,
+		"fixed":      !stillPresent,
+		"summary":    summary,
+		"matched_by": matchedBy,
+		"scan_path":  scanPath,
+		"external":   runExternal,
+		"findings":   len(rich.Report.Results) + len(rich.External) + len(rich.NFR) + len(rich.Deploy) + len(rich.Network) + len(rich.HistoryLeaks),
+	})
+}
+
+func (s *Server) resolveFindingScanPath(ctx context.Context, finding *models.Finding) (string, error) {
+	if engagement, err := s.engagementRepo.GetByID(ctx, finding.EngagementID); err == nil && engagement != nil && engagement.ScanPath != nil && *engagement.ScanPath != "" {
+		return s.toContainerPath(*engagement.ScanPath), nil
+	}
+
+	if finding.ProductID != nil {
+		if product, err := s.productRepo.GetByID(ctx, *finding.ProductID); err == nil && product != nil && product.RepoURL != nil && *product.RepoURL != "" {
+			return s.toContainerPath(*product.RepoURL), nil
+		}
+	}
+
+	filePath := stringValue(finding.FilePath)
+	if filePath == "" {
+		return "", fmt.Errorf("finding has no scan path or file path")
+	}
+	if filepath.IsAbs(filePath) {
+		return s.toContainerPath(filepath.Dir(filePath)), nil
+	}
+	return "", fmt.Errorf("finding has only relative file path %q and no engagement scan path", filePath)
+}
+
+func (s *Server) toContainerPath(path string) string {
+	if s.hostPrefix != "" && !strings.HasPrefix(path, s.hostPrefix) {
+		return filepath.Join(s.hostPrefix, path)
+	}
+	return path
+}
+
+func shouldRunExternalForFinding(finding *models.Finding) bool {
+	switch strings.ToLower(finding.Stack) {
+	case "semgrep", "bandit", "trivy", "gitleaks", "git-history":
+		return true
+	default:
+		return false
+	}
+}
+
+func findingStillPresent(finding *models.Finding, scanPath string, rich *llm.RichScanResult) (bool, string) {
+	originalFile := stringValue(finding.FilePath)
+	originalLine := intValue(finding.LineNumber)
+	title := strings.TrimSpace(strings.ToLower(finding.Title))
+
+	for _, result := range rich.Report.Results {
+		if result.ID == finding.RuleID && sameFindingLocation(result.File, originalFile, scanPath) {
+			return true, fmt.Sprintf("core rule %s at %s:%d", result.ID, result.File, result.Line)
+		}
+		if title != "" && strings.EqualFold(result.Name, finding.Title) && sameFindingLocation(result.File, originalFile, scanPath) {
+			return true, fmt.Sprintf("core title match at %s:%d", result.File, result.Line)
+		}
+	}
+
+	for _, ext := range rich.External {
+		if ext.RuleID == finding.RuleID && sameFindingLocation(ext.File, originalFile, scanPath) {
+			return true, fmt.Sprintf("%s rule %s at %s:%d", ext.Source, ext.RuleID, ext.File, ext.Line)
+		}
+		if title != "" && strings.Contains(strings.ToLower(ext.Message), title) && sameFindingLocation(ext.File, originalFile, scanPath) {
+			return true, fmt.Sprintf("%s message match at %s:%d", ext.Source, ext.File, ext.Line)
+		}
+	}
+
+	for _, nfr := range rich.NFR {
+		if nfr.RuleID == finding.RuleID || strings.EqualFold(nfr.Name, finding.Title) {
+			return true, fmt.Sprintf("nfr rule %s", nfr.RuleID)
+		}
+	}
+
+	for _, deploy := range rich.Deploy {
+		deployID := fmt.Sprintf("deploy-%s-%d", filepath.Base(deploy.File), deploy.Line)
+		if deployID == finding.RuleID || (strings.EqualFold(deploy.Issue, finding.Title) && sameFindingLocation(deploy.File, originalFile, scanPath)) {
+			return true, fmt.Sprintf("deploy finding at %s:%d", deploy.File, deploy.Line)
+		}
+	}
+
+	for _, network := range rich.Network {
+		networkID := fmt.Sprintf("net-%s-%d", network.Target, network.Port)
+		if networkID == finding.RuleID || strings.Contains(strings.ToLower(finding.Title), strings.ToLower(network.Target)) {
+			return true, fmt.Sprintf("network finding %s:%d", network.Target, network.Port)
+		}
+	}
+
+	for _, leak := range rich.HistoryLeaks {
+		if strings.HasPrefix(finding.RuleID, "gitleak-") && sameFindingLocation(leak.FilePath, originalFile, scanPath) {
+			return true, fmt.Sprintf("git history leak in %s", leak.FilePath)
+		}
+	}
+
+	_ = originalLine
+	return false, ""
+}
+
+func sameFindingLocation(candidate, original, scanPath string) bool {
+	if original == "" {
+		return true
+	}
+
+	candidates := normalizedPathForms(candidate, scanPath)
+	originals := normalizedPathForms(original, scanPath)
+	for _, c := range candidates {
+		for _, o := range originals {
+			if c == o || strings.HasSuffix(c, "/"+o) || strings.HasSuffix(o, "/"+c) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func normalizedPathForms(pathValue, scanPath string) []string {
+	if pathValue == "" {
+		return nil
+	}
+	forms := []string{normalizePath(pathValue)}
+	if scanPath != "" && filepath.IsAbs(pathValue) {
+		if rel, err := filepath.Rel(scanPath, pathValue); err == nil {
+			forms = append(forms, normalizePath(rel))
+		}
+	}
+	if scanPath != "" && !filepath.IsAbs(pathValue) {
+		forms = append(forms, normalizePath(filepath.Join(scanPath, pathValue)))
+	}
+	return forms
+}
+
+func normalizePath(pathValue string) string {
+	cleaned := filepath.Clean(pathValue)
+	cleaned = filepath.ToSlash(cleaned)
+	cleaned = strings.TrimPrefix(cleaned, "./")
+	return strings.Trim(cleaned, "/")
+}
+
+func (s *Server) buildAgentPrompt(ctx context.Context, finding *models.Finding) (string, bool) {
+	projectName := "unknown"
+	projectStack := ""
+	productCriticality := ""
+	if finding.ProductID != nil {
+		if product, err := s.productRepo.GetByID(ctx, *finding.ProductID); err == nil && product != nil {
+			projectName = product.Name
+			if product.TechStack != nil {
+				projectStack = *product.TechStack
+			}
+			productCriticality = product.BusinessCriticality
+		}
+	}
+
+	engagementName := ""
+	scanPath := ""
+	if engagement, err := s.engagementRepo.GetByID(ctx, finding.EngagementID); err == nil && engagement != nil {
+		engagementName = engagement.Name
+		if engagement.ScanPath != nil {
+			scanPath = *engagement.ScanPath
+		}
+	}
+
+	filePath := stringValue(finding.FilePath)
+	lineNumber := intValue(finding.LineNumber)
+	fullFindingPath := filePath
+	if scanPath != "" && filePath != "" && !filepath.IsAbs(filePath) {
+		fullFindingPath = filepath.Join(scanPath, filePath)
+	}
+	scanPathLocal, scanPathRuntime := s.promptLocalAndRuntimePath(scanPath)
+	findingPathLocal, findingPathRuntime := s.promptLocalAndRuntimePath(fullFindingPath)
+	repoRelativePath := repositoryRelativePath(scanPath, fullFindingPath, filePath)
+	repoLocation := formatPromptLocation(repoRelativePath, lineNumber)
+	locationLocal := formatPromptLocation(findingPathLocal, lineNumber)
+	locationRuntime := formatPromptLocation(findingPathRuntime, lineNumber)
+	runtimeScanPathLine := runtimePathLine("AITriage container scan path", scanPathRuntime, scanPathLocal)
+	runtimeLocationLine := runtimePathLine("AITriage container location", locationRuntime, locationLocal)
+	hostLocationLine := hostPathLine("Host location (detected)", locationLocal, repoLocation, locationRuntime)
+	sourceContext, sourceAvailable := s.readFindingSourceContext(scanPath, filePath, repoRelativePath, lineNumber, 4)
+
+	description := redactPromptText(fallbackString(finding.Description, "No description provided."))
+	recommendation := redactPromptText(fallbackString(finding.FixSuggestion, ""))
+	recommendationSection := ""
+	if strings.TrimSpace(recommendation) != "" && !strings.EqualFold(strings.TrimSpace(description), strings.TrimSpace(recommendation)) {
+		recommendationSection = fmt.Sprintf("\n## Existing Recommendation\n%s\n", recommendation)
+	}
+
+	return fmt.Sprintf(`AITriage generated this AGENT PROMPT from a stored finding. It is not an LLM answer.
+
+## Mission
+Fix exactly this finding with the smallest correct code/config change, then prove it with project tests and AITriage VERIFY FIX.
+
+## Target
+- Project: %s
+- Engagement: %s
+- Scan root: %s
+%s
+- Product criticality: %s
+- Product tech stack: %s
+
+## Finding Evidence
+- AITriage finding ID: %d
+- Rule ID: %s
+- Title: %s
+- Severity: %s
+- Scanner / stack: %s
+- Repository-relative location: %s
+%s
+%s
+- CWE: %s
+- CVE: %s
+
+## Issue
+%s
+%s
+## Remediation Guidance
+%s
+
+## Source Excerpt (redacted)
+%s
+
+## Required Workflow
+1. Inspect the local repository before editing.
+2. Fix the root cause at the trust boundary; avoid unrelated refactors.
+3. Add or update focused regression coverage when the project has a suitable test layer.
+4. Run the relevant tests/build commands for the touched project.
+5. Run AITriage VERIFY FIX. Success means AITriage no longer reports rule '%s' for this finding location.
+6. Report files changed, root cause, fix summary, verification results, and remaining risk.
+
+## Important Constraints
+- Do not mark this fixed only because code changed; the scanner must stop detecting this finding.
+- Do not paste or commit secrets. If a real secret was exposed, rotate/revoke it outside the code change and mention that in the report.
+- If the finding cannot be fixed safely with available context, explain the blocker and the exact missing information.
+`, projectName, engagementName, scanPathLocal, runtimeScanPathLine, productCriticality, projectStack,
+		finding.ID, finding.RuleID, finding.Title, finding.Severity, finding.Stack, repoLocation, hostLocationLine, runtimeLocationLine,
+		stringValue(finding.CWEID), stringValue(finding.CVEID), description, recommendationSection,
+		findingPromptGuidance(finding), sourceContext, finding.RuleID), sourceAvailable
+}
+
+func repositoryRelativePath(scanPath, fullFindingPath, originalFilePath string) string {
+	if originalFilePath != "" && !filepath.IsAbs(originalFilePath) {
+		return filepath.ToSlash(originalFilePath)
+	}
+	if scanPath != "" && fullFindingPath != "" {
+		if rel, err := filepath.Rel(scanPath, fullFindingPath); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+			return filepath.ToSlash(rel)
+		}
+	}
+	return filepath.ToSlash(fullFindingPath)
+}
+
+func (s *Server) promptLocalAndRuntimePath(pathValue string) (string, string) {
+	if pathValue == "" {
+		return "", ""
+	}
+	if s.hostPrefix == "" || !strings.HasPrefix(pathValue, s.hostPrefix) {
+		return pathValue, ""
+	}
+
+	if mountInfo, err := os.ReadFile("/proc/self/mountinfo"); err == nil {
+		if localPath, ok := localPathForHostPrefix(s.hostPrefix, pathValue, string(mountInfo)); ok {
+			return localPath, pathValue
+		}
+	}
+
+	rel := strings.TrimPrefix(pathValue, s.hostPrefix)
+	rel = strings.TrimPrefix(filepath.ToSlash(rel), "/")
+	if rel == "" {
+		return "host mount root (the directory mounted to " + s.hostPrefix + ")", pathValue
+	}
+	return filepath.ToSlash(filepath.Join("host mount root", rel)), pathValue
+}
+
+func runtimePathLine(label, runtimePath, localPath string) string {
+	if runtimePath == "" || runtimePath == localPath {
+		return ""
+	}
+	return fmt.Sprintf("- %s: %s (runtime only; do not use this as the host edit path)", label, runtimePath)
+}
+
+func hostPathLine(label, hostPath, repoPath, runtimePath string) string {
+	if hostPath == "" || hostPath == repoPath || hostPath == runtimePath || strings.HasPrefix(hostPath, "host mount root") {
+		return ""
+	}
+	return fmt.Sprintf("- %s: %s", label, hostPath)
+}
+
+func formatPromptLocation(pathValue string, lineNumber int) string {
+	if lineNumber <= 0 || pathValue == "" {
+		return pathValue
+	}
+	return fmt.Sprintf("%s:%d", pathValue, lineNumber)
+}
+
+func localPathForHostPrefix(hostPrefix, pathValue, mountInfo string) (string, bool) {
+	hostRoot, ok := hostRootForPrefix(hostPrefix, mountInfo)
+	if !ok {
+		return "", false
+	}
+	rel := strings.TrimPrefix(pathValue, hostPrefix)
+	rel = strings.TrimPrefix(filepath.ToSlash(rel), "/")
+	if rel == "" {
+		return hostRoot, true
+	}
+	return filepath.ToSlash(filepath.Join(hostRoot, rel)), true
+}
+
+func hostRootForPrefix(hostPrefix, mountInfo string) (string, bool) {
+	for _, line := range strings.Split(mountInfo, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		parts := strings.Split(line, " - ")
+		if len(parts) != 2 {
+			continue
+		}
+		pre := strings.Fields(parts[0])
+		post := strings.Fields(parts[1])
+		if len(pre) < 5 || len(post) < 2 {
+			continue
+		}
+		root := pre[3]
+		mountPoint := pre[4]
+		source := post[1]
+		if mountPoint != hostPrefix {
+			continue
+		}
+		if strings.HasPrefix(source, "/run/host_mark/") {
+			hostBase := "/" + strings.TrimPrefix(source, "/run/host_mark/")
+			return filepath.ToSlash(filepath.Join(hostBase, strings.TrimPrefix(root, "/"))), true
+		}
+		if filepath.IsAbs(source) {
+			return filepath.ToSlash(filepath.Join(source, strings.TrimPrefix(root, "/"))), true
+		}
+	}
+	return "", false
+}
+
+func findingPromptGuidance(finding *models.Finding) string {
+	haystack := strings.ToLower(strings.Join([]string{
+		finding.RuleID,
+		finding.Title,
+		finding.Stack,
+		stringValue(finding.Description),
+		stringValue(finding.FixSuggestion),
+	}, " "))
+
+	switch {
+	case strings.Contains(haystack, "gitleaks") ||
+		strings.Contains(haystack, "secret") ||
+		strings.Contains(haystack, "password") ||
+		strings.Contains(haystack, "token") ||
+		strings.Contains(haystack, "jwt"):
+		return `- Remove the exposed credential/token from tracked source, generated reports, fixtures, or docs.
+- Replace it with a safe placeholder, environment variable reference, or test-only dummy value that scanners do not classify as a secret.
+- If the secret could be real, rotate/revoke it outside the repository and include that in the final report.`
+	case strings.Contains(haystack, "flask") && strings.Contains(haystack, "debug"):
+		return `- Ensure production startup never enables Flask debug mode.
+- Gate debug mode behind an explicit local-development configuration that defaults to false.
+- Prefer environment/config parsing over hardcoded debug=True.`
+	case strings.Contains(haystack, "ssti") || strings.Contains(haystack, "template injection"):
+		return `- Do not render user-controlled strings as templates.
+- Use static templates and pass user input only as escaped data.
+- Add a regression case with template syntax in user input.`
+	case strings.Contains(haystack, "async") && (strings.Contains(haystack, "blocking") || strings.Contains(haystack, "sync")):
+		return `- Remove blocking synchronous database work from the async request path.
+- Use the project's async database/session API, or move blocking work to a controlled worker boundary.
+- Add a test or deterministic check that exercises the async handler.`
+	default:
+		return `- Trace untrusted input to the vulnerable sink named by the finding.
+- Fix the boundary condition rather than suppressing the scanner result.
+- Keep the patch minimal and prove the scanner result disappears.`
+	}
+}
+
+var (
+	promptJWTRegex         = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}`)
+	promptKnownSecretRegex = regexp.MustCompile(`(?i)\b(?:AKIA[0-9A-Z]{16}|gh[ps]_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9\-_]{20,}|sk_live_[A-Za-z0-9]{16,}|SG\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b`)
+	promptNamedSecretRegex = regexp.MustCompile("(?i)((?:password|passwd|token|secret|api[_-]?key|jwt)[^\\n:=]{0,40}\\s*[:=]\\s*)[`\"']?[^`\"'\\s]{8,}([`\"']?)")
+)
+
+func redactPromptText(text string) string {
+	text = promptJWTRegex.ReplaceAllString(text, "[REDACTED_JWT]")
+	text = promptKnownSecretRegex.ReplaceAllString(text, "[REDACTED_SECRET]")
+	text = promptNamedSecretRegex.ReplaceAllString(text, "${1}[REDACTED]")
+	return text
+}
+
+func sanitizePromptSourceLine(line string) string {
+	line = redactPromptText(line)
+	return strings.ReplaceAll(line, "```", "'''")
+}
+
+func (s *Server) readFindingSourceContext(scanPath, filePath, displayFilePath string, lineNumber, radius int) (string, bool) {
+	if filePath == "" {
+		return "Source context unavailable: finding has no file path.", false
+	}
+	if displayFilePath == "" {
+		displayFilePath = filePath
+	}
+
+	fullPath := filePath
+	if scanPath != "" && !filepath.IsAbs(filePath) {
+		fullPath = filepath.Join(scanPath, filePath)
+	}
+	if s.hostPrefix != "" && !strings.HasPrefix(fullPath, s.hostPrefix) {
+		fullPath = filepath.Join(s.hostPrefix, fullPath)
+	}
+
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		return fmt.Sprintf("Source context unavailable: could not read %s (%v).", fullPath, err), false
+	}
+
+	lines := strings.Split(string(data), "\n")
+	if lineNumber <= 0 || lineNumber > len(lines) {
+		limit := len(lines)
+		if limit > 160 {
+			limit = 160
+		}
+		if limit > 12 {
+			limit = 12
+		}
+		for i := 0; i < limit; i++ {
+			lines[i] = sanitizePromptSourceLine(lines[i])
+		}
+		return fmt.Sprintf("File: %s\n```text\n%s\n```", displayFilePath, strings.Join(lines[:limit], "\n")), true
+	}
+
+	lineIdx := lineNumber - 1
+	start := lineIdx - radius
+	if start < 0 {
+		start = 0
+	}
+	end := lineIdx + radius + 1
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	var snippet []string
+	for i := start; i < end; i++ {
+		prefix := "   "
+		if i == lineIdx {
+			prefix = ">> "
+		}
+		snippet = append(snippet, fmt.Sprintf("%s%d: %s", prefix, i+1, sanitizePromptSourceLine(lines[i])))
+	}
+	return fmt.Sprintf("File: %s\n```text\n%s\n```", displayFilePath, strings.Join(snippet, "\n")), true
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func intValue(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func fallbackString(value *string, fallback string) string {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return fallback
+	}
+	return *value
 }
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {

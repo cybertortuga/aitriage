@@ -12,8 +12,40 @@ type FindingRepository struct {
 	db *sql.DB
 }
 
+type findingScanner interface {
+	Scan(dest ...any) error
+}
+
+const findingSelectColumns = `
+	id, engagement_id, product_id, rule_id, title, severity, cvss_score, cve_id, cwe_id,
+	file_path, line_number, col_number, code_snippet, description, impact, fix_suggestion,
+	references_, hash_code, is_duplicate, duplicate_of, status, kanban_column, sla_deadline,
+	sla_breached, risk_accepted, risk_accepted_by, risk_accepted_reason, risk_accepted_expiry,
+	assigned_to, is_verified, verified_by, verified_at, created_at, updated_at, resolved_at,
+	resolved_by, is_false_positive, fp_reason, stack, ai_triage_status, ai_triage_summary,
+	agent_prompt, agent_prompt_generated_at, verification_status, verification_summary,
+	verification_last_run_at
+`
+
 func NewFindingRepository(db *sql.DB) *FindingRepository {
 	return &FindingRepository{db: db}
+}
+
+func scanFinding(scanner findingScanner) (models.Finding, error) {
+	var f models.Finding
+	err := scanner.Scan(
+		&f.ID, &f.EngagementID, &f.ProductID, &f.RuleID, &f.Title, &f.Severity,
+		&f.CVSSScore, &f.CVEID, &f.CWEID, &f.FilePath, &f.LineNumber, &f.ColNumber,
+		&f.CodeSnippet, &f.Description, &f.Impact, &f.FixSuggestion, &f.References,
+		&f.HashCode, &f.IsDuplicate, &f.DuplicateOf, &f.Status, &f.KanbanColumn,
+		&f.SLADeadline, &f.SLABreached, &f.RiskAccepted, &f.RiskAcceptedBy,
+		&f.RiskAcceptedReason, &f.RiskAcceptedExpiry, &f.AssignedTo, &f.IsVerified,
+		&f.VerifiedBy, &f.VerifiedAt, &f.CreatedAt, &f.UpdatedAt, &f.ResolvedAt,
+		&f.ResolvedBy, &f.IsFalsePositive, &f.FPReason, &f.Stack, &f.AITriageStatus,
+		&f.AITriageSummary, &f.AgentPrompt, &f.AgentPromptAt, &f.VerificationStatus,
+		&f.VerificationSummary, &f.VerificationLastRunAt,
+	)
+	return f, err
 }
 
 func (r *FindingRepository) getIgnoredStatus(ctx context.Context, codeSnippet *string, defaultStatus string) string {
@@ -104,13 +136,12 @@ func (r *FindingRepository) Deduplicate(ctx context.Context, productID int64) er
 }
 
 func (r *FindingRepository) GetByID(ctx context.Context, id int64) (*models.Finding, error) {
-	row := r.db.QueryRowContext(ctx, `
-		SELECT id, engagement_id, product_id, rule_id, title, severity, cvss_score, cve_id, cwe_id, file_path, line_number, col_number, code_snippet, description, impact, fix_suggestion, references_, hash_code, is_duplicate, duplicate_of, status, kanban_column, sla_deadline, sla_breached, risk_accepted, risk_accepted_by, risk_accepted_reason, risk_accepted_expiry, assigned_to, is_verified, verified_by, verified_at, created_at, updated_at, resolved_at, resolved_by, is_false_positive, fp_reason, stack, ai_triage_status, ai_triage_summary
+	row := r.db.QueryRowContext(ctx, fmt.Sprintf(`
+		SELECT %s
 		FROM findings WHERE id = ?
-	`, id)
+	`, findingSelectColumns), id)
 
-	var f models.Finding
-	err := row.Scan(&f.ID, &f.EngagementID, &f.ProductID, &f.RuleID, &f.Title, &f.Severity, &f.CVSSScore, &f.CVEID, &f.CWEID, &f.FilePath, &f.LineNumber, &f.ColNumber, &f.CodeSnippet, &f.Description, &f.Impact, &f.FixSuggestion, &f.References, &f.HashCode, &f.IsDuplicate, &f.DuplicateOf, &f.Status, &f.KanbanColumn, &f.SLADeadline, &f.SLABreached, &f.RiskAccepted, &f.RiskAcceptedBy, &f.RiskAcceptedReason, &f.RiskAcceptedExpiry, &f.AssignedTo, &f.IsVerified, &f.VerifiedBy, &f.VerifiedAt, &f.CreatedAt, &f.UpdatedAt, &f.ResolvedAt, &f.ResolvedBy, &f.IsFalsePositive, &f.FPReason, &f.Stack, &f.AITriageStatus, &f.AITriageSummary)
+	f, err := scanFinding(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("finding not found")
@@ -121,12 +152,12 @@ func (r *FindingRepository) GetByID(ctx context.Context, id int64) (*models.Find
 }
 
 func (r *FindingRepository) List(ctx context.Context, engagementID int64) ([]models.Finding, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, engagement_id, product_id, rule_id, title, severity, cvss_score, cve_id, cwe_id, file_path, line_number, col_number, code_snippet, description, impact, fix_suggestion, references_, hash_code, is_duplicate, duplicate_of, status, kanban_column, sla_deadline, sla_breached, risk_accepted, risk_accepted_by, risk_accepted_reason, risk_accepted_expiry, assigned_to, is_verified, verified_by, verified_at, created_at, updated_at, resolved_at, resolved_by, is_false_positive, fp_reason, stack, ai_triage_status, ai_triage_summary
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT %s
 		FROM findings
 		WHERE engagement_id = ?
 		ORDER BY created_at DESC
-	`, engagementID)
+	`, findingSelectColumns), engagementID)
 	if err != nil {
 		return nil, err
 	}
@@ -134,8 +165,8 @@ func (r *FindingRepository) List(ctx context.Context, engagementID int64) ([]mod
 
 	var findings []models.Finding
 	for rows.Next() {
-		var f models.Finding
-		if err := rows.Scan(&f.ID, &f.EngagementID, &f.ProductID, &f.RuleID, &f.Title, &f.Severity, &f.CVSSScore, &f.CVEID, &f.CWEID, &f.FilePath, &f.LineNumber, &f.ColNumber, &f.CodeSnippet, &f.Description, &f.Impact, &f.FixSuggestion, &f.References, &f.HashCode, &f.IsDuplicate, &f.DuplicateOf, &f.Status, &f.KanbanColumn, &f.SLADeadline, &f.SLABreached, &f.RiskAccepted, &f.RiskAcceptedBy, &f.RiskAcceptedReason, &f.RiskAcceptedExpiry, &f.AssignedTo, &f.IsVerified, &f.VerifiedBy, &f.VerifiedAt, &f.CreatedAt, &f.UpdatedAt, &f.ResolvedAt, &f.ResolvedBy, &f.IsFalsePositive, &f.FPReason, &f.Stack, &f.AITriageStatus, &f.AITriageSummary); err != nil {
+		f, err := scanFinding(rows)
+		if err != nil {
 			return nil, err
 		}
 		findings = append(findings, f)
@@ -150,12 +181,12 @@ func (r *FindingRepository) List(ctx context.Context, engagementID int64) ([]mod
 }
 
 func (r *FindingRepository) ListByProductID(ctx context.Context, productID int64) ([]models.Finding, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, engagement_id, product_id, rule_id, title, severity, cvss_score, cve_id, cwe_id, file_path, line_number, col_number, code_snippet, description, impact, fix_suggestion, references_, hash_code, is_duplicate, duplicate_of, status, kanban_column, sla_deadline, sla_breached, risk_accepted, risk_accepted_by, risk_accepted_reason, risk_accepted_expiry, assigned_to, is_verified, verified_by, verified_at, created_at, updated_at, resolved_at, resolved_by, is_false_positive, fp_reason, stack, ai_triage_status, ai_triage_summary
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT %s
 		FROM findings
 		WHERE product_id = ?
 		ORDER BY created_at DESC
-	`, productID)
+	`, findingSelectColumns), productID)
 	if err != nil {
 		return nil, err
 	}
@@ -163,8 +194,8 @@ func (r *FindingRepository) ListByProductID(ctx context.Context, productID int64
 
 	var findings []models.Finding
 	for rows.Next() {
-		var f models.Finding
-		if err := rows.Scan(&f.ID, &f.EngagementID, &f.ProductID, &f.RuleID, &f.Title, &f.Severity, &f.CVSSScore, &f.CVEID, &f.CWEID, &f.FilePath, &f.LineNumber, &f.ColNumber, &f.CodeSnippet, &f.Description, &f.Impact, &f.FixSuggestion, &f.References, &f.HashCode, &f.IsDuplicate, &f.DuplicateOf, &f.Status, &f.KanbanColumn, &f.SLADeadline, &f.SLABreached, &f.RiskAccepted, &f.RiskAcceptedBy, &f.RiskAcceptedReason, &f.RiskAcceptedExpiry, &f.AssignedTo, &f.IsVerified, &f.VerifiedBy, &f.VerifiedAt, &f.CreatedAt, &f.UpdatedAt, &f.ResolvedAt, &f.ResolvedBy, &f.IsFalsePositive, &f.FPReason, &f.Stack, &f.AITriageStatus, &f.AITriageSummary); err != nil {
+		f, err := scanFinding(rows)
+		if err != nil {
 			return nil, err
 		}
 		findings = append(findings, f)
@@ -178,11 +209,11 @@ func (r *FindingRepository) ListByProductID(ctx context.Context, productID int64
 }
 
 func (r *FindingRepository) ListAll(ctx context.Context) ([]models.Finding, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, engagement_id, product_id, rule_id, title, severity, cvss_score, cve_id, cwe_id, file_path, line_number, col_number, code_snippet, description, impact, fix_suggestion, references_, hash_code, is_duplicate, duplicate_of, status, kanban_column, sla_deadline, sla_breached, risk_accepted, risk_accepted_by, risk_accepted_reason, risk_accepted_expiry, assigned_to, is_verified, verified_by, verified_at, created_at, updated_at, resolved_at, resolved_by, is_false_positive, fp_reason, stack, ai_triage_status, ai_triage_summary
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT %s
 		FROM findings
 		ORDER BY created_at DESC
-	`)
+	`, findingSelectColumns))
 	if err != nil {
 		return nil, err
 	}
@@ -190,8 +221,8 @@ func (r *FindingRepository) ListAll(ctx context.Context) ([]models.Finding, erro
 
 	var findings []models.Finding
 	for rows.Next() {
-		var f models.Finding
-		if err := rows.Scan(&f.ID, &f.EngagementID, &f.ProductID, &f.RuleID, &f.Title, &f.Severity, &f.CVSSScore, &f.CVEID, &f.CWEID, &f.FilePath, &f.LineNumber, &f.ColNumber, &f.CodeSnippet, &f.Description, &f.Impact, &f.FixSuggestion, &f.References, &f.HashCode, &f.IsDuplicate, &f.DuplicateOf, &f.Status, &f.KanbanColumn, &f.SLADeadline, &f.SLABreached, &f.RiskAccepted, &f.RiskAcceptedBy, &f.RiskAcceptedReason, &f.RiskAcceptedExpiry, &f.AssignedTo, &f.IsVerified, &f.VerifiedBy, &f.VerifiedAt, &f.CreatedAt, &f.UpdatedAt, &f.ResolvedAt, &f.ResolvedBy, &f.IsFalsePositive, &f.FPReason, &f.Stack, &f.AITriageStatus, &f.AITriageSummary); err != nil {
+		f, err := scanFinding(rows)
+		if err != nil {
 			return nil, err
 		}
 		findings = append(findings, f)
@@ -224,6 +255,67 @@ func (r *FindingRepository) UpdateKanbanColumn(ctx context.Context, id int64, co
 
 func (r *FindingRepository) UpdateStatus(ctx context.Context, id int64, status string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE findings SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, status, id)
+	return err
+}
+
+func (r *FindingRepository) MarkAgentPromptGenerated(ctx context.Context, id int64, prompt string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE findings
+		SET status = 'sent_to_agent',
+		    kanban_column = 'in_progress',
+		    agent_prompt = ?,
+		    agent_prompt_generated_at = CURRENT_TIMESTAMP,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, prompt, id)
+	return err
+}
+
+func (r *FindingRepository) MarkPendingVerification(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE findings
+		SET status = 'pending_verification',
+		    kanban_column = 'in_progress',
+		    verification_status = 'running',
+		    verification_summary = NULL,
+		    verification_last_run_at = CURRENT_TIMESTAMP,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, id)
+	return err
+}
+
+func (r *FindingRepository) MarkVerificationResult(ctx context.Context, id int64, fixed bool, summary string) error {
+	if fixed {
+		_, err := r.db.ExecContext(ctx, `
+			UPDATE findings
+			SET status = 'resolved',
+			    kanban_column = 'done',
+			    is_verified = 1,
+			    verified_at = CURRENT_TIMESTAMP,
+			    resolved_at = CURRENT_TIMESTAMP,
+			    verification_status = 'fixed',
+			    verification_summary = ?,
+			    verification_last_run_at = CURRENT_TIMESTAMP,
+			    updated_at = CURRENT_TIMESTAMP
+			WHERE id = ?
+		`, summary, id)
+		return err
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE findings
+		SET status = 'verification_failed',
+		    kanban_column = 'in_progress',
+		    is_verified = 0,
+		    verified_at = NULL,
+		    resolved_at = NULL,
+		    verification_status = 'not_fixed',
+		    verification_summary = ?,
+		    verification_last_run_at = CURRENT_TIMESTAMP,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, summary, id)
 	return err
 }
 

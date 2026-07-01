@@ -1805,11 +1805,109 @@ const FindingRow: React.FC<{
   setPage: (p: number) => void;
   handleTriage: (f: Finding, action: string) => void;
   onNavigateToChat?: (f: Finding) => void;
+  onRefresh?: (options?: { silent?: boolean }) => void;
   isSelected?: boolean;
   onToggleSelect?: (e: React.MouseEvent | React.ChangeEvent) => void;
   isTriaging?: boolean;
-}> = ({ f, isExpanded, onToggle, productMap, setProductFilter, setPage, handleTriage, onNavigateToChat, isSelected, onToggleSelect, isTriaging }) => {
+}> = ({ f, isExpanded, onToggle, productMap, setProductFilter, setPage, handleTriage, onNavigateToChat, onRefresh, isSelected, onToggleSelect, isTriaging }) => {
+  const { t } = useTranslation('pages');
   const [hovered, setHovered] = useState(false);
+  const [agentPrompt, setAgentPrompt] = useState(f.agent_prompt ?? '');
+  const [verificationSummary, setVerificationSummary] = useState(f.verification_summary ?? '');
+  const [agentPromptLoading, setAgentPromptLoading] = useState(false);
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [copiedContext, setCopiedContext] = useState(false);
+
+  useEffect(() => {
+    setAgentPrompt(f.agent_prompt ?? '');
+    setVerificationSummary(f.verification_summary ?? '');
+  }, [f.id, f.agent_prompt, f.verification_summary]);
+
+  const currentStatus = f.status || 'open';
+  const lifecycleStatus =
+    currentStatus !== 'open'
+      ? currentStatus
+      : f.verification_status === 'fixed'
+        ? 'resolved'
+        : f.verification_status === 'not_fixed'
+          ? 'verification_failed'
+          : currentStatus;
+  const shouldShowVerificationSummary =
+    Boolean(verificationSummary) &&
+    (verificationLoading || ['verification_failed', 'resolved', 'fixed'].includes(lifecycleStatus.toLowerCase()));
+  const handoffStatus = verificationLoading ? 'pending_verification' : lifecycleStatus;
+
+  const statusLabel = (status: string) => {
+    const s = status.toLowerCase();
+    if (s === 'sent_to_agent') return t('status_sent_to_agent');
+    if (s === 'pending_verification') return t('status_pending_verification');
+    if (s === 'verification_failed') return t('status_verification_failed');
+    if (s === 'resolved' || s === 'fixed') return t('status_fixed');
+    if (s === 'triage') return t('statusTriage');
+    if (s === 'false_positive') return t('statusFalsePositive');
+    if (s === 'risk_accepted' || s === 'accepted_risk') return t('statusAccepted');
+    return t('statusOpen');
+  };
+
+  const statusClass = (status: string) => {
+    const s = status.toLowerCase();
+    if (s === 'resolved' || s === 'fixed') return 'text-[#22c55e] bg-[rgba(34,197,94,0.08)] border-[rgba(34,197,94,0.18)]';
+    if (s === 'verification_failed') return 'text-[#ef4444] bg-[rgba(239,68,68,0.08)] border-[rgba(239,68,68,0.18)]';
+    if (s === 'pending_verification') return 'text-[#eab308] bg-[rgba(234,179,8,0.08)] border-[rgba(234,179,8,0.18)]';
+    if (s === 'sent_to_agent' || s === 'triage') return 'text-[#38bdf8] bg-[rgba(56,189,248,0.08)] border-[rgba(56,189,248,0.18)]';
+    if (s === 'false_positive') return 'text-[#71717a] bg-[rgba(255,255,255,0.02)] border-[rgba(255,255,255,0.04)]';
+    return 'text-[#f59e0b] bg-[rgba(245,158,11,0.06)] border-[rgba(245,158,11,0.12)]';
+  };
+
+  const generateAgentPrompt = async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (agentPromptLoading) return;
+    setAgentPromptLoading(true);
+    try {
+      const res = await fetch(`/api/findings/${f.id}/agent-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to generate agent prompt');
+      const prompt = data.prompt || '';
+      setAgentPrompt(prompt);
+      setVerificationSummary('');
+      try {
+        await navigator.clipboard.writeText(prompt);
+      } catch {
+        // Prompt remains visible for manual copy when clipboard is unavailable.
+      }
+      onRefresh?.({ silent: true });
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Failed to generate agent prompt');
+    } finally {
+      setAgentPromptLoading(false);
+    }
+  };
+
+  const verifyFinding = async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (verificationLoading) return;
+    setVerificationLoading(true);
+    setVerificationSummary(t('verification_running'));
+    try {
+      const res = await fetch(`/api/findings/${f.id}/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to verify finding');
+      setVerificationSummary(data.summary || '');
+      onRefresh?.({ silent: true });
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Failed to verify finding');
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
   
   return (
     <div className="border-b border-[rgba(255,255,255,0.03)] last:border-b-0">
@@ -1866,15 +1964,9 @@ const FindingRow: React.FC<{
                 {f.stack}
               </span>
             )}
-            {f.status && f.status !== 'open' && (
-              <span className={`shrink-0 whitespace-nowrap text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wider ${
-                f.status === 'triage' 
-                  ? 'text-[#38bdf8] bg-[rgba(56,189,248,0.06)] border border-[rgba(56,189,248,0.12)]' 
-                  : f.status === 'false_positive' 
-                    ? 'text-[#71717a] bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.04)]' 
-                    : 'text-[#f59e0b] bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.12)]'
-              }`}>
-                {f.status.replace('_', ' ')}
+            {lifecycleStatus !== 'open' && (
+              <span className={`shrink-0 whitespace-nowrap text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wider border ${statusClass(lifecycleStatus)}`}>
+                {statusLabel(lifecycleStatus)}
               </span>
             )}
             {f.ai_triage_status && (
@@ -1951,6 +2043,61 @@ const FindingRow: React.FC<{
                   </p>
                 </div>
               )}
+
+              <div className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.015)] p-2.5 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="material-symbols-outlined text-[13px] text-[var(--accent-color)]">smart_toy</span>
+                    <span className="text-[9px] text-[#a1a1aa] uppercase tracking-wider font-bold font-mono truncate">
+                      {t('agent_handoff')}
+                    </span>
+                  </div>
+                  <span className={`shrink-0 whitespace-nowrap text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wider border ${statusClass(handoffStatus)}`}>
+                    {statusLabel(handoffStatus)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    onClick={generateAgentPrompt}
+                    disabled={agentPromptLoading}
+                    className="text-[10px] text-[var(--accent-color)] border border-[rgba(139,92,246,0.15)] hover:bg-[rgba(139,92,246,0.06)] px-2.5 py-1 rounded-md flex items-center gap-1 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {agentPromptLoading ? (
+                      <div className="w-3 h-3 border-2 border-t-[var(--accent-color)] border-[rgba(255,255,255,0.1)] rounded-full animate-spin shrink-0" />
+                    ) : (
+                      <span className="material-symbols-outlined text-[12px]">content_paste</span>
+                    )}
+                    {t('agent_prompt')}
+                  </button>
+                  <button
+                    onClick={verifyFinding}
+                    disabled={verificationLoading}
+                    className="text-[10px] text-[#22c55e] border border-[rgba(34,197,94,0.15)] hover:bg-[rgba(34,197,94,0.06)] px-2.5 py-1 rounded-md flex items-center gap-1 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {verificationLoading ? (
+                      <div className="w-3 h-3 border-2 border-t-[#22c55e] border-[rgba(255,255,255,0.1)] rounded-full animate-spin shrink-0" />
+                    ) : (
+                      <span className="material-symbols-outlined text-[12px]">fact_check</span>
+                    )}
+                    {verificationLoading ? t('verification_running_short') : t('verify_fix')}
+                  </button>
+                </div>
+                <div className="text-[10px] text-[#71717a] leading-relaxed border-l border-[rgba(34,197,94,0.16)] pl-2">
+                  {t('verification_rescan_hint')}
+                </div>
+                {agentPrompt && (
+                  <textarea
+                    value={agentPrompt}
+                    readOnly
+                    className="w-full min-h-[140px] resize-y rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.25)] p-2 text-[10px] leading-relaxed text-[#d4d4d8] font-mono outline-none"
+                  />
+                )}
+                {shouldShowVerificationSummary && (
+                  <div className="text-[11px] text-[#d4d4d8] leading-relaxed border-l border-[rgba(255,255,255,0.08)] pl-2 py-1 bg-[rgba(255,255,255,0.01)] rounded-r-md">
+                    {verificationSummary}
+                  </div>
+                )}
+              </div>
               
               <div className="flex items-center gap-1.5 pt-1.5 flex-wrap">
                 <button 
@@ -1989,44 +2136,39 @@ const FindingRow: React.FC<{
                 <div className="w-px h-3.5 bg-[rgba(255,255,255,0.06)] mx-1" />
                 
                 {onNavigateToChat && (
-                  <button 
+                  <button
+                    type="button"
                     onClick={e => { e.stopPropagation(); onNavigateToChat(f); }} 
-                    className="text-[10px] text-[#f4f4f5] bg-[#27272a] hover:bg-[#3f3f46] border border-[rgba(255,255,255,0.04)] px-2.5 py-1 rounded-md flex items-center gap-1 transition-all"
+                    title="Ask AI about this finding"
+                    aria-label={`Ask AI about ${f.title}`}
+                    className="group/ask h-8 text-[10px] text-[#d9f99d] border border-transparent ring-1 ring-[rgba(132,204,22,0.26)] bg-[linear-gradient(135deg,rgba(132,204,22,0.14),rgba(6,182,212,0.07))] hover:ring-[rgba(132,204,22,0.55)] hover:bg-[linear-gradient(135deg,rgba(132,204,22,0.2),rgba(6,182,212,0.1))] hover:shadow-[0_0_18px_rgba(132,204,22,0.14)] px-3 rounded-md flex items-center gap-1.5 transition-all duration-200 font-semibold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#84cc16]/60"
                   >
-                    <span className="material-symbols-outlined text-[12px]">smart_toy</span>Ask AI
+                    <span className="material-symbols-outlined text-[15px] text-[#84cc16] group-hover/ask:scale-110 transition-transform duration-200">smart_toy</span>
+                    <span>Ask AI</span>
                   </button>
                 )}
                 
-                <button 
-                  onClick={e => { 
-                    e.stopPropagation(); 
-                    const prompt = `Fix this security vulnerability in my code:\n\n**Issue:** ${f.title}\n**Severity:** ${f.severity?.toUpperCase()}\n**File:** ${f.file_path || 'unknown'}${f.line_number ? `:${f.line_number}` : ''}\n**Scanner:** ${f.stack || 'core'}\n**Project:** ${productMap.get(f.product_id!)?.name || 'unknown'}\n\n**Description:**\n${f.description || 'No description'}\n\n**Recommendation:**\n${f.fix_suggestion || f.suggestion || 'No recommendation available'}\n\nPlease provide:\n1. Root cause analysis\n2. Fixed code with explanation\n3. How to verify the fix\n4. Prevention best practices`; 
-                    navigator.clipboard.writeText(prompt); 
-                    const btn = e.currentTarget;
-                    btn.textContent = '✓ Copied!'; 
-                    setTimeout(() => { 
-                      try { 
-                        btn.innerHTML = '<span class="material-symbols-outlined text-[12px]">content_paste</span>Fix Prompt'; 
-                      } catch {} 
-                    }, 1500); 
+                <button
+                  type="button"
+                  title="Copy finding context"
+                  aria-label={`Copy context for ${f.title}`}
+                  onClick={async e => {
+                    e.stopPropagation();
+                    try {
+                      await navigator.clipboard.writeText(`${f.title}\n${f.severity}\n${f.description || ''}\n${f.fix_suggestion || ''}`);
+                      setCopiedContext(true);
+                      setTimeout(() => setCopiedContext(false), 1500);
+                    } catch (err) {
+                      console.error('Failed to copy finding context', err);
+                    }
                   }} 
-                  className="text-[10px] text-[var(--accent-color)] border border-[rgba(139,92,246,0.15)] hover:bg-[rgba(139,92,246,0.06)] px-2.5 py-1 rounded-md flex items-center gap-1 transition-colors font-medium"
+                  className={`h-8 w-8 rounded-md border flex items-center justify-center transition-all duration-200 shrink-0 focus-visible:outline-none focus-visible:ring-1 ${
+                    copiedContext
+                      ? 'text-[#22c55e] border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.08)] focus-visible:ring-[#22c55e]/60'
+                      : 'text-[#71717a] border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.015)] hover:text-[#d4d4d8] hover:border-[rgba(255,255,255,0.14)] hover:bg-[rgba(255,255,255,0.04)] focus-visible:ring-[#a1a1aa]/50'
+                  }`}
                 >
-                  <span className="material-symbols-outlined text-[12px]">content_paste</span>Fix Prompt
-                </button>
-                
-                <button 
-                  onClick={e => { 
-                    e.stopPropagation(); 
-                    navigator.clipboard.writeText(`${f.title}\n${f.severity}\n${f.description || ''}\n${f.fix_suggestion || ''}`); 
-                    const btn = e.currentTarget;
-                    const oldHtml = btn.innerHTML;
-                    btn.innerHTML = '<span class="material-symbols-outlined text-[12px] text-[#22c55e]">check</span>';
-                    setTimeout(() => { try { btn.innerHTML = oldHtml; } catch {} }, 1500);
-                  }} 
-                  className="text-[10px] text-[#52525b] hover:text-[#a1a1aa] hover:bg-[rgba(255,255,255,0.02)] p-1 rounded-md transition-all shrink-0"
-                >
-                  <span className="material-symbols-outlined text-[12px]">content_copy</span>
+                  <span className="material-symbols-outlined text-[14px]">{copiedContext ? 'check' : 'content_copy'}</span>
                 </button>
               </div>
             </div>
@@ -2438,6 +2580,8 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
     return (<div className="flex h-full items-center justify-center bg-v2-bg"><div className="flex items-center gap-3"><div className="w-4 h-4 border-2 border-[#27272a] border-t-[var(--accent-color)] rounded-full animate-spin" /><span className="text-[13px] text-[#71717a] font-mono tracking-wider uppercase">Loading...</span></div></div>);
   }
 
+  const showProjectScore = productFilter !== null;
+
   return (
     <div className="flex h-full overflow-hidden">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.06) transparent' }}>
@@ -2452,8 +2596,9 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
               
               {/* Score Card */}
-              <motion.div 
-                variants={itemVariants} 
+              {showProjectScore && (
+              <motion.div
+                variants={itemVariants}
                 className="lg:col-span-1 border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 bg-background/80 backdrop-blur-xl flex flex-col justify-between shadow-2xl relative overflow-hidden min-h-[260px] h-full group"
               >
                 {/* Advanced Animated Background Glow */}
@@ -2621,9 +2766,10 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                   </div>
                 )}
               </motion.div>
+              )}
 
               {/* ── AI Security Summary Section ── */}
-              <div className="lg:col-span-2">
+              <div className={showProjectScore ? 'lg:col-span-2' : 'lg:col-span-3'}>
                 {(() => {
                   const summaryProjectId = productFilter ?? activeProducts.sort((a, b) => {
                     const aCount = findings?.filter((f: Finding) => f.product_id === a.id).length || 0;
@@ -3175,6 +3321,10 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                                   setPage={setPage}
                                   handleTriage={handleTriage}
                                   onNavigateToChat={onNavigateToChat}
+                                  onRefresh={(options) => {
+                                    refreshFindings?.(options);
+                                    refreshMetrics?.(options);
+                                  }}
                                   isSelected={selectedFindings.has(f.id)}
                                   isTriaging={triagingIds.has(f.id)}
                                   onToggleSelect={() => {
@@ -3217,6 +3367,10 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                           setPage={setPage}
                           handleTriage={handleTriage}
                           onNavigateToChat={onNavigateToChat}
+                          onRefresh={(options) => {
+                            refreshFindings?.(options);
+                            refreshMetrics?.(options);
+                          }}
                           isSelected={selectedFindings.has(f.id)}
                           isTriaging={triagingIds.has(f.id)}
                           onToggleSelect={() => {

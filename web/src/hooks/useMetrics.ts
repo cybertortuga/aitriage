@@ -38,13 +38,15 @@ export interface DashboardMetrics {
   total_engagements: number;
 }
 
+type RefreshOptions = { silent?: boolean };
+
 export const useMetrics = () => {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchMetrics = useCallback(async () => {
-    setLoading(true);
+  const fetchMetrics = useCallback(async (options?: RefreshOptions) => {
+    if (!options?.silent) setLoading(true);
     try {
       const { data } = await api.get('/metrics');
       if (data.ok) {
@@ -56,7 +58,7 @@ export const useMetrics = () => {
     } catch (err: any) {
       setError(err.response?.data?.error || err.message);
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   }, []);
 

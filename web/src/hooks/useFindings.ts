@@ -3,14 +3,16 @@ import type { Finding } from '../types';
 import api from '../services/api';
 import i18n from '../i18n';
 
+type RefreshOptions = { silent?: boolean };
+
 export const useFindings = (productId?: number) => {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchFindings = useCallback(async () => {
+  const fetchFindings = useCallback(async (options?: RefreshOptions) => {
     try {
-      setLoading(true);
+      if (!options?.silent) setLoading(true);
       const url = productId ? `/findings?product_id=${productId}` : '/findings';
       const { data } = await api.get(url);
       const raw: Finding[] = data?.findings || data || [];
@@ -26,7 +28,7 @@ export const useFindings = (productId?: number) => {
     } catch (err: any) {
       setError(err.message || i18n.t('errors.fetchFindings'));
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   }, [productId]);
 
