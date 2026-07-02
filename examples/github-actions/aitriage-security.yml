@@ -135,6 +135,11 @@ jobs:
           command: agent
           # A clean TP/Needs Review summary is written to the job summary too.
           summary-file: summary.md
+          # Optional experimental cost control for trusted runs only:
+          # pair `verdict-cache-dir` with actions/cache/restore before this
+          # step and actions/cache/save after artifacts are written. Never save
+          # cache entries from untrusted fork pull requests.
+          # verdict-cache-dir: .aitriage-cache
           args: >-
             --no-chat
             --health-profile standard

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/cybertortuga/aitriage/internal/agent/llm"
 )
 
 func TestBuildTriageFindingsArtifactPreservesEveryFindingAndDisposition(t *testing.T) {
@@ -28,6 +30,31 @@ func TestBuildTriageFindingsArtifactPreservesEveryFindingAndDisposition(t *testi
 			RawResponse:            `{"finding_dispositions":[...]}`,
 			AcceptedFindingIndices: []int{0},
 		}},
+		ThreatModelSource: "cache_skipped",
+		TotalUsage: llm.Usage{
+			PromptTokens:           100,
+			CompletionTokens:       20,
+			TotalTokens:            120,
+			CachedPromptTokens:     40,
+			CacheTelemetryReported: true,
+		},
+		StageUsage: map[string]llm.Usage{
+			usageStageClassification: {
+				PromptTokens:           70,
+				CompletionTokens:       10,
+				TotalTokens:            80,
+				CachedPromptTokens:     40,
+				CacheTelemetryReported: true,
+			},
+		},
+		VerdictCacheStats: VerdictCacheStats{
+			Enabled:       true,
+			LoadedEntries: 3,
+			Hits:          1,
+			Misses:        2,
+			Stores:        2,
+			Saved:         true,
+		},
 	}
 
 	artifact, err := BuildTriageFindingsArtifact(state)
@@ -45,6 +72,18 @@ func TestBuildTriageFindingsArtifactPreservesEveryFindingAndDisposition(t *testi
 	}
 	if len(artifact.ClassificationAudit) != 1 || artifact.ClassificationAudit[0].RawResponse == "" {
 		t.Fatalf("classification audit = %+v, want persisted raw response", artifact.ClassificationAudit)
+	}
+	if artifact.LLMUsage.Total.CachedPromptTokens != 40 || artifact.LLMUsage.CacheTelemetryStatus != "reported" {
+		t.Fatalf("llm usage artifact = %+v, want reported cached prompt tokens", artifact.LLMUsage)
+	}
+	if artifact.LLMUsage.Stages[usageStageClassification].TotalTokens != 80 {
+		t.Fatalf("stage usage artifact = %+v, want classification total tokens", artifact.LLMUsage.Stages)
+	}
+	if artifact.VerdictCache.Hits != 1 || artifact.VerdictCache.Misses != 2 || artifact.VerdictCache.Stores != 2 || !artifact.VerdictCache.Saved {
+		t.Fatalf("verdict cache artifact = %+v, want hit/miss/store stats", artifact.VerdictCache)
+	}
+	if artifact.ThreatModelSource != "cache_skipped" {
+		t.Fatalf("threat model source = %q, want cache_skipped", artifact.ThreatModelSource)
 	}
 
 	for index, want := range []struct {
@@ -67,7 +106,7 @@ func TestBuildTriageFindingsArtifactPreservesEveryFindingAndDisposition(t *testi
 		t.Fatalf("marshal artifact: %v", err)
 	}
 	jsonText := string(data)
-	for _, want := range []string{"\"schema_version\":1", "\"triage_status\":\"complete\"", "\"code_snippet\":\"token = 'x'\"", "\"rationale\":\"Only controls animation\"", "\"disposition_source\":\"deterministic\"", "\"classification_audit\"", "\"raw_response\""} {
+	for _, want := range []string{"\"schema_version\":1", "\"triage_status\":\"complete\"", "\"llm_usage\"", "\"cached_prompt_tokens\":40", "\"cache_telemetry_status\":\"reported\"", "\"verdict_cache\"", "\"hits\":1", "\"misses\":2", "\"stores\":2", "\"threat_model_source\":\"cache_skipped\"", "\"code_snippet\":\"token = 'x'\"", "\"rationale\":\"Only controls animation\"", "\"disposition_source\":\"deterministic\"", "\"classification_audit\"", "\"raw_response\""} {
 		if !strings.Contains(jsonText, want) {
 			t.Errorf("serialized artifact does not contain %s: %s", want, jsonText)
 		}

@@ -1,5 +1,10 @@
 package prompts
 
+// SecureCoderPromptVersion is part of the deterministic verdict-cache namespace.
+// Bump it whenever the prompts or evidence contract change in a way that could
+// alter TP/FP/NR decisions.
+const SecureCoderPromptVersion = "securecoder-v1"
+
 // ── Secure Coding Guidelines (from SecureCoder SKILL.md) ─────────────────────
 //
 // These rules are injected into the triage and report system prompts so the LLM

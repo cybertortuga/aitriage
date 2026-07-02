@@ -71,12 +71,7 @@ func (c *openAIClient) Chat(ctx context.Context, messages []Message) (string, Us
 		return "", Usage{}, fmt.Errorf("empty response from openai")
 	}
 
-	usage := Usage{}
-	if completion.Usage.TotalTokens > 0 {
-		usage.PromptTokens = int(completion.Usage.PromptTokens)
-		usage.CompletionTokens = int(completion.Usage.CompletionTokens)
-		usage.TotalTokens = int(completion.Usage.TotalTokens)
-	}
+	usage := usageFromOpenAI(completion.Usage)
 
 	return completion.Choices[0].Message.Content, usage, nil
 }
@@ -131,13 +126,38 @@ func (c *anthropicClientWrapper) Chat(ctx context.Context, messages []Message) (
 		return "", Usage{}, fmt.Errorf("empty response from anthropic")
 	}
 
-	usage := Usage{
-		PromptTokens:     int(message.Usage.InputTokens),
-		CompletionTokens: int(message.Usage.OutputTokens),
-		TotalTokens:      int(message.Usage.InputTokens + message.Usage.OutputTokens),
-	}
+	usage := usageFromAnthropic(message.Usage)
 
 	return message.Content[0].Text, usage, nil
+}
+
+func usageFromOpenAI(u openai.CompletionUsage) Usage {
+	usage := Usage{}
+	if u.TotalTokens > 0 {
+		usage.PromptTokens = int(u.PromptTokens)
+		usage.CompletionTokens = int(u.CompletionTokens)
+		usage.TotalTokens = int(u.TotalTokens)
+	}
+	if u.PromptTokensDetails.CachedTokens > 0 || u.JSON.PromptTokensDetails.Valid() {
+		usage.CachedPromptTokens = int(u.PromptTokensDetails.CachedTokens)
+		usage.CacheTelemetryReported = true
+	}
+	return usage
+}
+
+func usageFromAnthropic(u anthropic.Usage) Usage {
+	usage := Usage{
+		PromptTokens:     int(u.InputTokens),
+		CompletionTokens: int(u.OutputTokens),
+		TotalTokens:      int(u.InputTokens + u.OutputTokens),
+	}
+	if u.CacheCreationInputTokens > 0 || u.CacheReadInputTokens > 0 ||
+		u.JSON.CacheCreationInputTokens.Valid() || u.JSON.CacheReadInputTokens.Valid() {
+		usage.CacheCreationInputTokens = int(u.CacheCreationInputTokens)
+		usage.CacheReadInputTokens = int(u.CacheReadInputTokens)
+		usage.CacheTelemetryReported = true
+	}
+	return usage
 }
 
 // NewClient создаёт LLM клиент нужного провайдера на основе конфига.

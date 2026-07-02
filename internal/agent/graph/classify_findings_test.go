@@ -436,3 +436,134 @@ func TestClassifyFindingsGatingDeterministicForLowSeverity(t *testing.T) {
 		t.Fatalf("gated-out finding must never be auto-FP")
 	}
 }
+
+func TestClassifyFindingsFullCacheHitSkipsThreatModelAndClassification(t *testing.T) {
+	pinConcurrency(t)
+	dir := t.TempDir()
+	t.Setenv("AITRIAGE_CACHE_DIR", dir)
+	t.Setenv("AITRIAGE_LLM_MODEL", "model-a")
+
+	findings := makeFindings(2)
+	cache := newVerdictCache("")
+	for _, finding := range findings {
+		cache.Set(Fingerprint(finding), FindingDisposition{
+			Disposition: "True Positive",
+			Rationale:   "cached",
+			Confidence:  "high",
+		})
+	}
+	cache.Save()
+
+	mock := &fakeLLM{t: t, tmErr: fmt.Errorf("threat model should not be called")}
+	var usage llm.Usage
+
+	tm, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage, 150)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tm != nil {
+		t.Fatalf("threat model = %+v, want nil on full cache hit", tm)
+	}
+	if mock.tmCalls != 0 || mock.classifyCalls != 0 {
+		t.Fatalf("full cache hit should skip LLM calls, got tm=%d classify=%d", mock.tmCalls, mock.classifyCalls)
+	}
+	for i, d := range disps {
+		if d.DispositionSource != dispositionSourceCache {
+			t.Fatalf("disposition %d source = %q, want cache", i, d.DispositionSource)
+		}
+	}
+}
+
+func TestClassifyFindingsInvalidCachedFalsePositiveFallsBackToLLM(t *testing.T) {
+	pinConcurrency(t)
+	dir := t.TempDir()
+	project := t.TempDir()
+	t.Setenv("AITRIAGE_CACHE_DIR", dir)
+	t.Setenv("AITRIAGE_LLM_MODEL", "model-a")
+
+	findings := makeFindings(1)
+	cache := newVerdictCache("")
+	cache.Set(Fingerprint(findings[0]), FindingDisposition{
+		Disposition: "False Positive",
+		Rationale:   "cached fp",
+		Confidence:  "high",
+		Evidence: &DispositionEvidence{
+			Basis:    "code_mitigation",
+			File:     findings[0].File,
+			Line:     findings[0].Line,
+			Observed: "missing mitigation",
+		},
+	})
+	cache.Save()
+
+	mock := &fakeLLM{
+		t: t,
+		classifyHandler: func(call int, batch []EnrichedFinding) (string, error) {
+			if len(batch) != 1 {
+				t.Fatalf("classification batch size = %d, want 1", len(batch))
+			}
+			return classifyAllByCount(len(batch), "True Positive"), nil
+		},
+	}
+	var usage llm.Usage
+
+	tm, disps, _, stats, err := ClassifyFindingsWithAudit(context.Background(), "", project, findings, mock, &usage, 150)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tm == nil || mock.tmCalls != 1 || mock.classifyCalls != 1 {
+		t.Fatalf("invalid cached FP should fall back to normal LLM path, tm=%+v tmCalls=%d classifyCalls=%d", tm, mock.tmCalls, mock.classifyCalls)
+	}
+	if disps[0].Disposition != "True Positive" || disps[0].DispositionSource != dispositionSourceLLM {
+		t.Fatalf("disposition = %+v, want LLM true positive", disps[0])
+	}
+	if stats.Hits != 1 || stats.InvalidatedFalsePositives != 1 || stats.Stores != 1 {
+		t.Fatalf("cache stats = %+v, want hit + invalidated stale FP + stored LLM verdict", stats)
+	}
+}
+
+func TestClassifyFindingsPartialCacheHitBuildsThreatModelForUncachedFindings(t *testing.T) {
+	pinConcurrency(t)
+	dir := t.TempDir()
+	t.Setenv("AITRIAGE_CACHE_DIR", dir)
+	t.Setenv("AITRIAGE_LLM_MODEL", "model-a")
+
+	findings := makeFindings(2)
+	cache := newVerdictCache("")
+	cache.Set(Fingerprint(findings[0]), FindingDisposition{
+		Disposition: "True Positive",
+		Rationale:   "cached",
+		Confidence:  "high",
+	})
+	cache.Save()
+
+	var batchSizes []int
+	mock := &fakeLLM{
+		t: t,
+		classifyHandler: func(call int, batch []EnrichedFinding) (string, error) {
+			batchSizes = append(batchSizes, len(batch))
+			return classifyAllByCount(len(batch), "True Positive"), nil
+		},
+	}
+	var usage llm.Usage
+
+	tm, disps, err := ClassifyFindings(context.Background(), "", "p", findings, mock, &usage, 150)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tm == nil {
+		t.Fatal("partial cache hit should still build a threat model")
+	}
+	if mock.tmCalls != 1 || mock.classifyCalls != 1 {
+		t.Fatalf("partial cache hit should call threat model and one classification batch, got tm=%d classify=%d", mock.tmCalls, mock.classifyCalls)
+	}
+	if len(batchSizes) != 1 || batchSizes[0] != 1 {
+		t.Fatalf("classification batch sizes = %v, want one uncached finding", batchSizes)
+	}
+	if disps[0].DispositionSource != dispositionSourceCache {
+		t.Fatalf("cached finding source = %q, want cache", disps[0].DispositionSource)
+	}
+	if disps[1].DispositionSource != dispositionSourceLLM {
+		t.Fatalf("uncached finding source = %q, want llm", disps[1].DispositionSource)
+	}
+}

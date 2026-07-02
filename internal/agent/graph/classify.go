@@ -30,34 +30,34 @@ import (
 //
 // The returned slice always has exactly len(findings) entries, ordered by index.
 func ClassifyFindings(ctx context.Context, repoContextText, projectPath string, findings []EnrichedFinding, llmClient llm.Client, usage *llm.Usage, batchSize int) (*ThreatModel, []FindingDisposition, error) {
-	tm, dispositions, _, err := ClassifyFindingsWithAudit(ctx, repoContextText, projectPath, findings, llmClient, usage, batchSize)
+	tm, dispositions, _, _, err := ClassifyFindingsWithAudit(ctx, repoContextText, projectPath, findings, llmClient, usage, batchSize)
 	return tm, dispositions, err
 }
 
 // ClassifyFindingsWithAudit behaves like ClassifyFindings and additionally
 // returns the raw structured model responses plus their validated mapping. The
 // audit is persisted in triage-findings.json by the CLI pipeline.
-func ClassifyFindingsWithAudit(ctx context.Context, repoContextText, projectPath string, findings []EnrichedFinding, llmClient llm.Client, usage *llm.Usage, batchSize int) (*ThreatModel, []FindingDisposition, []ClassificationAuditEntry, error) {
+func ClassifyFindingsWithAudit(ctx context.Context, repoContextText, projectPath string, findings []EnrichedFinding, llmClient llm.Client, usage *llm.Usage, batchSize int, cacheOptions ...verdictCacheOption) (*ThreatModel, []FindingDisposition, []ClassificationAuditEntry, VerdictCacheStats, error) {
 	if len(findings) == 0 {
-		return nil, nil, nil, nil
+		return nil, nil, nil, VerdictCacheStats{}, nil
 	}
 
 	// Layer 1: collapse byte-for-byte identical findings.
 	unique, groups := dedupFindings(findings)
 
-	cache := newVerdictCache(strings.TrimSpace(os.Getenv("AITRIAGE_MODEL")))
+	cache := newVerdictCache(strings.TrimSpace(os.Getenv("AITRIAGE_MODEL")), cacheOptions...)
 	gating := defaultGatingConfig()
 
 	tm, uniqueDisps, audit, err := classifyUnique(ctx, repoContextText, projectPath, unique, llmClient, usage, cache, gating, batchSize)
 	if err != nil {
-		return nil, nil, audit, err
+		return nil, nil, audit, cache.Stats(), err
 	}
 
 	// Layer 1 (reverse): project the unique verdicts back onto every original.
 	dispositions := projectDispositions(uniqueDisps, groups, findings)
 
 	logTriageMetrics(findings, unique, uniqueDisps)
-	return tm, dispositions, audit, nil
+	return tm, dispositions, audit, cache.Stats(), nil
 }
 
 // classifyUnique classifies the deduplicated findings, returning one disposition
@@ -66,34 +66,29 @@ func classifyUnique(ctx context.Context, repoContextText, projectPath string, un
 	n := len(unique)
 	result := make([]*FindingDisposition, n)
 
-	// Layer 4a: build the SecureCoder threat model ONCE from a representative
-	// sample. This call is authoritative; a transport OR parse failure here is
-	// fatal (we must not mask a broken provider before any classification).
-	sample := unique
-	if len(sample) > batchSize {
-		sample = sample[:batchSize]
-	}
-	tm, _, err := threatModelLLMCall(ctx, repoContextText, projectPath, sample, llmClient, usage)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	tmSummary := threatModelSummary(tm)
-
-	// Layers 2 & 3: resolve as many findings as possible without an LLM call.
+	// Layers 2 & 3: resolve as many findings as possible before any LLM call.
+	// A full cache/gating hit should not pay for a threat-model request.
 	var toLLM []int
 	for i, f := range unique {
 		fp := Fingerprint(f)
 		if cached, ok := cache.Get(fp); ok {
 			if cached.Disposition == "False Positive" {
 				if err := validateFalsePositiveEvidence(projectPath, f, cached.Evidence); err != nil {
-					continue // Invalid cached FP cannot bypass evidence-bound suppression.
+					cache.InvalidateFalsePositive()
+				} else {
+					cached.FindingIndex = i
+					cached.DispositionSource = dispositionSourceCache
+					cached.Fingerprint = fp
+					result[i] = &cached
+					continue
 				}
+			} else {
+				cached.FindingIndex = i
+				cached.DispositionSource = dispositionSourceCache
+				cached.Fingerprint = fp
+				result[i] = &cached
+				continue
 			}
-			cached.FindingIndex = i
-			cached.DispositionSource = dispositionSourceCache
-			cached.Fingerprint = fp
-			result[i] = &cached
-			continue
 		}
 		if !gating.shouldTriageWithLLM(f) {
 			d := deterministicDisposition(f)
@@ -120,6 +115,27 @@ func classifyUnique(ctx context.Context, repoContextText, projectPath string, un
 			}
 		}
 		toLLM = toLLM[:budget]
+	}
+
+	var (
+		tm        *ThreatModel
+		tmSummary = threatModelSummary(nil)
+	)
+	if len(toLLM) > 0 {
+		// Layer 4a: build the SecureCoder threat model ONCE from a representative
+		// sample of the findings that still require LLM classification. This call
+		// is authoritative; a transport OR parse failure here is fatal (we must not
+		// mask a broken provider before any classification).
+		sample := make([]EnrichedFinding, 0, min(len(toLLM), batchSize))
+		for _, i := range toLLM[:min(len(toLLM), batchSize)] {
+			sample = append(sample, unique[i])
+		}
+		var err error
+		tm, _, err = threatModelLLMCall(ctx, repoContextText, projectPath, sample, llmClient, usage)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		tmSummary = threatModelSummary(tm)
 	}
 
 	// Layer 4b + 5: classify the remaining findings against the threat model,

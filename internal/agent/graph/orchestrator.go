@@ -325,6 +325,7 @@ type rawDisposition struct {
 func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	if len(state.EnrichedFindings) == 0 {
 		fmt.Fprintf(os.Stderr, "   ℹ️ No findings — skipping threat model\n")
+		state.ThreatModelSource = "skipped_empty"
 		return nil
 	}
 
@@ -333,12 +334,18 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 		repoContextText = state.RepoContext.FormatForLLM(5000) // ~5K tokens for threat model
 	}
 
-	tm, dispositions, audit, err := ClassifyFindingsWithAudit(ctx, repoContextText, state.ProjectPath, state.EnrichedFindings, llmClient, &state.TotalUsage, GetBatchSize(state))
+	tm, dispositions, audit, cacheStats, err := ClassifyFindingsWithAudit(ctx, repoContextText, state.ProjectPath, state.EnrichedFindings, trackTriageLLMStages(state, llmClient), &state.TotalUsage, GetBatchSize(state), withVerdictCachePolicy(state.Policy))
+	state.VerdictCacheStats = cacheStats
 	if err != nil {
 		return err
 	}
 
 	state.ThreatModel = tm
+	if tm == nil {
+		state.ThreatModelSource = "cache_skipped"
+	} else {
+		state.ThreatModelSource = "llm"
+	}
 	state.FindingDispositions = dispositions
 	state.ClassificationAudit = audit
 
@@ -498,7 +505,7 @@ func runPoCVerification(ctx context.Context, state *AgentState, llmClient llm.Cl
 
 	// Phase 5b: verify ALL true positives (deduped, batched, bounded concurrency,
 	// budget-capped) instead of silently dropping everything past the 75th.
-	pocResults, err := verifyPoCs(ctx, tpFindings, llmClient, &state.TotalUsage)
+	pocResults, err := verifyPoCs(ctx, tpFindings, trackLLMStage(state, usageStagePoC, llmClient), &state.TotalUsage)
 	if err != nil {
 		return fmt.Errorf("PoC verification LLM call failed: %w", err)
 	}
@@ -634,7 +641,7 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 		{Role: "user", Content: userPrompt},
 	}
 
-	response, usage, err := llmClient.Chat(ctx, messages)
+	response, usage, err := trackLLMStage(state, usageStageReport, llmClient).Chat(ctx, messages)
 	addUsage(&state.TotalUsage, usage)
 	if err != nil {
 		return fmt.Errorf("failed to generate report: %w", err)
@@ -716,6 +723,15 @@ func generateSummary(state *AgentState) {
 	if state.TotalUsage.TotalTokens > 0 {
 		sb.WriteString(fmt.Sprintf("\n_LLM usage (provider reported): %s. Cost is not estimated because it depends on provider, model, caching, and billing tier._\n",
 			formatLLMUsage(state.TotalUsage)))
+	}
+	if state.VerdictCacheStats.Enabled {
+		sb.WriteString(fmt.Sprintf("\n_AITriage verdict cache: %d hits · %d misses · %d stored · %d sensitive skipped · %d stale FP invalidated · saved=%t._\n",
+			state.VerdictCacheStats.Hits,
+			state.VerdictCacheStats.Misses,
+			state.VerdictCacheStats.Stores,
+			state.VerdictCacheStats.SkippedSensitive,
+			state.VerdictCacheStats.InvalidatedFalsePositives,
+			state.VerdictCacheStats.Saved))
 	}
 
 	state.SummaryMarkdown = sb.String()
@@ -1034,7 +1050,7 @@ func generateAIFixSpec(ctx context.Context, state *AgentState, llmClient llm.Cli
 		{Role: "user", Content: userPrompt},
 	}
 
-	response, usage, err := llmClient.Chat(ctx, messages)
+	response, usage, err := trackLLMStage(state, usageStageFixSpec, llmClient).Chat(ctx, messages)
 	addUsage(&state.TotalUsage, usage)
 	if err != nil {
 		return fmt.Errorf("failed to generate fix spec: %w", err)
@@ -1051,6 +1067,10 @@ func addUsage(total *llm.Usage, u llm.Usage) {
 	total.PromptTokens += u.PromptTokens
 	total.CompletionTokens += u.CompletionTokens
 	total.TotalTokens += u.TotalTokens
+	total.CachedPromptTokens += u.CachedPromptTokens
+	total.CacheCreationInputTokens += u.CacheCreationInputTokens
+	total.CacheReadInputTokens += u.CacheReadInputTokens
+	total.CacheTelemetryReported = total.CacheTelemetryReported || u.CacheTelemetryReported
 }
 
 // formatLLMUsage preserves the provider's total instead of inventing a price.
@@ -1063,6 +1083,24 @@ func formatLLMUsage(u llm.Usage) string {
 	}
 	if additional := u.TotalTokens - u.PromptTokens - u.CompletionTokens; additional > 0 {
 		parts = append(parts, fmt.Sprintf("%d reasoning/other", additional))
+	}
+	if u.CacheTelemetryReported {
+		cacheParts := []string{}
+		if u.CachedPromptTokens > 0 {
+			cacheParts = append(cacheParts, fmt.Sprintf("%d cached prompt", u.CachedPromptTokens))
+		}
+		if u.CacheCreationInputTokens > 0 {
+			cacheParts = append(cacheParts, fmt.Sprintf("%d cache creation", u.CacheCreationInputTokens))
+		}
+		if u.CacheReadInputTokens > 0 {
+			cacheParts = append(cacheParts, fmt.Sprintf("%d cache read", u.CacheReadInputTokens))
+		}
+		if len(cacheParts) == 0 {
+			cacheParts = append(cacheParts, "0 cache tokens")
+		}
+		parts = append(parts, "cache telemetry: "+strings.Join(cacheParts, ", "))
+	} else {
+		parts = append(parts, "cache telemetry: provider_did_not_report")
 	}
 	return strings.Join(parts, " · ")
 }

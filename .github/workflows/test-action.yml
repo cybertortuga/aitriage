@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 0
 
       - name: Build action image
-        run: docker build -t aitriage:test .
+        run: docker build --build-arg AITRIAGE_VERSION=test-${{ github.sha }} -t aitriage:test .
 
       - name: Run scan via entrypoint (SARIF gate)
         run: |

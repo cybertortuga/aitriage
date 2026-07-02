@@ -3,6 +3,7 @@ package graph
 import (
 	"fmt"
 
+	"github.com/cybertortuga/aitriage/internal/agent/llm"
 	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
 )
 
@@ -18,11 +19,24 @@ type TriageFindingsArtifact struct {
 	TriageStatus  string             `json:"triage_status"`
 	TotalFindings int                `json:"total_findings"`
 	HealthCheck   healthcheck.Result `json:"health_check"`
-	Findings      []TriagedFinding   `json:"findings"`
+	LLMUsage      LLMUsageArtifact   `json:"llm_usage"`
+	VerdictCache  VerdictCacheStats  `json:"verdict_cache"`
+	// ThreatModelSource is "llm", "cache_skipped", or "skipped_empty".
+	ThreatModelSource string           `json:"threat_model_source,omitempty"`
+	Findings          []TriagedFinding `json:"findings"`
 	// ClassificationAudit records raw structured model responses and their
 	// validation outcome. It is sensitive triage evidence and follows the same
 	// artifact retention policy as the finding inventory.
 	ClassificationAudit []ClassificationAuditEntry `json:"classification_audit"`
+}
+
+// LLMUsageArtifact records provider-reported token usage. Cost is deliberately
+// not estimated here because pricing depends on provider, model, region,
+// prompt-cache tier, and contract.
+type LLMUsageArtifact struct {
+	Total                llm.Usage            `json:"total"`
+	Stages               map[string]llm.Usage `json:"stages,omitempty"`
+	CacheTelemetryStatus string               `json:"cache_telemetry_status"`
 }
 
 // TriagedFinding pairs one original scanner finding with its one validated
@@ -59,7 +73,34 @@ func BuildTriageFindingsArtifact(state *AgentState) (TriageFindingsArtifact, err
 		TriageStatus:        "complete",
 		TotalFindings:       len(findings),
 		HealthCheck:         state.HealthCheck,
+		LLMUsage:            buildLLMUsageArtifact(state),
+		VerdictCache:        state.VerdictCacheStats,
+		ThreatModelSource:   state.ThreatModelSource,
 		Findings:            findings,
 		ClassificationAudit: state.ClassificationAudit,
 	}, nil
+}
+
+func buildLLMUsageArtifact(state *AgentState) LLMUsageArtifact {
+	stages := make(map[string]llm.Usage, len(state.StageUsage))
+	for name, usage := range state.StageUsage {
+		if isZeroUsage(usage) {
+			continue
+		}
+		stages[name] = usage
+	}
+	if len(stages) == 0 {
+		stages = nil
+	}
+
+	status := "provider_did_not_report"
+	if state.TotalUsage.CacheTelemetryReported {
+		status = "reported"
+	}
+
+	return LLMUsageArtifact{
+		Total:                state.TotalUsage,
+		Stages:               stages,
+		CacheTelemetryStatus: status,
+	}
 }

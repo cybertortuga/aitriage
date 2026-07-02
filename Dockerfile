@@ -9,6 +9,7 @@ RUN npm run build
 # ─── Stage 2: Build Go binary ─────────────────────────────────────────────────
 FROM golang:1.25-bookworm AS go-builder
 WORKDIR /app
+ARG AITRIAGE_VERSION=dev
 
 # C deps for tree-sitter CGO
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,14 +22,16 @@ RUN go mod download
 COPY . .
 # Synchronize web assets into the Go binary build context
 COPY --from=web-builder /web/dist /app/internal/server/ui/dist
-RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o /aitriage ./cmd/aitriage
+RUN CGO_ENABLED=1 go build -ldflags="-s -w -X main.Version=${AITRIAGE_VERSION}" -o /aitriage ./cmd/aitriage
 
 # ─── Stage 3: Runtime with all security tools ─────────────────────────────────
 FROM debian:bookworm-slim
+ARG AITRIAGE_VERSION=dev
 
 LABEL org.opencontainers.image.title="AITriage"
 LABEL org.opencontainers.image.description="AI-powered security scanner — all tools included"
 LABEL org.opencontainers.image.source="https://github.com/cybertortuga/aitriage"
+ENV AITRIAGE_VERSION=${AITRIAGE_VERSION}
 
 # System deps + runtime C libs (merged into single layer for cache)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -82,4 +85,3 @@ EXPOSE 8080
 
 ENTRYPOINT ["aitriage"]
 CMD ["web", "--port", "8080"]
-

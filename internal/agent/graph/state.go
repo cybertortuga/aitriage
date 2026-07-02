@@ -51,12 +51,15 @@ type AgentState struct {
 
 	// SecureCoder-enhanced fields
 	ThreatModel         *ThreatModel               // Structured threat model analysis
+	ThreatModelSource   string                     // "llm" | "cache_skipped" | "skipped_empty"
 	FindingDispositions []FindingDisposition       // TP/FP/NR classification per finding
 	ClassificationAudit []ClassificationAuditEntry // Raw structured LLM responses and validation decisions
 	PoCResults          []PoCResult                // PoC verification results
 
 	// LLM usage tracking (accumulated across all Chat calls)
-	TotalUsage llm.Usage
+	TotalUsage        llm.Usage
+	StageUsage        map[string]llm.Usage
+	VerdictCacheStats VerdictCacheStats
 
 	// Outputs
 	ReportMarkdown  string // Full report (includes FP rationale) → artifact

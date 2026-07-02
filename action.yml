@@ -51,13 +51,16 @@ inputs:
     description: 'Write the actionable summary (TP/NR only, no FP) to this file. Agent command only.'
     required: false
     default: ''
+  verdict-cache-dir:
+    description: 'Directory for the deterministic AI verdict cache. Leave empty to disable.'
+    required: false
+    default: ''
 
 runs:
   using: 'docker'
-  # Major-version runtime image. The v1 tag is moved only by the release
-  # workflow on main so downstream workflows can consume fixes without
-  # hand-repinning an image digest on every rollout.
-  image: 'docker://ghcr.io/cybertortuga/aitriage:v1'
+  # Pilot branch runtime image. Do not merge this image tag into main: the
+  # stable release Action must keep consuming ghcr.io/cybertortuga/aitriage:v1.
+  image: 'docker://ghcr.io/cybertortuga/aitriage:codex-llm-caching-pilot'
   entrypoint: '/entrypoint.sh'
   env:
     AITRIAGE_COMMAND: ${{ inputs.command }}
@@ -72,6 +75,7 @@ runs:
     AITRIAGE_BASELINE: ${{ inputs.baseline }}
     AITRIAGE_ARGS: ${{ inputs.args }}
     AITRIAGE_SUMMARY_FILE: ${{ inputs.summary-file }}
+    AITRIAGE_VERDICT_CACHE_DIR: ${{ inputs.verdict-cache-dir }}
 
 branding:
   icon: 'shield'

@@ -216,10 +216,32 @@ func TestGenerateSummaryReportsProviderUsageWithoutInventingCost(t *testing.T) {
 	generateSummary(state)
 
 	summary := state.SummaryMarkdown
-	if !strings.Contains(summary, "88735 total · 32777 prompt · 32189 completion · 23769 reasoning/other") {
+	if !strings.Contains(summary, "88735 total · 32777 prompt · 32189 completion · 23769 reasoning/other · cache telemetry: provider_did_not_report") {
 		t.Fatalf("summary does not contain complete provider usage: %s", summary)
 	}
 	if strings.Contains(strings.ToLower(summary), "est. cost") || strings.Contains(summary, "$0.") {
 		t.Fatalf("summary must not invent a cost: %s", summary)
+	}
+}
+
+func TestGenerateSummaryReportsVerdictCacheStats(t *testing.T) {
+	state := &AgentState{
+		VerdictCacheStats: VerdictCacheStats{
+			Enabled:                   true,
+			Hits:                      7,
+			Misses:                    3,
+			Stores:                    3,
+			SkippedSensitive:          1,
+			InvalidatedFalsePositives: 2,
+			Saved:                     true,
+		},
+	}
+
+	generateSummary(state)
+
+	summary := state.SummaryMarkdown
+	want := "AITriage verdict cache: 7 hits · 3 misses · 3 stored · 1 sensitive skipped · 2 stale FP invalidated · saved=true"
+	if !strings.Contains(summary, want) {
+		t.Fatalf("summary does not contain verdict cache stats %q: %s", want, summary)
 	}
 }
