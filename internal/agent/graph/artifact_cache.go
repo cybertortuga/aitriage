@@ -13,7 +13,10 @@ import (
 	"github.com/cybertortuga/aitriage/internal/agent/prompts"
 )
 
-const artifactCacheSchemaVersion = 1
+// Schema v2: generated CS-* IDs (FindingID) are excluded from the disposition
+// hash — fingerprints already identify findings, and derived IDs must not be
+// able to change the key.
+const artifactCacheSchemaVersion = 2
 
 type artifactCacheKeyContext struct {
 	SchemaVersion       int      `json:"schema_version"`
@@ -35,6 +38,7 @@ type artifactBundleCache struct {
 
 type ArtifactCacheStats struct {
 	Enabled             bool   `json:"enabled"`
+	Key                 string `json:"key,omitempty"`
 	LoadedEntries       int    `json:"loaded_entries,omitempty"`
 	ExactHit            bool   `json:"exact_hit"`
 	MissReason          string `json:"miss_reason,omitempty"`
@@ -103,6 +107,12 @@ func (c *artifactBundleCache) Restore(state *AgentState, key string) bool {
 	}
 	if key == "" {
 		c.stats.MissReason = "empty_key"
+		return false
+	}
+	// Distinguish "cache file absent/empty" from "entries present but key not
+	// found" — the two point at completely different failure classes in CI.
+	if len(c.entries) == 0 {
+		c.stats.MissReason = "no_entries_loaded"
 		return false
 	}
 	entry, ok := c.entries[key]
@@ -218,7 +228,6 @@ func buildArtifactCacheKey(state *AgentState) (string, string) {
 
 func hashArtifactDisposition(d FindingDisposition) string {
 	type artifactDispositionKey struct {
-		FindingID   string `json:"finding_id"`
 		Fingerprint string `json:"fingerprint"`
 		Disposition string `json:"disposition"`
 		Confidence  string `json:"confidence,omitempty"`
@@ -232,7 +241,6 @@ func hashArtifactDisposition(d FindingDisposition) string {
 		evidence = hex.EncodeToString(evidenceSum[:])
 	}
 	payload := artifactDispositionKey{
-		FindingID:   strings.TrimSpace(d.FindingID),
 		Fingerprint: strings.TrimSpace(d.Fingerprint),
 		Disposition: strings.TrimSpace(d.Disposition),
 		Confidence:  strings.TrimSpace(d.Confidence),

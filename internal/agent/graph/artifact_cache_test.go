@@ -103,6 +103,59 @@ func TestArtifactCacheKeyInvalidatesOnDispositionAndPolicyChange(t *testing.T) {
 	}
 }
 
+func TestArtifactCacheKeyIgnoresGeneratedVulnIDs(t *testing.T) {
+	base := artifactCacheTestState("True Positive")
+	key1, miss := buildArtifactCacheKey(base)
+	if miss != "" {
+		t.Fatalf("base key miss = %q", miss)
+	}
+
+	renamed := artifactCacheTestState("True Positive")
+	renamed.EnrichedFindings[0].VulnID = "CS-AUTH-042"
+	renamed.FindingDispositions[0].FindingID = "CS-AUTH-042"
+	key2, miss := buildArtifactCacheKey(renamed)
+	if miss != "" {
+		t.Fatalf("renamed key miss = %q", miss)
+	}
+	if key1 != key2 {
+		t.Fatal("artifact cache key must not depend on generated CS-* IDs")
+	}
+}
+
+func TestArtifactCacheRestoreDistinguishesEmptyCacheFromKeyMiss(t *testing.T) {
+	t.Setenv("AITRIAGE_ARTIFACT_CACHE_DIR", t.TempDir())
+
+	empty := newArtifactBundleCache()
+	if empty.Restore(&AgentState{}, "v2:deadbeef") {
+		t.Fatal("empty cache should miss")
+	}
+	if reason := empty.Stats().MissReason; reason != "no_entries_loaded" {
+		t.Fatalf("empty cache miss reason = %q, want no_entries_loaded", reason)
+	}
+
+	state := artifactCacheTestState("True Positive")
+	state.ReportMarkdown = "# report"
+	state.AIFixSpec = "# fixspec"
+	key, miss := buildArtifactCacheKey(state)
+	if miss != "" {
+		t.Fatalf("key miss = %q", miss)
+	}
+	warm := newArtifactBundleCache()
+	warm.Store(state, key)
+	warm.Save()
+
+	populated := newArtifactBundleCache()
+	if populated.Restore(&AgentState{}, "v2:other-key") {
+		t.Fatal("unknown key should miss")
+	}
+	if reason := populated.Stats().MissReason; reason != "key_miss" {
+		t.Fatalf("populated cache miss reason = %q, want key_miss", reason)
+	}
+	if populated.Stats().Key != "" {
+		t.Fatalf("stats key is set by the orchestrator, not Restore: %q", populated.Stats().Key)
+	}
+}
+
 func TestArtifactCacheCorruptCacheIgnored(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("AITRIAGE_ARTIFACT_CACHE_DIR", dir)

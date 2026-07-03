@@ -34,3 +34,47 @@ func enrichedOrderSignature(findings []EnrichedFinding) []string {
 	}
 	return out
 }
+
+func TestClassifyVulnCodeIsDeterministicForAmbiguousMessages(t *testing.T) {
+	// Real remote-run messages that match several VulnClassCodes keys. Map
+	// iteration used to pick a random winner, which changed CS-* IDs — and every
+	// cache key derived from them — between otherwise identical runs.
+	cases := []struct {
+		message string
+		want    string
+	}{
+		// "authentication" (14) beats "jwt" (3) and "secret" (6).
+		{"[trivy] python-pyjwt: PyJWT: Authentication bypass due to forged JSON Web Tokens with a weak secret", "AUTH"},
+		// "information disclosure" (22) beats "path traversal" (14).
+		{"[trivy] vite: Vite: Information disclosure via path traversal in dev server's .map request handling", "INFO"},
+		// "session" (7) beats "cookie" (6).
+		{"Session cookie missing Secure flag", "SESSION"},
+		// "hardcoded secret" (16) beats "secret" (6); same code, exercises specificity.
+		{"Hardcoded secret in configuration file", "SECRETS"},
+	}
+	for _, tc := range cases {
+		for i := 0; i < 500; i++ {
+			if got := classifyVulnCode(tc.message); got != tc.want {
+				t.Fatalf("classifyVulnCode(%q) = %q on call %d, want stable %q", tc.message, got, i, tc.want)
+			}
+		}
+	}
+}
+
+func TestAssignVulnIDsStableAcrossRuns(t *testing.T) {
+	build := func() []EnrichedFinding {
+		findings := []EnrichedFinding{
+			{ID: "T1", Type: "external", Source: "trivy", Severity: "HIGH", File: "req.txt", Line: 1, Message: "[trivy] PyJWT: Authentication bypass due to forged JSON Web Tokens with a weak secret"},
+			{ID: "T2", Type: "external", Source: "trivy", Severity: "HIGH", File: "req.txt", Line: 2, Message: "[trivy] PyJWT: Denial of Service via crafted JWS tokens"},
+			{ID: "T3", Type: "external", Source: "trivy", Severity: "MEDIUM", File: "pkg.json", Line: 3, Message: "[trivy] Vite: Information disclosure via path traversal in dev server"},
+		}
+		assignVulnIDs(findings)
+		return findings
+	}
+	base := enrichedOrderSignature(build())
+	for i := 0; i < 100; i++ {
+		if got := enrichedOrderSignature(build()); !reflect.DeepEqual(base, got) {
+			t.Fatalf("vuln IDs unstable across runs:\nbase=%v\ngot=%v", base, got)
+		}
+	}
+}

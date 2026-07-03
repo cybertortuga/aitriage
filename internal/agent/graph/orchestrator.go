@@ -43,11 +43,15 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 		if artifactKeyMiss != "" {
 			artifactCache.stats.MissReason = artifactKeyMiss
 			fmt.Fprintf(os.Stderr, "   ℹ️ Artifact cache miss: %s\n", artifactKeyMiss)
-		} else if artifactCache.Restore(state, artifactKey) {
-			artifactCacheHit = true
-			fmt.Fprintf(os.Stderr, "   ✅ Artifact cache exact hit: restored PoC/report/fixspec bundle\n")
 		} else {
-			fmt.Fprintf(os.Stderr, "   ℹ️ Artifact cache miss: %s\n", firstNonEmpty(artifactCache.stats.MissReason, "key_miss"))
+			artifactCache.stats.Key = artifactKey
+			fmt.Fprintf(os.Stderr, "   ℹ️ Artifact cache key: %s (loaded_entries=%d)\n", artifactKey, artifactCache.stats.LoadedEntries)
+			if artifactCache.Restore(state, artifactKey) {
+				artifactCacheHit = true
+				fmt.Fprintf(os.Stderr, "   ✅ Artifact cache exact hit: restored PoC/report/fixspec bundle\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "   ℹ️ Artifact cache miss: %s\n", firstNonEmpty(artifactCache.stats.MissReason, "key_miss"))
+			}
 		}
 	}
 
@@ -367,12 +371,32 @@ func AssignVulnIDsPublic(findings []EnrichedFinding) {
 	assignVulnIDs(findings)
 }
 
+// vulnClassKeys holds VulnClassCodes keys in a fixed order: longest first (the
+// most specific class wins), then alphabetical. Map iteration order is random
+// per run, which made CS-* IDs — and every cache key derived from them —
+// nondeterministic for messages matching more than one class.
+var vulnClassKeys = sortedVulnClassKeys()
+
+func sortedVulnClassKeys() []string {
+	keys := make([]string, 0, len(prompts.VulnClassCodes))
+	for key := range prompts.VulnClassCodes {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if len(keys[i]) != len(keys[j]) {
+			return len(keys[i]) > len(keys[j])
+		}
+		return keys[i] < keys[j]
+	})
+	return keys
+}
+
 // classifyVulnCode maps a finding message to a short vulnerability class code.
 func classifyVulnCode(message string) string {
 	lower := strings.ToLower(message)
-	for key, code := range prompts.VulnClassCodes {
+	for _, key := range vulnClassKeys {
 		if strings.Contains(lower, key) {
-			return code
+			return prompts.VulnClassCodes[key]
 		}
 	}
 	return "MISC"
