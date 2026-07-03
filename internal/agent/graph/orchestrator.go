@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -175,7 +176,10 @@ func enrichFindings(state *AgentState) {
 		})
 	}
 
-	// Assign CS-XXX-NNN vulnerability IDs
+	sortEnrichedFindings(enriched)
+
+	// Assign CS-XXX-NNN vulnerability IDs after canonical sorting so IDs remain
+	// stable when scanner result order varies between otherwise identical runs.
 	assignVulnIDs(enriched)
 
 	state.EnrichedFindings = enriched
@@ -286,6 +290,66 @@ func computeHealthCheck(state *AgentState) {
 // hcKey builds a location key used to match AI dispositions to findings.
 func hcKey(id, file string, line int) string {
 	return fmt.Sprintf("%s|%s|%d", strings.ToLower(id), strings.ToLower(file), line)
+}
+
+func sortEnrichedFindings(findings []EnrichedFinding) {
+	sort.SliceStable(findings, func(i, j int) bool {
+		a, b := findings[i], findings[j]
+		if ai, bj := findingTypeOrder(a.Type), findingTypeOrder(b.Type); ai != bj {
+			return ai < bj
+		}
+		if as, bs := strings.ToLower(strings.TrimSpace(a.Source)), strings.ToLower(strings.TrimSpace(b.Source)); as != bs {
+			return as < bs
+		}
+		if ai, bj := severitySortRank(a.Severity), severitySortRank(b.Severity); ai != bj {
+			return ai < bj
+		}
+		if af, bf := normalizePath(a.File), normalizePath(b.File); af != bf {
+			return af < bf
+		}
+		if a.Line != b.Line {
+			return a.Line < b.Line
+		}
+		if ai, bj := strings.ToLower(strings.TrimSpace(a.ID)), strings.ToLower(strings.TrimSpace(b.ID)); ai != bj {
+			return ai < bj
+		}
+		if am, bm := strings.TrimSpace(a.Message), strings.TrimSpace(b.Message); am != bm {
+			return am < bm
+		}
+		return Fingerprint(a) < Fingerprint(b)
+	})
+}
+
+func findingTypeOrder(value string) int {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "core":
+		return 0
+	case "external":
+		return 1
+	case "nfr":
+		return 2
+	case "deploy":
+		return 3
+	case "network":
+		return 4
+	default:
+		return 9
+	}
+}
+
+func severitySortRank(value string) int {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "CRITICAL":
+		return 0
+	case "HIGH":
+		return 1
+	case "MEDIUM":
+		return 2
+	case "LOW":
+		return 3
+	default:
+		return 9
+	}
 }
 
 // assignVulnIDs generates CS-XXX-NNN identifiers for each finding.
