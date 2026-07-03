@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -194,21 +195,26 @@ func containsSensitiveCacheValue(value string) bool {
 	if value == "" {
 		return false
 	}
-	lower := strings.ToLower(value)
-	for _, marker := range []string{
-		"-----begin ",
-		"sk-",
-		"ghp_",
-		"github_pat_",
-		"xoxb-",
-		"xoxp-",
-		"eyj",
-	} {
-		if strings.Contains(lower, marker) {
+	if strings.Contains(strings.ToLower(value), "-----begin ") {
+		return true
+	}
+	for _, pattern := range sensitiveCacheValuePatterns {
+		if pattern.MatchString(value) {
 			return true
 		}
 	}
-	return strings.Contains(value, "AKIA")
+	return false
+}
+
+var sensitiveCacheValuePatterns = []*regexp.Regexp{
+	// Boundary-aware matching avoids false positives in safe words like
+	// "flask-limiter" while still blocking token-shaped credentials.
+	regexp.MustCompile(`(?i)(^|[^A-Za-z0-9_-])sk-[A-Za-z0-9][A-Za-z0-9_-]{19,}([^A-Za-z0-9_-]|$)`),
+	regexp.MustCompile(`(?i)(^|[^A-Za-z0-9_-])ghp_[A-Za-z0-9_]{20,}([^A-Za-z0-9_-]|$)`),
+	regexp.MustCompile(`(?i)(^|[^A-Za-z0-9_-])github_pat_[A-Za-z0-9_]{20,}([^A-Za-z0-9_-]|$)`),
+	regexp.MustCompile(`(?i)(^|[^A-Za-z0-9_-])xox[bp]-[A-Za-z0-9-]{20,}([^A-Za-z0-9_-]|$)`),
+	regexp.MustCompile(`(?i)(^|[^A-Za-z0-9_-])eyj[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}([^A-Za-z0-9_-]|$)`),
+	regexp.MustCompile(`(^|[^A-Z0-9])AKIA[0-9A-Z]{16}([^A-Z0-9]|$)`),
 }
 
 // Save persists the cache to disk (best-effort; failures are non-fatal).

@@ -192,6 +192,33 @@ func TestVerdictCacheIgnoresCorruptCache(t *testing.T) {
 	}
 }
 
+func TestContainsSensitiveCacheValueTokenShape(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     string
+		sensitive bool
+	}{
+		{name: "safe package name", value: "flask-limiter", sensitive: false},
+		{name: "safe package guidance", value: "Use flask-limiter or slowapi for rate limiting.", sensitive: false},
+		{name: "openai style token", value: "token sk-aaaaaaaaaaaaaaaaaaaaaaaa must not persist", sensitive: true},
+		{name: "github classic pat", value: "token ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaa must not persist", sensitive: true},
+		{name: "github fine grained pat", value: "token github_pat_aaaaaaaaaaaaaaaaaaaaaaaaaaaa must not persist", sensitive: true},
+		{name: "slack bot token", value: "token xoxb-aaaaaaaaaaaaaaaaaaaaaaaa must not persist", sensitive: true},
+		{name: "slack user token", value: "token xoxp-aaaaaaaaaaaaaaaaaaaaaaaa must not persist", sensitive: true},
+		{name: "jwt token", value: "token eyJaaaaaaaaaaa.bbbbbbbbbbbb.cccccccccccc must not persist", sensitive: true},
+		{name: "aws access key id", value: "token AKIA1234567890ABCDEF must not persist", sensitive: true},
+		{name: "private key", value: "-----BEGIN PRIVATE KEY-----", sensitive: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := containsSensitiveCacheValue(tt.value); got != tt.sensitive {
+				t.Fatalf("containsSensitiveCacheValue(%q) = %v, want %v", tt.value, got, tt.sensitive)
+			}
+		})
+	}
+}
+
 func TestVerdictCacheDoesNotPersistSensitiveEvidence(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("AITRIAGE_CACHE_DIR", dir)
@@ -199,9 +226,9 @@ func TestVerdictCacheDoesNotPersistSensitiveEvidence(t *testing.T) {
 	c := newVerdictCache("model-a")
 	c.Set("fp-secret", FindingDisposition{
 		Disposition: "False Positive",
-		Rationale:   "Mitigated, but sample token sk-live-secret-value must not persist",
+		Rationale:   "Mitigated, but sample token sk-aaaaaaaaaaaaaaaaaaaaaaaa must not persist",
 		Confidence:  "high",
-		Evidence:    &DispositionEvidence{Basis: "code_mitigation", File: "config.go", Line: 1, Observed: "token := \"sk-live-secret-value\""},
+		Evidence:    &DispositionEvidence{Basis: "code_mitigation", File: "config.go", Line: 1, Observed: "token := \"sk-aaaaaaaaaaaaaaaaaaaaaaaa\""},
 	})
 	c.Save()
 
@@ -216,7 +243,7 @@ func TestVerdictCacheDoesNotPersistSensitiveEvidence(t *testing.T) {
 		if readErr != nil {
 			t.Fatalf("read cache file: %v", readErr)
 		}
-		if strings.Contains(string(data), "sk-live-secret-value") {
+		if strings.Contains(string(data), "sk-aaaaaaaaaaaaaaaaaaaaaaaa") {
 			t.Fatalf("cache file persisted sensitive evidence: %s", data)
 		}
 	}

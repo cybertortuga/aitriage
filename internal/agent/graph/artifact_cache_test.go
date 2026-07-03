@@ -119,7 +119,7 @@ func TestArtifactCacheCorruptCacheIgnored(t *testing.T) {
 func TestArtifactCacheSkipsSensitiveBundle(t *testing.T) {
 	t.Setenv("AITRIAGE_ARTIFACT_CACHE_DIR", t.TempDir())
 	state := artifactCacheTestState("True Positive")
-	state.ReportMarkdown = "token sk-test should not be cached"
+	state.ReportMarkdown = "token sk-aaaaaaaaaaaaaaaaaaaaaaaa should not be cached"
 	state.AIFixSpec = "# fixspec"
 	key, miss := buildArtifactCacheKey(state)
 	if miss != "" {
@@ -130,6 +130,24 @@ func TestArtifactCacheSkipsSensitiveBundle(t *testing.T) {
 	cache.Store(state, key)
 	if stats := cache.Stats(); stats.Stores != 0 || stats.SkippedSensitive != 1 {
 		t.Fatalf("sensitive store stats = %+v, want skipped", stats)
+	}
+}
+
+func TestArtifactCacheStoresSafePackageNameBundle(t *testing.T) {
+	t.Setenv("AITRIAGE_ARTIFACT_CACHE_DIR", t.TempDir())
+	state := artifactCacheTestState("True Positive")
+	state.ReportMarkdown = "Use flask-limiter or slowapi for rate limiting."
+	state.AIFixSpec = "# fixspec"
+	key, miss := buildArtifactCacheKey(state)
+	if miss != "" {
+		t.Fatalf("key miss = %q", miss)
+	}
+
+	cache := newArtifactBundleCache()
+	cache.Store(state, key)
+	cache.Save()
+	if stats := cache.Stats(); stats.Stores != 1 || stats.SkippedSensitive != 0 || !stats.Saved {
+		t.Fatalf("safe store stats = %+v, want saved store", stats)
 	}
 }
 
