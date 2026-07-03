@@ -55,6 +55,8 @@ aitriage.yml
 /data/
 /.codex-work/
 LOCAL_DOCKER_DUAL_KEY_PLAN.md
+CLAUDE.md
+artifact-reuse-cache.md
 
 # =========================
 # Dev scratch / temp outputs

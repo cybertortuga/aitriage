@@ -57,9 +57,11 @@ type AgentState struct {
 	PoCResults          []PoCResult                // PoC verification results
 
 	// LLM usage tracking (accumulated across all Chat calls)
-	TotalUsage        llm.Usage
-	StageUsage        map[string]llm.Usage
-	VerdictCacheStats VerdictCacheStats
+	TotalUsage         llm.Usage
+	StageUsage         map[string]llm.Usage
+	VerdictCacheStats  VerdictCacheStats
+	ArtifactCacheStats ArtifactCacheStats
+	PoCStats           PoCStats
 
 	// Outputs
 	ReportMarkdown  string // Full report (includes FP rationale) → artifact

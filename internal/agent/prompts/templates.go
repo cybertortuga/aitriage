@@ -5,6 +5,12 @@ package prompts
 // alter TP/FP/NR decisions.
 const SecureCoderPromptVersion = "securecoder-v1"
 
+const (
+	PoCPromptVersion     = "poc-v1"
+	ReportPromptVersion  = "report-v1"
+	FixSpecPromptVersion = "fixspec-v1"
+)
+
 // ── Secure Coding Guidelines (from SecureCoder SKILL.md) ─────────────────────
 //
 // These rules are injected into the triage and report system prompts so the LLM
@@ -224,13 +230,13 @@ const PoCSystemPrompt = SecureCoderFramework + `
 
 ## Current Task: PoC Verification
 
-After scanner findings have been triaged, generate a Proof-of-Concept (PoC) verification for each True Positive.
+After scanner findings have been triaged, produce a defensive exploitability assessment for each True Positive.
 
-IMPORTANT: Do NOT execute the PoC. Reason through it step by step using the actual code provided.
+IMPORTANT: Do NOT execute code, do NOT provide working exploit payloads, and do NOT provide copy-paste attack strings. Reason through exploitability step by step using the actual code provided. Use safe, redacted, or abstract input descriptions when an attacker-controlled value must be discussed.
 
 For each True Positive vulnerability:
 
-1. **Describe the PoC**: What input/request would an attacker craft to exploit this vulnerability?
+1. **Describe the safe verification idea**: What class of attacker-controlled input/request would exercise this issue? Keep examples redacted or abstract.
 2. **Trace the data flow**: Follow the exploit input through the code.
 3. **Identify interception**: Where would a fix intercept or neutralize the exploit?
 4. **Determine outcome**: Would the exploit succeed? What is the blast radius?

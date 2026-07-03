@@ -60,7 +60,7 @@ func TestVerifyPoCsDedup(t *testing.T) {
 	mock := &pocLLM{t: t}
 	var usage llm.Usage
 
-	_, err := verifyPoCs(context.Background(), []EnrichedFinding{dup, dup, other}, mock, &usage)
+	_, _, err := verifyPoCs(context.Background(), []EnrichedFinding{dup, dup, other}, mock, &usage)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestVerifyPoCsBudgetOverflowToNeedsReview(t *testing.T) {
 	mock := &pocLLM{t: t}
 	var usage llm.Usage
 
-	results, err := verifyPoCs(context.Background(), tpFindings(3), mock, &usage)
+	results, _, err := verifyPoCs(context.Background(), tpFindings(3), mock, &usage)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -98,9 +98,12 @@ func TestVerifyPoCsTransportErrorFatal(t *testing.T) {
 	}}
 	var usage llm.Usage
 
-	_, err := verifyPoCs(context.Background(), tpFindings(2), mock, &usage)
+	_, stats, err := verifyPoCs(context.Background(), tpFindings(2), mock, &usage)
 	if err == nil {
 		t.Fatal("expected error on PoC transport failure")
+	}
+	if stats.TransportErrors != 1 {
+		t.Fatalf("transport errors = %d, want 1", stats.TransportErrors)
 	}
 }
 
@@ -111,11 +114,38 @@ func TestVerifyPoCsMalformedTolerated(t *testing.T) {
 	}}
 	var usage llm.Usage
 
-	results, err := verifyPoCs(context.Background(), tpFindings(2), mock, &usage)
+	results, stats, err := verifyPoCs(context.Background(), tpFindings(2), mock, &usage)
 	if err != nil {
 		t.Fatalf("malformed PoC response should be tolerated, got: %v", err)
 	}
 	if len(results) != 0 {
 		t.Fatalf("malformed batch should yield no results, got %d", len(results))
+	}
+	if stats.ParseFailures != 1 {
+		t.Fatalf("parse failures = %d, want 1", stats.ParseFailures)
+	}
+}
+
+func TestVerifyPoCsSafetyRefusalToNeedsReview(t *testing.T) {
+	pinConcurrency(t)
+	mock := &pocLLM{t: t, handler: func(call int, batch []EnrichedFinding) (string, error) {
+		return "I cannot assist with exploit payloads, but recommend defensive review.", nil
+	}}
+	var usage llm.Usage
+
+	results, stats, err := verifyPoCs(context.Background(), tpFindings(2), mock, &usage)
+	if err != nil {
+		t.Fatalf("safety refusal should not fail PoC verification: %v", err)
+	}
+	if stats.Refusals != 2 {
+		t.Fatalf("refusals = %d, want 2", stats.Refusals)
+	}
+	if len(results) != 2 {
+		t.Fatalf("refusal should create one NR result per finding, got %d", len(results))
+	}
+	for _, result := range results {
+		if result.Conclusion != "Needs Manual Review" {
+			t.Fatalf("refusal conclusion = %q, want Needs Manual Review", result.Conclusion)
+		}
 	}
 }

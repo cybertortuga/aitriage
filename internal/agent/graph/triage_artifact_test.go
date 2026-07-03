@@ -55,6 +55,16 @@ func TestBuildTriageFindingsArtifactPreservesEveryFindingAndDisposition(t *testi
 			Stores:        2,
 			Saved:         true,
 		},
+		ArtifactCacheStats: ArtifactCacheStats{
+			Enabled:         true,
+			ExactHit:        true,
+			RestoredPoC:     true,
+			RestoredReport:  true,
+			RestoredFixSpec: true,
+		},
+		PoCStats: PoCStats{
+			Refusals: 1,
+		},
 	}
 
 	artifact, err := BuildTriageFindingsArtifact(state)
@@ -82,6 +92,12 @@ func TestBuildTriageFindingsArtifactPreservesEveryFindingAndDisposition(t *testi
 	if artifact.VerdictCache.Hits != 1 || artifact.VerdictCache.Misses != 2 || artifact.VerdictCache.Stores != 2 || !artifact.VerdictCache.Saved {
 		t.Fatalf("verdict cache artifact = %+v, want hit/miss/store stats", artifact.VerdictCache)
 	}
+	if !artifact.ArtifactCache.ExactHit || !artifact.ArtifactCache.RestoredReport || !artifact.ArtifactCache.RestoredFixSpec {
+		t.Fatalf("artifact cache artifact = %+v, want exact hit and restored artifacts", artifact.ArtifactCache)
+	}
+	if artifact.PoCStats.Refusals != 1 {
+		t.Fatalf("poc stats = %+v, want one refusal", artifact.PoCStats)
+	}
 	if artifact.ThreatModelSource != "cache_skipped" {
 		t.Fatalf("threat model source = %q, want cache_skipped", artifact.ThreatModelSource)
 	}
@@ -106,7 +122,7 @@ func TestBuildTriageFindingsArtifactPreservesEveryFindingAndDisposition(t *testi
 		t.Fatalf("marshal artifact: %v", err)
 	}
 	jsonText := string(data)
-	for _, want := range []string{"\"schema_version\":1", "\"triage_status\":\"complete\"", "\"llm_usage\"", "\"cached_prompt_tokens\":40", "\"cache_telemetry_status\":\"reported\"", "\"verdict_cache\"", "\"hits\":1", "\"misses\":2", "\"stores\":2", "\"threat_model_source\":\"cache_skipped\"", "\"code_snippet\":\"token = 'x'\"", "\"rationale\":\"Only controls animation\"", "\"disposition_source\":\"deterministic\"", "\"classification_audit\"", "\"raw_response\""} {
+	for _, want := range []string{"\"schema_version\":1", "\"triage_status\":\"complete\"", "\"llm_usage\"", "\"cached_prompt_tokens\":40", "\"cache_telemetry_status\":\"reported\"", "\"verdict_cache\"", "\"hits\":1", "\"misses\":2", "\"stores\":2", "\"artifact_cache\"", "\"exact_hit\":true", "\"poc_verification\"", "\"poc_refusals\":1", "\"threat_model_source\":\"cache_skipped\"", "\"code_snippet\":\"token = 'x'\"", "\"rationale\":\"Only controls animation\"", "\"disposition_source\":\"deterministic\"", "\"classification_audit\"", "\"raw_response\""} {
 		if !strings.Contains(jsonText, want) {
 			t.Errorf("serialized artifact does not contain %s: %s", want, jsonText)
 		}

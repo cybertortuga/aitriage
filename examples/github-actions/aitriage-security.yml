@@ -125,6 +125,14 @@ jobs:
           # The agent scans recent Git history for leaked secrets.
           fetch-depth: 0
 
+      - name: Restore AITriage AI caches
+        id: aitriage-cache-restore
+        # actions/cache/restore@v4.3.0
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .aitriage-cache
+          key: aitriage-ai-v1-${{ runner.os }}-${{ github.repository_id }}-${{ github.sha }}
+
       - name: Run AI triage
         # AI triage is mandatory for every authorised pipeline run. Any provider
         # or agent failure fails this job and therefore the whole pipeline.
@@ -135,17 +143,15 @@ jobs:
           command: agent
           # A clean TP/Needs Review summary is written to the job summary too.
           summary-file: summary.md
-          # Optional experimental cost control for trusted runs only:
-          # pair `verdict-cache-dir` with actions/cache/restore before this
-          # step and actions/cache/save after artifacts are written. Never save
-          # cache entries from untrusted fork pull requests.
-          # verdict-cache-dir: .aitriage-cache
+          verdict-cache-dir: .aitriage-cache
+          artifact-cache-dir: .aitriage-cache
           args: >-
             --no-chat
             --health-profile standard
             --fail-on any
             --report-out report.md
             --fixspec-out fixspec.md
+            --triage-out triage-findings.json
 
       - name: Upload AI triage artifacts
         # v4.6.2
@@ -156,5 +162,18 @@ jobs:
             summary.md
             report.md
             fixspec.md
+            triage-findings.json
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Save AITriage AI caches
+        if: >-
+          always() &&
+          steps.aitriage-cache-restore.outputs.cache-hit != 'true' &&
+          hashFiles('.aitriage-cache/triage_cache.json') != '' &&
+          hashFiles('.aitriage-cache/artifact_bundle_cache.json') != ''
+        # actions/cache/save@v4.3.0
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .aitriage-cache
+          key: aitriage-ai-v1-${{ runner.os }}-${{ github.repository_id }}-${{ github.sha }}

@@ -4,6 +4,11 @@
 .jules
 .aitriage
 .gemini
+.codex-work
+.env
+CLAUDE.md
+LOCAL_DOCKER_DUAL_KEY_PLAN.md
+artifact-reuse-cache.md
 bin/
 docs/
 reports/

@@ -21,6 +21,8 @@ type TriageFindingsArtifact struct {
 	HealthCheck   healthcheck.Result `json:"health_check"`
 	LLMUsage      LLMUsageArtifact   `json:"llm_usage"`
 	VerdictCache  VerdictCacheStats  `json:"verdict_cache"`
+	ArtifactCache ArtifactCacheStats `json:"artifact_cache"`
+	PoCStats      PoCStats           `json:"poc_verification"`
 	// ThreatModelSource is "llm", "cache_skipped", or "skipped_empty".
 	ThreatModelSource string           `json:"threat_model_source,omitempty"`
 	Findings          []TriagedFinding `json:"findings"`
@@ -75,6 +77,8 @@ func BuildTriageFindingsArtifact(state *AgentState) (TriageFindingsArtifact, err
 		HealthCheck:         state.HealthCheck,
 		LLMUsage:            buildLLMUsageArtifact(state),
 		VerdictCache:        state.VerdictCacheStats,
+		ArtifactCache:       state.ArtifactCacheStats,
+		PoCStats:            state.PoCStats,
 		ThreatModelSource:   state.ThreatModelSource,
 		Findings:            findings,
 		ClassificationAudit: state.ClassificationAudit,

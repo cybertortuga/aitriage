@@ -245,3 +245,27 @@ func TestGenerateSummaryReportsVerdictCacheStats(t *testing.T) {
 		t.Fatalf("summary does not contain verdict cache stats %q: %s", want, summary)
 	}
 }
+
+func TestGenerateSummaryReportsArtifactCacheStats(t *testing.T) {
+	state := &AgentState{
+		ArtifactCacheStats: ArtifactCacheStats{
+			Enabled:             true,
+			ExactHit:            true,
+			RestoredPoC:         true,
+			RestoredReport:      true,
+			RestoredFixSpec:     true,
+			Stores:              0,
+			SkippedSensitive:    1,
+			CorruptCacheIgnored: true,
+			Saved:               false,
+		},
+	}
+
+	generateSummary(state)
+
+	summary := state.SummaryMarkdown
+	want := "AITriage artifact cache: exact hit · restored poc=true report=true fixspec=true · stored=0 · sensitive skipped=1 · corrupt ignored=true · miss_reason=n/a · saved=false"
+	if !strings.Contains(summary, want) {
+		t.Fatalf("summary does not contain artifact cache stats %q: %s", want, summary)
+	}
+}

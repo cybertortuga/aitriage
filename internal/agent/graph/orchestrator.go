@@ -35,10 +35,27 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 		return fmt.Errorf("threat-model analysis failed: %w", err)
 	}
 
-	// SecureCoder Step 2: PoC Verification (proves exploitability of True Positives)
-	fmt.Fprintf(os.Stderr, "🧪 PoC Verification (SecureCoder)...\n")
-	if err := runPoCVerification(ctx, state, llmClient); err != nil {
-		return fmt.Errorf("PoC verification failed: %w", err)
+	artifactCache := newArtifactBundleCache()
+	artifactKey, artifactKeyMiss := buildArtifactCacheKey(state)
+	artifactCacheHit := false
+	if artifactCache.enabled {
+		if artifactKeyMiss != "" {
+			artifactCache.stats.MissReason = artifactKeyMiss
+			fmt.Fprintf(os.Stderr, "   ℹ️ Artifact cache miss: %s\n", artifactKeyMiss)
+		} else if artifactCache.Restore(state, artifactKey) {
+			artifactCacheHit = true
+			fmt.Fprintf(os.Stderr, "   ✅ Artifact cache exact hit: restored PoC/report/fixspec bundle\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "   ℹ️ Artifact cache miss: %s\n", firstNonEmpty(artifactCache.stats.MissReason, "key_miss"))
+		}
+	}
+
+	if !artifactCacheHit {
+		// SecureCoder Step 2: PoC Verification (proves exploitability of True Positives)
+		fmt.Fprintf(os.Stderr, "🧪 PoC Verification (SecureCoder)...\n")
+		if err := runPoCVerification(ctx, state, llmClient); err != nil {
+			return fmt.Errorf("PoC verification failed: %w", err)
+		}
 	}
 
 	// Health Check: compute AFTER all triage is complete (Threat Model + PoC).
@@ -51,15 +68,26 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 		state.HealthCheck.Breakdown.IgnoredFindings,
 		state.HealthCheck.Breakdown.DedupedFindings)
 
-	fmt.Fprintf(os.Stderr, "🤖 Generating Security Report (CS-XXX-NNN format)...\n")
-	if err := generateReport(ctx, state, llmClient); err != nil {
-		return err
-	}
+	if !artifactCacheHit {
+		fmt.Fprintf(os.Stderr, "🤖 Generating Security Report (CS-XXX-NNN format)...\n")
+		if err := generateReport(ctx, state, llmClient); err != nil {
+			return err
+		}
 
-	fmt.Fprintf(os.Stderr, "🤖 Generating AI Fix Specification...\n")
-	if err := generateAIFixSpec(ctx, state, llmClient); err != nil {
-		return err
+		fmt.Fprintf(os.Stderr, "🤖 Generating AI Fix Specification...\n")
+		if err := generateAIFixSpec(ctx, state, llmClient); err != nil {
+			return err
+		}
+
+		if artifactCache.enabled && artifactKeyMiss == "" {
+			artifactCache.Store(state, artifactKey)
+			artifactCache.Save()
+			stats := artifactCache.Stats()
+			fmt.Fprintf(os.Stderr, "   ℹ️ Artifact cache store: stores=%d saved=%t skipped_sensitive=%d\n",
+				stats.Stores, stats.Saved, stats.SkippedSensitive)
+		}
 	}
+	state.ArtifactCacheStats = artifactCache.Stats()
 
 	// Generate the final summary only after every required AI stage has finished,
 	// so its usage and findings cannot be partial or pre-triage.
@@ -505,7 +533,8 @@ func runPoCVerification(ctx context.Context, state *AgentState, llmClient llm.Cl
 
 	// Phase 5b: verify ALL true positives (deduped, batched, bounded concurrency,
 	// budget-capped) instead of silently dropping everything past the 75th.
-	pocResults, err := verifyPoCs(ctx, tpFindings, trackLLMStage(state, usageStagePoC, llmClient), &state.TotalUsage)
+	pocResults, stats, err := verifyPoCs(ctx, tpFindings, trackLLMStage(state, usageStagePoC, llmClient), &state.TotalUsage)
+	state.PoCStats = stats
 	if err != nil {
 		return fmt.Errorf("PoC verification LLM call failed: %w", err)
 	}
@@ -732,6 +761,26 @@ func generateSummary(state *AgentState) {
 			state.VerdictCacheStats.SkippedSensitive,
 			state.VerdictCacheStats.InvalidatedFalsePositives,
 			state.VerdictCacheStats.Saved))
+	}
+	if state.ArtifactCacheStats.Enabled {
+		status := "miss"
+		if state.ArtifactCacheStats.ExactHit {
+			status = "exact hit"
+		}
+		missReason := state.ArtifactCacheStats.MissReason
+		if missReason == "" {
+			missReason = "n/a"
+		}
+		sb.WriteString(fmt.Sprintf("\n_AITriage artifact cache: %s · restored poc=%t report=%t fixspec=%t · stored=%d · sensitive skipped=%d · corrupt ignored=%t · miss_reason=%s · saved=%t._\n",
+			status,
+			state.ArtifactCacheStats.RestoredPoC,
+			state.ArtifactCacheStats.RestoredReport,
+			state.ArtifactCacheStats.RestoredFixSpec,
+			state.ArtifactCacheStats.Stores,
+			state.ArtifactCacheStats.SkippedSensitive,
+			state.ArtifactCacheStats.CorruptCacheIgnored,
+			missReason,
+			state.ArtifactCacheStats.Saved))
 	}
 
 	state.SummaryMarkdown = sb.String()

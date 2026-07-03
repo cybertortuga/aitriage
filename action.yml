@@ -55,12 +55,16 @@ inputs:
     description: 'Directory for the deterministic AI verdict cache. Leave empty to disable.'
     required: false
     default: ''
+  artifact-cache-dir:
+    description: 'Directory for exact secondary artifact cache bundles (PoC/report/fixspec). Leave empty to disable.'
+    required: false
+    default: ''
 
 runs:
   using: 'docker'
   # Pilot branch runtime image. Do not merge this image tag into main: the
   # stable release Action must keep consuming ghcr.io/cybertortuga/aitriage:v1.
-  image: 'docker://ghcr.io/cybertortuga/aitriage:codex-llm-caching-pilot'
+  image: 'docker://ghcr.io/cybertortuga/aitriage:codex-artifact-reuse-cache'
   entrypoint: '/entrypoint.sh'
   env:
     AITRIAGE_COMMAND: ${{ inputs.command }}
@@ -76,6 +80,7 @@ runs:
     AITRIAGE_ARGS: ${{ inputs.args }}
     AITRIAGE_SUMMARY_FILE: ${{ inputs.summary-file }}
     AITRIAGE_VERDICT_CACHE_DIR: ${{ inputs.verdict-cache-dir }}
+    AITRIAGE_ARTIFACT_CACHE_DIR: ${{ inputs.artifact-cache-dir }}
 
 branding:
   icon: 'shield'
