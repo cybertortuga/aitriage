@@ -1,0 +1,232 @@
+# ============================================================
+# AITRIAGE RULES: Universal — Entropy & Security Hygiene
+# ============================================================
+# These rules apply to ALL technology stacks.
+# They detect misconfigurations, weak crypto, insecure defaults,
+# and common security anti-patterns.
+# ============================================================
+
+rules:
+  - id: ENTR-02
+    name: "Missing Lockfile"
+    stack: universal
+    extensions: [".json", ".txt", ".toml", ".yaml", ".lock", ".sum"]
+    target: filename
+    condition: "missing_lockfile"
+    files:
+      - "package-lock.json"
+      - "yarn.lock"
+      - "pnpm-lock.yaml"
+      - "requirements.txt"
+      - "Pipfile.lock"
+      - "poetry.lock"
+      - "go.sum"
+      - "uv.lock"
+      - "pdm.lock"
+      - "Cargo.lock"
+    suggestion: "HIGH: No dependency lockfile found. Deployment will be nondeterministic and vulnerable to dependency hijacking. Create a lockfile immediately."
+
+  - id: ENTR-11
+    name: "Placeholder Leaked to Production"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go", ".tsx", ".jsx", ".env"]
+    target: all
+    pattern: "(?i)(YOUR_API_KEY_HERE|REPLACE_ME|INSERT_TOKEN|change_me)"
+    suggestion: "HIGH: Placeholder left in code. Replace with actual configuration or logic."
+
+  - id: ENTR-12
+    name: "God File Detected"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go", ".tsx", ".jsx"]
+    target: condition
+    condition: "large_file"
+    exclude_tests: true
+    exclude_paths: ["seed", "migration", "scripts/", "fixtures/", "testdata/"]
+    suggestion: "LOW: File exceeds 1500 lines. Refactor into smaller modules."
+
+  - id: ENTR-13
+    name: "Debug Logs Spam"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go", ".tsx", ".jsx"]
+    target: all
+    pattern: '(?m)^(?:console\.log|print|fmt\.Println)\s*\(.*(here|test|debug|wtf|aaaa).*$'
+    suggestion: "LOW: Spammy debug logs found. Remove them before merging."
+
+  - id: ENTR-17
+    name: "Hardcoded Password"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go", ".env"]
+    target: all
+    pattern: '(?i)password\s*[=:]\s*["\x27][^"\x27${}]{8,}["\x27]'
+    suggestion: "HIGH: Hardcoded password found. Move to environment variables."
+
+  - id: ENTR-18
+    name: "Insecure Defaults"
+    stack: universal
+    extensions: [".py", ".ts", ".js", ".go"]
+    target: all
+    exclude_tests: true
+    pattern: "(?i)(0\\.0\\.0\\.0|DEBUG\\s*=\\s*True|debug:\\s*true)"
+    suggestion: "HIGH: Application configured to listen on all interfaces or debug mode enabled."
+
+  - id: ENTR-19
+    name: "Default Credentials"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go", ".yaml", ".yml", ".env"]
+    target: all
+    pattern: "(?i)(admin:admin|root:root|postgres:postgres)"
+    suggestion: "HIGH: Default credentials detected. Change immediately."
+
+  - id: ENTR-20
+    name: "AI Rules File Backdoor (.cursorrules Manipulation)"
+    stack: universal
+    extensions: [".cursorrules", ".md", ".txt", "prompt"]
+    target: code
+    pattern: "(?i)(ignore security|skip security checks|do not sanitize|bypass auth|disable validation|never use parameterized)"
+    suggestion: "CRITICAL: Malicious instructions found in AI configuration files. Attackers may be manipulating your AI assistant to generate backdoored code."
+
+  - id: ENTR-21
+    name: "Weak Cryptographic Hash (MD5)"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go"]
+    target: code
+    pattern: "(?i)(import md5|const md5|crypto\\.createHash\\(['\"]md5['\"]\\)|hashlib\\.md5\\()"
+    suggestion: "HIGH: MD5 is cryptographically broken. Use SHA-256 or bcrypt."
+
+  - id: ENTR-WEAK-CRYPTO
+    name: "Weak Cryptographic Hash (MD5/SHA1)"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go"]
+    target: all
+    pattern: "(?i)(md5|sha1|crypto\\.createHash\\s*\\(\\s*[\"'](md5|sha1)[\"']\\))"
+    suggestion: "HIGH: MD5/SHA1 detected. Use SHA-256 or better for security-sensitive hashing."
+
+  - id: ENTR-OPEN-REDIRECT
+    name: "Open Redirect Vulnerability"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go"]
+    target: all
+    pattern: '(?i)(res\.redirect|redirect)\s*\(.*?(req\.query|request\.args|Params).*?\)'
+    suggestion: "HIGH: User-controlled URL in redirect. Validate against an allowlist."
+
+  - id: ENTR-INSECURE-COOKIE
+    name: "Insecure Cookie Configuration"
+    stack: universal
+    extensions: [".ts", ".js", ".py"]
+    target: all
+    pattern: '(?i)(res\.cookie|set_cookie)\s*\(.*?\)'
+    condition: "not_contains:HttpOnly"
+    suggestion: "MEDIUM: Cookie missing HttpOnly flag. Vulnerable to XSS token theft."
+
+  - id: ENTR-HALLUCINATION
+    name: "Potential Package Hallucinations"
+    stack: universal
+    extensions: [".go", ".js", ".ts", ".py"]
+    target: all
+    pattern: "(?i)(import\\s+[\"'](fake-lib|utility-engine|agent-utils-core|magic-helper)[\"']|require\\([\"'](fake-lib|magic-helper)[\"']\\))"
+    suggestion: "HIGH: Reference to common AI-hallucinated packages. Verify these dependencies actually exist."
+
+  - id: ENTR-FRAGILE-LOGIC
+    name: "Brittle Logic (Missing Safety)"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go"]
+    target: all
+    pattern: '(?m)^(\s*)if\s+err\s*!=\s*nil\s*\{\s*return\s*nil\s*\}'
+    suggestion: "HIGH: Silent error return found. Implement proper logging and recovery."
+
+  - id: ENTR-SSRF
+    name: "SSRF Risk (URL from User Input)"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go"]
+    target: all
+    pattern: '(?i)(fetch|axios|requests?\.(get|post)|http\.(Get|Post)|urllib|httpx)\s*\(\s*(req\.|request\.|params|query|args)'
+    suggestion: "HIGH: User-controlled URL passed to HTTP client. Validate against an allowlist to prevent SSRF."
+
+  - id: ENTR-NOSQL-INJECTION
+    name: "NoSQL Injection Operators"
+    stack: universal
+    extensions: [".ts", ".js"]
+    target: all
+    pattern: '(?i)\.(find|findOne|aggregate)\s*\(\s*\{[^}]*\$(?:ne|gt|lt|regex|where|or|and)\b'
+    suggestion: "CRITICAL: MongoDB query with operator injection risk. Sanitize input and reject $ operators from user data."
+
+  - id: ENTR-PRIVATE-KEY
+    name: "Private Key in Source Code"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go", ".env", ".yaml", ".yml", ".json"]
+    target: all
+    pattern: '-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----'
+    suggestion: "CRITICAL: Private key embedded in source code. Remove immediately and rotate the key."
+
+  - id: ENTR-JWT-NONE
+    name: "JWT None Algorithm Attack"
+    stack: universal
+    extensions: [".ts", ".js", ".py"]
+    target: all
+    pattern: '(?i)algorithm[s]?\s*[:=]\s*[\[\(]?\s*["\x27]none["\x27]'
+    suggestion: "CRITICAL: JWT configured with 'none' algorithm. This disables signature verification entirely."
+
+  - id: ENTR-CORS-WILDCARD
+    name: "CORS Wildcard Origin"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go", ".cs"]
+    target: all
+    pattern: '(?i)(?:Access-Control-Allow-Origin|allowedOrigins?|origin)\s*[:=]\s*["\x27]\*["\x27]'
+    suggestion: "HIGH: CORS allows all origins. Restrict to specific trusted domains."
+
+  - id: ENTR-INNERHTML
+    name: "Direct innerHTML Assignment"
+    stack: universal
+    extensions: [".ts", ".js", ".tsx", ".jsx"]
+    target: all
+    pattern: '\.innerHTML\s*='
+    suggestion: "HIGH: Direct innerHTML assignment bypasses XSS protection. Use textContent or a sanitizer (DOMPurify)."
+
+  - id: ENTR-EVAL-FUNC
+    name: "Dynamic Code via new Function()"
+    stack: universal
+    extensions: [".ts", ".js", ".tsx", ".jsx"]
+    target: all
+    exclude_tests: true
+    pattern: 'new\s+Function\s*\('
+    suggestion: "CRITICAL: new Function() executes arbitrary code. Remove or sandbox."
+
+  - id: ENTR-INSECURE-RANDOM
+    name: "Insecure Randomness (Math.random)"
+    stack: universal
+    extensions: [".ts", ".js", ".tsx", ".jsx"]
+    target: all
+    pattern: 'Math\.random\s*\(\s*\)'
+    suggestion: "HIGH: Math.random() is not cryptographically secure. Use crypto.randomUUID() or crypto.getRandomValues() for tokens, keys, and IDs."
+
+  - id: ENTR-PROTO-POLLUTION
+    name: "Prototype Pollution Risk"
+    stack: universal
+    extensions: [".ts", ".js"]
+    target: all
+    pattern: '(?i)(__proto__|constructor\s*\[|Object\.assign\s*\(\s*\{\},\s*(?:req\.|params|body|query))'
+    suggestion: "CRITICAL: Prototype pollution risk. Validate/sanitize keys and use Object.create(null) for dictionaries."
+
+  - id: ENTR-SENSITIVE-LOG
+    name: "Sensitive Data in Console/Print"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go", ".tsx", ".jsx"]
+    target: all
+    pattern: '(?i)(?:console\.log|fmt\.Print|print)\s*\(.*(?:password|token|secret|api_?key|private_?key|bearer)'
+    suggestion: "HIGH: Sensitive data appears in console/print output. Mask before logging."
+
+  - id: ENTR-ZOMBIE-CODE
+    name: "Dead Code Markers"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go"]
+    target: all
+    pattern: '(?i)(\/\/\s*HACK|\/\/\s*XXX|\/\/\s*DEPRECATED|#\s*HACK|#\s*XXX|#\s*DEPRECATED).*$'
+    suggestion: "LOW: Dead/deprecated code markers found. Clean up before release."
+
+  - id: ENTR-SCAFFOLDING
+    name: "Scaffolding Code Left Behind"
+    stack: universal
+    extensions: [".ts", ".js", ".py", ".go", ".tsx", ".jsx"]
+    target: all
+    pattern: '(?i)(\/\/\s*TODO:?\s*implement|#\s*TODO:?\s*implement|pass\s*#\s*TODO|raise\s+NotImplementedError)'
+    suggestion: "MEDIUM: Unfinished implementation detected. Complete before deploying."

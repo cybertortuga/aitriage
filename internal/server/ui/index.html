@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AITriage | Enterprise Security</title>
+    <!-- Modern Typography: Geist / Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- Feather Icons for Premium Iconography -->
+    <script src="https://unpkg.com/feather-icons"></script>
+    <!-- Mermaid for Architecture Diagrams -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+	
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-dark bg-matrix">
+
+    <!-- Ambient Glow Effects -->
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+    <div class="ambient-glow glow-3"></div>
+
+    <div class="dashboard-container">
+        
+        <!-- Header -->
+        <header class="app-header glass-panel slide-down">
+            <div class="brand">
+                <i data-feather="shield" class="brand-icon"></i>
+                <div class="brand-text">
+                    <h1>AITriage</h1>
+                    <span class="badge badge-pro">PROD ENGINE</span>
+                </div>
+            </div>
+            <div class="status-indicator">
+                <span class="dot active" id="engine-status-dot"></span>
+                <span id="engine-status-text">Engine Ready</span>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="app-main">
+            
+            <!-- Scan Input Launcher View -->
+            <section id="view-launcher" class="view section-center fade-in">
+                <div class="launcher-card glass-panel">
+                    <h2 class="launcher-title">Initialize Target Audit</h2>
+                    <p class="launcher-sub">Specify a local directory path to orchestrate a parallel security pulse.</p>
+                    
+                    <div class="input-group">
+                        <i data-feather="folder" class="input-icon"></i>
+                        <input type="text" id="target-path" placeholder="e.g. /home/user/workspace/project" value=".">
+                        <button id="btn-scan" class="btn-primary ripple">
+                            <span>Commence Scan</span>
+                            <i data-feather="terminal"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Loading Simulation View -->
+            <section id="view-loading" class="view section-center hidden">
+                <div class="loader-card glass-panel">
+                    <div class="radar-spinner">
+                        <div class="radar-sweep"></div>
+                        <i data-feather="crosshair" class="radar-center"></i>
+                    </div>
+                    <h3 class="loader-status" id="loader-title">Orchestrating Agents</h3>
+                    <ul class="loader-steps" id="loader-steps">
+                        <li class="step active"><span class="step-indicator"></span> Running SAST Engine</li>
+                        <li class="step pending"><span class="step-indicator"></span> Deep Git History Scan</li>
+                        <li class="step pending"><span class="step-indicator"></span> Infrastructure Probing</li>
+                        <li class="step pending"><span class="step-indicator"></span> Vulnerability Synthesis</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Dashboard Results View -->
+            <section id="view-results" class="view hidden fade-in-up delay-1">
+                
+                <!-- Hero Metrics Dashboard -->
+                <div class="metrics-grid">
+                    <div class="metric-card glass-panel entropy-card main-entropy">
+                        <div class="circular-progress" id="score-ring" style="--progress: 0;">
+                            <span class="security-grade" id="security-grade-text">-</span>
+                        </div>
+                        <div class="entropy-details">
+                            <h3>Security Score</h3>
+                            <p class="score-number" id="security-score-number">0/100</p>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card glass-panel stat-card text-neon-yellow">
+                        <i data-feather="alert-triangle"></i>
+                        <h3 id="stat-high">0</h3>
+                        <p>High Severity</p>
+                    </div>
+                    <div class="metric-card glass-panel stat-card text-neon-red">
+                        <i data-feather="activity"></i>
+                        <h3 id="stat-crit">0</h3>
+                        <p>Critical Exposure</p>
+                    </div>
+                    <div class="metric-card glass-panel stat-card text-neon-blue">
+                        <i data-feather="git-commit"></i>
+                        <h3 id="stat-git">0</h3>
+                        <p>Secrets Leaked</p>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="tab-navigation glass-panel mt-4">
+                    <button class="tab-btn active" data-tab="findings">Core SAST</button>
+                    <button class="tab-btn" data-tab="git">Git Secrets</button>
+                    <button class="tab-btn" data-tab="deploy">Infra & Deploy</button>
+                    <button class="tab-btn" data-tab="nfr">NFR & Compliance</button>
+                    <button class="tab-btn" data-tab="diagram">Architecture</button>
+                </div>
+
+                <!-- Findings Panels -->
+                <div class="tab-content glass-panel panel-active mt-4" id="tab-findings">
+                    <div class="section-header">
+                        <h2>Vulnerability Pipeline</h2>
+                        <span class="badge badge-outline" id="badge-findings">0 entries</span>
+                    </div>
+                    <div class="masonry-grid" id="container-findings">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+
+                <div class="tab-content glass-panel mt-4" id="tab-git">
+                    <div class="section-header">
+                        <h2>Git History Forensics</h2>
+                        <span class="badge badge-outline" id="badge-git">0 entries</span>
+                    </div>
+                    <div class="list-layout" id="container-git">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+
+                <div class="tab-content glass-panel mt-4" id="tab-deploy">
+                    <div class="section-header">
+                        <h2>Deploy & Network Posture</h2>
+                        <span class="badge badge-outline" id="badge-deploy">0 issues</span>
+                        <span class="badge badge-outline" id="badge-network">0 ports exposed</span>
+                    </div>
+                    <div class="masonry-grid" id="container-deploy">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+
+                <div class="tab-content glass-panel mt-4" id="tab-nfr">
+                    <div class="section-header">
+                        <h2>Non-Functional Requirements</h2>
+                        <span class="badge badge-outline" id="badge-nfr">0 entries</span>
+                    </div>
+                    <div class="list-layout" id="container-nfr">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+
+                <div class="tab-content glass-panel mt-4" id="tab-diagram">
+                    <div class="section-header">
+                        <h2>System Architecture Model</h2>
+                    </div>
+                    <div class="diagram-container" id="container-diagram">
+                        <!-- Mermaid SVG -->
+                    </div>
+                </div>
+
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        feather.replace();
+        mermaid.initialize({ 
+            startOnLoad: false, 
+            theme: 'dark',
+            fontFamily: 'Geist, sans-serif',
+            background: 'transparent'
+        });
+    </script>
+</body>
+</html>

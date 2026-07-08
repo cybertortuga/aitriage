@@ -1,0 +1,42 @@
+- id: NFR-API-001
+  name: Rate Limiting Missing
+  severity: HIGH
+  check: file_contains
+  pattern: "rate.?limit|ratelimit|RateLimit|throttle"
+  files: ["*.go", "*.py", "*.ts", "*.js"]
+  message: "No rate limiting detected in source files"
+  advice: "Implement rate limiting middleware. For Go: golang.org/x/time/rate. For Express: express-rate-limit."
+
+- id: NFR-API-002
+  name: CORS Configuration Missing
+  severity: MEDIUM
+  check: file_contains
+  pattern: "cors|CORS|Access-Control-Allow"
+  files: ["*.go", "*.py", "*.ts", "*.js"]
+  message: "No CORS configuration detected"
+  advice: "Configure CORS explicitly. Never use wildcard (*) in production."
+
+- id: NFR-API-003
+  name: Authentication Middleware Missing
+  severity: HIGH
+  check: file_contains
+  pattern: "auth|Auth|jwt|JWT|bearer|Bearer|middleware"
+  files: ["*.go", "*.py", "*.ts", "*.js"]
+  message: "No authentication middleware detected"
+  advice: "Implement authentication middleware for all protected routes."
+
+- id: NFR-ENV-001
+  name: .env.example Missing
+  severity: MEDIUM
+  check: file_exists
+  pattern: ".env.example"
+  message: ".env.example file is missing"
+  advice: "Create .env.example with all required env variables (without values) for documentation."
+
+- id: NFR-ENV-002
+  name: .env Committed to Git
+  severity: CRITICAL
+  check: file_not_exists
+  pattern: ".env"
+  message: ".env file exists in project root — may be committed to git"
+  advice: "Add .env to .gitignore immediately. Rotate all secrets if it was ever committed."

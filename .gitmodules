@@ -1,0 +1,39 @@
+# AITriage Third-Party Submodules
+# These are external vulnerable web applications used for regression and verification tests.
+
+[submodule "testdata/thirdparty/PythonSSTI"]
+	path = testdata/thirdparty/PythonSSTI
+	url = https://github.com/vavkamil/PythonSSTI.git
+[submodule "testdata/thirdparty/VAmPI"]
+	path = testdata/thirdparty/VAmPI
+	url = https://github.com/erev0s/VAmPI.git
+[submodule "testdata/thirdparty/crAPI"]
+	path = testdata/thirdparty/crAPI
+	url = https://github.com/OWASP/crAPI.git
+[submodule "testdata/thirdparty/finbot-ctf"]
+	path = testdata/thirdparty/finbot-ctf
+	url = https://github.com/ctfs/finbot-ctf.git
+[submodule "testdata/thirdparty/golang-gin-realworld"]
+	path = testdata/thirdparty/golang-gin-realworld
+	url = https://github.com/gothinkster/golang-gin-realworld-example-app.git
+[submodule "testdata/thirdparty/govwa"]
+	path = testdata/thirdparty/govwa
+	url = https://github.com/0xdea/govwa.git
+[submodule "testdata/thirdparty/insecure-fastapi"]
+	path = testdata/thirdparty/insecure-fastapi
+	url = https://github.com/vokvok/insecure-fastapi.git
+[submodule "testdata/thirdparty/mcpsecurity"]
+	path = testdata/thirdparty/mcpsecurity
+	url = https://github.com/mcpsecurity/mcpsecurity.git
+[submodule "testdata/thirdparty/nextjs-precedent"]
+	path = testdata/thirdparty/nextjs-precedent
+	url = https://github.com/steven-tey/precedent.git
+[submodule "testdata/thirdparty/nextjs-proshop"]
+	path = testdata/thirdparty/nextjs-proshop
+	url = https://github.com/bradtraversy/proshop_v2.git
+[submodule "testdata/thirdparty/nextjs-saas"]
+	path = testdata/thirdparty/nextjs-saas
+	url = https://github.com/shadcn-ui/taxonomy.git
+[submodule "testdata/thirdparty/vfapi"]
+	path = testdata/thirdparty/vfapi
+	url = https://github.com/roottusk/vapi.git

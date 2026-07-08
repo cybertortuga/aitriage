@@ -1,0 +1,24 @@
+{
+  "app": {
+    "title": "AITriage Security Platform"
+  },
+  "errors": {
+    "fetchUsers": "Failed to fetch users",
+    "fetchAuditLogs": "Failed to fetch audit logs",
+    "fetchConfig": "Failed to fetch system configuration",
+    "createUser": "Failed to create user",
+    "deleteUser": "Failed to delete user",
+    "updateConfig": "Failed to update configuration",
+    "fetchEngagements": "Failed to fetch engagements",
+    "fetchFindings": "Failed to fetch findings",
+    "fetchMetrics": "Failed to fetch metrics",
+    "fetchProducts": "Failed to fetch products",
+    "fetchReports": "Failed to fetch reports data"
+  },
+  "notifications": {
+    "slaBreachTitle": "SLA_BREACH_WARNING",
+    "slaBreachMessage": "Product \"Finance_Core\" has 3 critical findings breaching SLA in 24h.",
+    "scanCompletedTitle": "SCAN_COMPLETED",
+    "scanCompletedMessage": "Analysis of \"Edge_Gateway\" finished. 12 new findings detected."
+  }
+}

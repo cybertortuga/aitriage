@@ -1,0 +1,92 @@
+# ============================================================
+# AITRIAGE RULES: ASP.NET Core — Security
+# ============================================================
+# Covers: Insecure CORS and SQL injection via
+# Entity Framework raw queries.
+# ============================================================
+
+rules:
+  - id: ASP-INSECURE-CORS
+    name: "Insecure CORS Policy"
+    stack: aspnetcore
+    extensions: [".cs"]
+    target: all
+    pattern: 'builder\.AllowAnyOrigin\(\)\.AllowAnyMethod\(\)\.AllowAnyHeader\(\)'
+    suggestion: "CRITICAL: Overly permissive CORS policy allows cross-origin exploits."
+
+  - id: ASP-SQLI
+    name: "SQL Injection Risk"
+    stack: aspnetcore
+    extensions: [".cs"]
+    target: all
+    pattern: '(?i)(FromSqlRaw|ExecuteSqlRaw)\s*\($"[^"]*\{.*\}'
+    suggestion: "CRITICAL: Raw SQL interpolation detected in Entity Framework query."
+
+  - id: ASP-XXE
+    name: "XML External Entity Processing"
+    stack: aspnetcore
+    extensions: [".cs"]
+    target: all
+    pattern: '(?i)(XmlReader\.Create|XmlDocument|XmlTextReader)'
+    condition: "not_contains:DtdProcessing.Prohibit"
+    suggestion: "CRITICAL: XML parser without DtdProcessing.Prohibit. Enables XXE attacks (file read, SSRF). Set DtdProcessing = DtdProcessing.Prohibit."
+
+  - id: ASP-DESER
+    name: "Insecure Deserialization"
+    stack: aspnetcore
+    extensions: [".cs"]
+    target: all
+    pattern: '(?i)(BinaryFormatter|SoapFormatter|LosFormatter|ObjectStateFormatter|JavaScriptSerializer|TypeNameHandling\.All|TypeNameHandling\.Auto)'
+    suggestion: "CRITICAL: Insecure deserialization detected. BinaryFormatter/TypeNameHandling.All enable RCE via gadget chains. Use System.Text.Json with strict typing."
+
+  - id: ASP-PATH-TRAVERSAL
+    name: "Path Traversal Risk"
+    stack: aspnetcore
+    extensions: [".cs"]
+    target: all
+    pattern: '(?:Path\.Combine|File\.Open|File\.Read|StreamReader)\s*\(.*(?:Request|HttpContext|query|route)'
+    suggestion: "CRITICAL: User input in file path operation. Validate and canonicalize paths. Reject inputs containing '..' or absolute paths."
+
+  - id: ASP-CONN-STRING
+    name: "Hardcoded Connection String"
+    stack: aspnetcore
+    extensions: [".cs"]
+    target: all
+    exclude_tests: true
+    pattern: '(?i)(?:Server|Data Source)\s*=.*(?:Password|Pwd)\s*='
+    suggestion: "HIGH: Connection string with embedded password. Move to appsettings.json with user-secrets or Azure Key Vault."
+
+  - id: ASP-LOGGING-SENSITIVE
+    name: "Sensitive Data in Logs"
+    stack: aspnetcore
+    extensions: [".cs"]
+    target: all
+    pattern: '(?i)_logger\.(?:Log|Info|Warn|Error|Debug)\w*\s*\(.*(?:password|token|secret|creditCard|ssn)'
+    suggestion: "HIGH: Sensitive data (password, token, credit card) found in log statement. Mask or redact before logging."
+
+  - id: ASP-AUTH-MISSING
+    name: "Missing Authorization Attribute"
+    stack: aspnetcore
+    extensions: [".cs"]
+    target: all
+    condition: "required_pattern"
+    pattern: '\[Authorize\]|\[AllowAnonymous\]|RequireAuthorization'
+    suggestion: "HIGH: No [Authorize] attributes found. Controllers/endpoints may be accessible without authentication."
+
+  - id: ASP-ANTIFORGERY
+    name: "Missing Anti-Forgery Validation"
+    stack: aspnetcore
+    extensions: [".cs"]
+    target: all
+    condition: "required_pattern"
+    pattern: '\[ValidateAntiForgeryToken\]|AddAntiforgery|AutoValidateAntiforgeryToken'
+    suggestion: "HIGH: No anti-forgery token validation found. MVC/Razor pages are vulnerable to CSRF attacks."
+
+  - id: ASP-HARDCODED-CREDS
+    name: "Hardcoded Credentials"
+    stack: aspnetcore
+    extensions: [".cs"]
+    target: all
+    exclude_tests: true
+    pattern: '(?i)(?:password|secret|apiKey)\s*=\s*"[^"]{8,}"'
+    suggestion: "HIGH: Hardcoded credentials in source code. Use IConfiguration with user-secrets or environment variables."

@@ -1,0 +1,14 @@
+{
+  "name": "nextjs-secure",
+  "dependencies": {
+    "next": "14.0.0",
+    "next-auth": "4.24.0",
+    "zod": "3.22.0",
+    "@upstash/ratelimit": "1.0.0",
+    "cors": "2.8.5",
+    "prisma": "5.0.0",
+    "pino": "8.14.0",
+    "next-csrf": "0.1.0",
+    "@casl/ability": "6.5.0"
+  }
+}

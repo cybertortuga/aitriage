@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-05-12T13:35:47.712324Z",
+  "project_path": "./testdata/synthetic/fastapi-perfect",
+  "report": {
+    "project_path": "./testdata/synthetic/fastapi-perfect",
+    "stacks": [
+      "fastapi"
+    ],
+    "results": null,
+    "has_critical_failures": false,
+    "security_score": 100,
+    "security_grade": "A+",
+    "total_files": 5,
+    "rules_applied": 0,
+    "scan_duration_ms": 10763334
+  }
+}

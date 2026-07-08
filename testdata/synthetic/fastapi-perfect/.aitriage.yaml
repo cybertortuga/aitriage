@@ -1,0 +1,3 @@
+ignore:
+  rules:
+    - ENTR-CSRF-MISSING  # CSRF handled via CsrfProtect Depends() injection
