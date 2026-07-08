@@ -160,12 +160,25 @@ func usageFromAnthropic(u anthropic.Usage) Usage {
 	return usage
 }
 
+// defaultedTimeout guards against a zero request timeout: a hung provider
+// request would otherwise block until the surrounding job dies, and the retry
+// wrapper never gets a chance to act. The default is generous; override via
+// AITRIAGE_LLM_TIMEOUT or the yaml `timeout` for slow local providers.
+func defaultedTimeout(seconds int) int {
+	if seconds <= 0 {
+		return 600
+	}
+	return seconds
+}
+
 // NewClient создаёт LLM клиент нужного провайдера на основе конфига.
 // All clients are automatically wrapped with RetryClient (3 retries,
 // exponential backoff) to handle transient 429/5xx/network errors.
 func NewClient(cfg Config) (Client, error) {
 	var inner Client
 	var err error
+
+	cfg.Timeout = defaultedTimeout(cfg.Timeout)
 
 	switch cfg.Provider {
 	case "anthropic":

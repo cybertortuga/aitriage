@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -156,6 +157,130 @@ func TestArtifactCacheRestoreDistinguishesEmptyCacheFromKeyMiss(t *testing.T) {
 	}
 }
 
+func TestVerdictCacheNamespaceUsesResolvedLLMIdentity(t *testing.T) {
+	t.Setenv("AITRIAGE_LLM_PROVIDER", "")
+	t.Setenv("AITRIAGE_LLM_MODEL", "")
+	t.Setenv("AITRIAGE_MODEL", "")
+
+	base := defaultVerdictCacheKeyContext("")
+
+	ctxA := base
+	withVerdictCacheLLMIdentity(&AgentState{LLMProvider: "openai", LLMModel: "model-a"})(&ctxA)
+	ctxB := base
+	withVerdictCacheLLMIdentity(&AgentState{LLMProvider: "openai", LLMModel: "model-b"})(&ctxB)
+	if ctxA.namespace() == ctxB.namespace() {
+		t.Fatal("different resolved models must produce different verdict namespaces")
+	}
+
+	// State identity overrides env-derived values.
+	t.Setenv("AITRIAGE_LLM_MODEL", "env-model")
+	ctxEnv := defaultVerdictCacheKeyContext("")
+	withVerdictCacheLLMIdentity(&AgentState{LLMModel: "state-model"})(&ctxEnv)
+	if ctxEnv.Model != "state-model" {
+		t.Fatalf("state identity must override env, got model %q", ctxEnv.Model)
+	}
+
+	// Empty state falls back to env-derived values.
+	ctxFallback := defaultVerdictCacheKeyContext("")
+	withVerdictCacheLLMIdentity(&AgentState{})(&ctxFallback)
+	if ctxFallback.Model != "env-model" {
+		t.Fatalf("empty state identity must keep env fallback, got model %q", ctxFallback.Model)
+	}
+
+	// DisableThinking is part of the namespace.
+	ctxThinking := base
+	withVerdictCacheLLMIdentity(&AgentState{LLMProvider: "openai", LLMModel: "model-a", LLMDisableThinking: true})(&ctxThinking)
+	if ctxA.namespace() == ctxThinking.namespace() {
+		t.Fatal("disable_thinking must change the verdict namespace")
+	}
+}
+
+func TestArtifactCacheKeyReflectsResolvedLLMIdentity(t *testing.T) {
+	t.Setenv("AITRIAGE_LLM_PROVIDER", "")
+	t.Setenv("AITRIAGE_LLM_MODEL", "")
+	t.Setenv("AITRIAGE_MODEL", "")
+
+	stateA := artifactCacheTestState("True Positive")
+	stateA.LLMProvider, stateA.LLMModel = "openai", "model-a"
+	keyA, miss := buildArtifactCacheKey(stateA)
+	if miss != "" {
+		t.Fatalf("key A miss = %q", miss)
+	}
+
+	stateB := artifactCacheTestState("True Positive")
+	stateB.LLMProvider, stateB.LLMModel = "openai", "model-b"
+	keyB, miss := buildArtifactCacheKey(stateB)
+	if miss != "" {
+		t.Fatalf("key B miss = %q", miss)
+	}
+	if keyA == keyB {
+		t.Fatal("artifact cache key must change with the resolved model identity")
+	}
+}
+
+func TestArtifactCachePrunesOldestEntriesBeyondCap(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AITRIAGE_ARTIFACT_CACHE_DIR", dir)
+
+	state := artifactCacheTestState("True Positive")
+	state.ReportMarkdown = "# report"
+	state.AIFixSpec = "# fixspec"
+
+	cache := newArtifactBundleCache()
+	for i := 0; i < maxArtifactBundleEntries+3; i++ {
+		cache.Store(state, fmt.Sprintf("v2:test-key-%02d", i))
+	}
+	cache.Save()
+
+	reloaded := newArtifactBundleCache()
+	if got := reloaded.Stats().LoadedEntries; got != maxArtifactBundleEntries {
+		t.Fatalf("loaded entries = %d, want pruned to %d", got, maxArtifactBundleEntries)
+	}
+
+	// Atomic write must not leave temp files behind.
+	names, err := filepath.Glob(filepath.Join(dir, "*.tmp-*"))
+	if err != nil || len(names) != 0 {
+		t.Fatalf("temp files left after save: %v (err=%v)", names, err)
+	}
+}
+
+func TestArtifactCacheEnsuresFileOnInit(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AITRIAGE_ARTIFACT_CACHE_DIR", dir)
+
+	// The cache file must exist from the moment the cache is enabled: CI save
+	// steps gate on it, and a run that dies mid-way (job timeout, provider
+	// hang) must still be able to persist the co-located verdict cache.
+	_ = newArtifactBundleCache()
+	path := filepath.Join(dir, "artifact_bundle_cache.json")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("cache file not created on init: %v", err)
+	}
+
+	reloaded := newArtifactBundleCache()
+	if stats := reloaded.Stats(); stats.CorruptCacheIgnored || stats.LoadedEntries != 0 {
+		t.Fatalf("empty cache file reload stats = %+v, want clean empty load", stats)
+	}
+
+	// A sensitive-skipped store must not clobber the file with a bad state.
+	state := artifactCacheTestState("True Positive")
+	state.ReportMarkdown = "token " + ("sk" + "-" + strings.Repeat("a", 24)) + " should not be cached"
+	state.AIFixSpec = "# fixspec"
+	key, miss := buildArtifactCacheKey(state)
+	if miss != "" {
+		t.Fatalf("key miss = %q", miss)
+	}
+	cache := newArtifactBundleCache()
+	cache.Store(state, key)
+	cache.Save()
+	if stats := cache.Stats(); stats.Stores != 0 || stats.SkippedSensitive != 1 {
+		t.Fatalf("sensitive store stats = %+v, want skipped store", stats)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("cache file missing after skipped store: %v", err)
+	}
+}
+
 func TestArtifactCacheCorruptCacheIgnored(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("AITRIAGE_ARTIFACT_CACHE_DIR", dir)
@@ -172,7 +297,7 @@ func TestArtifactCacheCorruptCacheIgnored(t *testing.T) {
 func TestArtifactCacheSkipsSensitiveBundle(t *testing.T) {
 	t.Setenv("AITRIAGE_ARTIFACT_CACHE_DIR", t.TempDir())
 	state := artifactCacheTestState("True Positive")
-	state.ReportMarkdown = "token sk-aaaaaaaaaaaaaaaaaaaaaaaa should not be cached"
+	state.ReportMarkdown = "token " + ("sk" + "-" + strings.Repeat("a", 24)) + " should not be cached"
 	state.AIFixSpec = "# fixspec"
 	key, miss := buildArtifactCacheKey(state)
 	if miss != "" {

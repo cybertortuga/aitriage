@@ -25,6 +25,7 @@
 
 - **Deterministic evidence first:** built-in rules and integrated scanners collect findings, SARIF, annotations, and artifacts without failing a trusted CI run on untriaged results.
 - **Mandatory AI gate in the primary CI workflow:** AI triage removes false positives, writes the authoritative summary, then is the sole policy gate. If the AI provider or agent fails, the workflow fails closed.
+- **Deterministic AI caching:** verdict and artifact-bundle caches make repeat CI runs on the same code cheap — cached verdicts skip per-finding LLM classification, and an exact artifact hit skips PoC/report/fixspec generation entirely.
 - **Built for local development and CI:** run a deterministic scan locally without an LLM, use the hardened GitHub Actions workflow for trusted code, or expose security context through MCP.
 - **Go 1.25+ for source builds:** released binaries and the Homebrew formula do not require a local Go toolchain.
 
@@ -63,7 +64,8 @@ Files ──► Loader ──► [ AST Engine + Entropy Engine + Config Auditor 
 | **Silent Luxury TUI** | Professional interactive terminal dashboard for audit triage, code browsing, and real-time review. |
 | **MCP Native** | Model Context Protocol server exposing security context tools directly to AI assistants (Cursor, Claude, Windsurf). |
 | **Orchestration** | Wraps and unifies findings from Semgrep, Trivy, Gitleaks, and Bandit into a single consolidated stream. |
-| **AI Agent Mode** | LLM-driven map-reduce triage that classifies findings, suppresses false positives, and produces a full report, actionable summary, and fix specification. |
+| **AI Agent Mode** | LLM-driven triage that classifies every finding, suppresses false positives, and produces a full report, actionable summary, fix specification, and canonical JSON inventory. |
+| **AI Response Caching** | Two deterministic cache layers keyed by content fingerprints: per-finding verdict reuse plus exact reuse of the PoC/report/fixspec bundle on identical re-runs. |
 | **AI IDE Remediation Brief** | Gives an AI IDE the verified finding context and a secure operating contract: audit and plan first, implement only confirmed true positives, then verify; manual-review items are not changed speculatively. |
 
 ---
@@ -118,6 +120,16 @@ aitriage baseline show .           # Show current baseline statistics
 aitriage scan . --baseline         # Scan and hide baseline findings (fails only on new code)
 ```
 
+### AI Agent Mode
+```bash
+aitriage agent .                   # Scan + LLM triage + report + fix spec (interactive Q&A)
+aitriage agent . --no-chat         # Skip interactive Q&A (CI/CD)
+aitriage agent . --provider gemini --model gemini-1.5-pro
+aitriage agent . --health-profile standard --fail-on any \
+  --summary-out summary.md --report-out report.md \
+  --fixspec-out fixspec.md --triage-out triage-findings.json
+```
+
 ### AI-Powered Remediation
 ```bash
 aitriage fix .                     # Generate fix specifications for issues
@@ -151,8 +163,10 @@ aitriage rules install owasp-2025  # Install specific package from registry
 ```bash
 aitriage init                      # Launch onboarding setup wizard
 aitriage init --ci --pre-commit    # Generate config + pre-commit hook + GHA workflow
+aitriage generate-spec .           # Generate an AI-agent spec file (CLAUDE.md) from scan results
+aitriage preaudit .                # Pre-audit NFR check before writing code
 aitriage install-mcp               # Install AITriage as an MCP Server
-aitriage serve                      # Run the MCP server over stdio
+aitriage serve                     # Run the MCP server over stdio
 aitriage serve --transport sse --port 8080
 ```
 
@@ -167,6 +181,35 @@ docker run --rm -p 8080:8080 -v /:/host:ro \
 ```
 
 Open `http://localhost:8080` after the service starts. See the [deployment guide](docs/DEPLOYMENT.md) for production configuration.
+
+---
+
+## AI Response Caching
+
+Repeat CI runs on the same commit should not pay for the same LLM analysis twice. The agent ships two deterministic, opt-in cache layers (both disabled unless a cache directory is configured):
+
+| Layer | File | What it saves |
+|---|---|---|
+| **Verdict cache** | `triage_cache.json` | The TP/FP/Needs-Review verdict per finding fingerprint. On a warm cache, per-finding LLM classification drops to zero calls. |
+| **Artifact bundle cache** | `artifact_bundle_cache.json` | The complete PoC-verification results, `report.md`, and `fixspec.md` for an exact repeat run. On an exact hit those LLM stages are skipped entirely. |
+
+Configuration:
+
+```bash
+AITRIAGE_CACHE_DIR=.aitriage-cache            # Enables both layers in one directory
+AITRIAGE_VERDICT_CACHE_DIR=...                # Optional: separate verdict cache location
+AITRIAGE_ARTIFACT_CACHE_DIR=...               # Optional: separate artifact bundle location
+```
+
+In GitHub Actions, pass the directories via the `verdict-cache-dir` and `artifact-cache-dir` action inputs and persist them with `actions/cache` (see the [canonical workflow](examples/github-actions/aitriage-security.yml) for the exact restore/save wiring, including the save condition that requires both cache files to exist).
+
+Safety properties, by design:
+
+- **Exact matches only.** Cache keys are content hashes over provider, model, prompt versions, embedded-rules digest, health policy, ordered finding fingerprints, and ordered disposition hashes. Any material change invalidates the cache; a partial GitHub cache restore can never be treated as a hit.
+- **A full artifact hit requires a full verdict hit** — stale report/fixspec text cannot survive a changed verdict.
+- **The security gate is never cached.** The health check, policy verdict, and summary are recomputed on every run from current dispositions.
+- **No secrets persisted.** Bundles or verdicts containing secret-shaped values (API keys, PATs, JWTs, AWS keys) are skipped, never written to cache.
+- **Fully auditable.** `triage-findings.json` records `verdict_cache` and `artifact_cache` telemetry (hits, misses, stores, computed key, miss reason), and the run log prints the cache key and hit/miss status.
 
 ---
 
@@ -212,16 +255,19 @@ trusted same-repository PR / main push / manual dispatch
        SARIF + annotations + artifact (evidence only; never blocks)
                          │
                          ▼
+     restore AI caches (verdict + artifact bundle, exact keys only)
+                         │
+                         ▼
      mandatory AI triage: agent --health-profile standard --fail-on any
                          │
        authoritative three-block Job Summary after completed triage
                          │
-       fails on any remaining True Positive or score below 70
+       save AI caches · fails on any remaining True Positive or score below 70
 ```
 
 ### Install the primary workflow
 
-Copy the [canonical workflow](examples/github-actions/aitriage-security.yml) to `.github/workflows/aitriage.yml`. It pins third-party Actions to reviewed commits and contains the complete static evidence, SARIF, artifact, and mandatory AI-triage flow. Do not copy an abbreviated workflow from an old issue or README snippet.
+Copy the [canonical workflow](examples/github-actions/aitriage-security.yml) to `.github/workflows/aitriage.yml`. It pins third-party Actions to reviewed commits and contains the complete static evidence, SARIF, artifact, AI-cache, and mandatory AI-triage flow. Do not copy an abbreviated workflow from an old issue or README snippet.
 
 Before the first run:
 
@@ -239,6 +285,7 @@ The completed AI agent produces separate outputs to maximise signal-to-noise rat
 | **Job Summary / `summary.md`** | Security assessment, AI IDE implementation brief, and structured TP/Needs Review data | `$GITHUB_STEP_SUMMARY` and optional artifact file |
 | **Full Report** (`report.md`) | All findings, including false-positive rationale | AI-triage artifact on a successful agent run |
 | **Fix Specification** (`fixspec.md`) | Detailed remediation specification | AI-triage artifact on a successful agent run |
+| **Canonical Inventory** (`triage-findings.json`) | Machine-readable record of every finding and disposition, health check, LLM usage per stage, and cache telemetry | AI-triage artifact on a successful agent run |
 
 - The scanner never writes a raw Job Summary. The agent writes the only authoritative summary after all required AI stages complete, even when the resulting policy verdict fails.
 - False positives are counted in the assessment but excluded from the actionable prompt and structured AI data. The full report retains their rationale as an audit trail.
@@ -334,6 +381,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for full system deployment details.
 - [x] Rule Pack Package Management (`aitriage rules`)
 - [x] CycloneDX / SPDX SBOM exports (`aitriage sbom`)
 - [x] AI-Triage & Remediation engine (`aitriage fix`)
+- [x] Deterministic AI verdict & artifact caching for CI re-runs
 - [ ] Compliance Mappings (SOC 2, ISO 27001, OWASP Top 10)
 
 ---

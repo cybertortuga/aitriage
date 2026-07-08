@@ -303,7 +303,7 @@ func classifyBatchWithRetry(ctx context.Context, tmSummary, projectPath string, 
 	}
 	pass(0, subset, full)
 
-	for attempt := 0; attempt < threatModelMaxRetries; attempt++ {
+	for attempt := 0; attempt < classifyMaxRetries(); attempt++ {
 		var missing []int
 		for i := range subset {
 			if _, done := res[i]; !done {
@@ -427,6 +427,19 @@ func triageConcurrency() int {
 		}
 	}
 	return 4
+}
+
+// classifyMaxRetries returns how many extra passes are made for findings the
+// model omitted or returned malformed. Unclassified findings fall back to
+// Needs Manual Review, which is safe but is NOT stored in the verdict cache —
+// so flaky providers benefit from a higher retry count in CI.
+func classifyMaxRetries() int {
+	if v := strings.TrimSpace(os.Getenv("AITRIAGE_CLASSIFY_RETRIES")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			return n
+		}
+	}
+	return threatModelMaxRetries
 }
 
 // llmBudget returns the max number of unique findings to send to the LLM.

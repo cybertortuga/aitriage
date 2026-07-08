@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useFindings } from '../hooks/useFindings';
 import { useMetrics } from '../hooks/useMetrics';
 import { useProducts } from '../hooks/useProducts';
+import { securityService } from '../services/securityService';
 import type { Finding, Product } from '../types';
 
 interface SimpleDashboardPageProps {
@@ -550,6 +551,7 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
   // Agent Runway state
   const [runwayOpen, setRunwayOpen] = useState(false);
   const [runwayStep, setRunwayStep] = useState(0); // 0: Select project, 1: Threat Model, 2: Security Plan, 3: Remediation, 4: Scanner & PoC, 5: Report, 6: Complete
+  const [runwayProgressMessage, setRunwayProgressMessage] = useState('');
   const [runwayProject, setRunwayProject] = useState<any | null>(null);
   const [runwayLoading, setRunwayLoading] = useState(false);
   const runwayLoadingRef = useRef(false);
@@ -838,8 +840,13 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
 
   const restoreRunwayFromSession = useCallback((session: any) => {
     if (!session) return;
+    const status = String(session.status || '').toLowerCase();
+    const rawStep = Number(session.current_step || 0);
+    const displayStep = (status === 'running' || status === 'in_progress') && rawStep === 0 ? 1 : rawStep;
+
     setRunwaySessionId(session.id);
-    setRunwayStep(session.current_step || 0);
+    setRunwayStep(displayStep);
+    setRunwayProgressMessage(session.progress_message || '');
     setRunwayAutoMode(session.auto_mode || false);
     setRunwayThreatModel(session.threat_model || '');
     setRunwaySecurityPlan(session.security_plan || '');
@@ -848,14 +855,17 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
     setRunwayAuditReport(session.audit_report || '');
     setRunwayScanCountBefore(session.scan_count_before || 0);
     setRunwayScanCountAfter(session.scan_count_after || 0);
-    if (session.error_message) setRunwayError(session.error_message);
+    setRunwayError(session.error_message || (status === 'failed' ? t('SimpleDashboardPage.runway.auditFailed') : ''));
+    setRunwayLoading(false);
+    runwayLoadingRef.current = false;
+
     // Restore project from activeProducts
     const proj = activeProducts.find(p => p.id === session.product_id);
     if (proj) {
       setRunwayProject(proj);
       setRunwayOpen(true);
     }
-  }, [activeProducts]);
+  }, [activeProducts, t]);
 
   // Restore runway session from DB on mount + poll for cross-tab sync
   useEffect(() => {
@@ -867,7 +877,16 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
         try {
           const res = await fetch(`/api/runway?product_id=${prod.id}`);
           const data = await res.json();
-          if (!cancelled && data.ok && data.session && data.session.current_step > 0) {
+          const status = String(data.session?.status || '').toLowerCase();
+          const shouldRestore = data.session && (
+            data.session.current_step > 0 ||
+            data.session.error_message ||
+            data.session.progress_message ||
+            status === 'running' ||
+            status === 'failed' ||
+            status === 'completed'
+          );
+          if (!cancelled && data.ok && shouldRestore) {
             restoreRunwayFromSession(data.session);
             return true;
           }
@@ -879,9 +898,9 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
     // Initial restore
     fetchLatestSession();
 
-    // Poll every 5s for cross-tab sync (skip when pipeline is running locally)
+    // Poll every 5s for cross-tab sync and backend completion.
     const pollId = setInterval(() => {
-      if (cancelled || runwayLoadingRef.current) return;
+      if (cancelled) return;
       fetchLatestSession();
     }, 5000);
 
@@ -894,6 +913,7 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
     setRunwayLoading(true);
     runwayLoadingRef.current = true;
     setRunwayError('');
+    setRunwayProgressMessage('preparing_context');
 
     let sessionId = runwaySessionId;
     if (!sessionId) {
@@ -922,6 +942,10 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
       const res = await fetch(`/api/runway/start/${sessionId}`, { method: 'POST' });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Failed to start scan.');
+      setRunwayStep(prev => (prev > 0 ? prev : 1));
+      setRunwayProgressMessage(prev => prev || 'preparing_context');
+      setRunwayLoading(false);
+      runwayLoadingRef.current = false;
     } catch (e: any) {
       setRunwayError(e.message || 'Failed to trigger scan on backend.');
       setRunwayLoading(false);
@@ -930,6 +954,69 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
   };
 
   const handleRunwayAutoRun = triggerBackendOrchestrator;
+  const runwayRunInProgress = runwayLoading || (runwaySessionId !== null && runwayStep > 0 && runwayStep < 7 && !runwayError);
+  const runwayStageInfo = useMemo(() => {
+    const stageKey = runwayProgressMessage || (
+      runwayStep <= 1 ? 'building_threat_model' :
+      runwayStep === 2 ? 'verifying_poc' :
+      runwayStep === 3 ? 'computing_health_check' :
+      runwayStep === 4 ? 'generating_report' :
+      runwayStep === 5 ? 'generating_fix_spec' :
+      runwayStep === 6 ? 'generating_summary' :
+      runwayStep >= 7 ? 'completed' :
+      'preparing_context'
+    );
+
+    const stages: Record<string, { icon: string; title: string; detail: string }> = {
+      preparing_context: {
+        icon: 'folder_search',
+        title: t('SimpleDashboardPage.runway.progressPreparingContext'),
+        detail: t('SimpleDashboardPage.runway.progressPreparingContextDetail')
+      },
+      building_threat_model: {
+        icon: 'psychology',
+        title: t('SimpleDashboardPage.runway.progressThreatModel'),
+        detail: t('SimpleDashboardPage.runway.progressThreatModelDetail')
+      },
+      verifying_poc: {
+        icon: 'science',
+        title: t('SimpleDashboardPage.runway.progressPoc'),
+        detail: t('SimpleDashboardPage.runway.progressPocDetail')
+      },
+      computing_health_check: {
+        icon: 'monitor_heart',
+        title: t('SimpleDashboardPage.runway.progressHealthCheck'),
+        detail: t('SimpleDashboardPage.runway.progressHealthCheckDetail')
+      },
+      generating_report: {
+        icon: 'description',
+        title: t('SimpleDashboardPage.runway.progressReport'),
+        detail: t('SimpleDashboardPage.runway.progressReportDetail')
+      },
+      generating_fix_spec: {
+        icon: 'construction',
+        title: t('SimpleDashboardPage.runway.progressFixSpec'),
+        detail: t('SimpleDashboardPage.runway.progressFixSpecDetail')
+      },
+      generating_summary: {
+        icon: 'summarize',
+        title: t('SimpleDashboardPage.runway.progressSummary'),
+        detail: t('SimpleDashboardPage.runway.progressSummaryDetail')
+      },
+      completed: {
+        icon: 'check_circle',
+        title: t('SimpleDashboardPage.runway.progressCompleted'),
+        detail: t('SimpleDashboardPage.runway.progressCompletedDetail')
+      },
+      failed: {
+        icon: 'error',
+        title: t('SimpleDashboardPage.runway.progressFailed'),
+        detail: t('SimpleDashboardPage.runway.progressFailedDetail')
+      }
+    };
+
+    return stages[stageKey] || stages.preparing_context;
+  }, [runwayProgressMessage, runwayStep, t]);
 
   const handleResetRunway = async () => {
     // Delete session from DB
@@ -942,6 +1029,7 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
     }
     setRunwaySessionId(null);
     setRunwayStep(0);
+    setRunwayProgressMessage('');
     setRunwayProject(null);
     setRunwayThreatModel('');
     setRunwaySecurityPlan('');
@@ -1056,17 +1144,17 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
               return (
                 <div
                   key={i}
-                  className={`h-1.5 flex-1 rounded-full transition-all duration-500 relative overflow-hidden ${
-                    isCompleted 
-                      ? 'bg-[var(--accent-color)]' 
-                      : isActive && runwayLoading 
-                      ? 'bg-[rgba(255,255,255,0.06)]' 
-                      : isActive 
-                      ? 'bg-[var(--accent-color)] opacity-40' 
-                      : 'bg-[rgba(255,255,255,0.06)]'
-                  }`}
+	                  className={`h-1.5 flex-1 rounded-full transition-all duration-500 relative overflow-hidden ${
+	                    isCompleted
+	                      ? 'bg-[var(--accent-color)]'
+	                      : isActive && runwayRunInProgress
+	                      ? 'bg-[rgba(255,255,255,0.06)]'
+	                      : isActive
+	                      ? 'bg-[var(--accent-color)] opacity-40'
+	                      : 'bg-[rgba(255,255,255,0.06)]'
+	                  }`}
                 >
-                  {isActive && runwayLoading && (
+                  {isActive && runwayRunInProgress && (
                     <div className="absolute inset-0 bg-gradient-to-r from-[var(--accent-color)] via-[var(--accent-color-hover)] to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" style={{ backgroundSize: '200% 100%' }} />
                   )}
                 </div>
@@ -1075,18 +1163,21 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
           </div>
 
           {/* Auto-mode current status */}
-          {runwaySessionId && runwayStep > 0 && runwayStep < 7 && (
+          {runwaySessionId && runwayStep > 0 && runwayStep < 7 && !runwayError && (
             <div 
-              className="flex items-center justify-center gap-3 py-12 px-4 rounded-lg border"
+              className="flex items-center justify-center gap-4 py-10 px-4 rounded-lg border"
               style={{
                 backgroundColor: 'var(--accent-color-soft)',
                 borderColor: 'var(--accent-color-line)'
               }}
             >
-              <div className="w-8 h-8 border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--accent-color)] rounded-full animate-spin shrink-0" />
-              <div className="flex-col">
-                <span className="text-[14px] text-white font-semibold uppercase tracking-wider block">Running Audit...</span>
-                <span className="text-[11px] text-[#52525b] font-mono mt-1">This might take a few minutes</span>
+              <div className="relative w-10 h-10 shrink-0 flex items-center justify-center">
+                <div className="absolute inset-0 border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--accent-color)] rounded-full animate-spin" />
+                <span className="material-symbols-outlined text-[18px]" style={{ color: 'var(--accent-color)' }}>{runwayStageInfo.icon}</span>
+              </div>
+              <div className="min-w-0">
+                <span className="text-[14px] text-white font-semibold uppercase tracking-wider block">{runwayStageInfo.title}</span>
+                <span className="text-[11px] text-[#71717a] font-mono mt-1 block">{runwayStageInfo.detail}</span>
               </div>
             </div>
           )}
@@ -1119,11 +1210,15 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
               <div>
                 <button
                   onClick={handleRunwayAutoRun}
-                  disabled={!runwayProject}
+                  disabled={!runwayProject || runwayRunInProgress}
                   className="w-full px-4 py-2.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[12px] font-bold uppercase tracking-wider disabled:opacity-30 transition-all duration-300 flex items-center justify-center gap-2 shadow-[0_0_15px_var(--accent-color-line)] hover:shadow-[0_0_25px_var(--accent-color-soft)]"
                 >
-                  <span className="material-symbols-outlined text-[16px]">play_arrow</span>
-                  Start Automated Audit
+                  {runwayLoading ? (
+                    <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                  ) : (
+                    <span className="material-symbols-outlined text-[16px]">play_arrow</span>
+                  )}
+                  {runwayLoading ? t('SimpleDashboardPage.runway.startingAudit') : t('SimpleDashboardPage.runway.startAutomatedAudit')}
                 </button>
               </div>
             </div>
@@ -2790,13 +2885,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                   }
 
                   const proj = productMap.get(summaryProjectId)!;
-                  const pf = findings?.filter((f: Finding) => f.product_id === summaryProjectId) || [];
 
-                  const pCrit = pf.filter((f: Finding) => f.severity?.toLowerCase() === 'critical').length;
-                  const pHigh = pf.filter((f: Finding) => f.severity?.toLowerCase() === 'high').length;
-                  const pMed = pf.filter((f: Finding) => f.severity?.toLowerCase() === 'medium').length;
-                  const pLow = pf.filter((f: Finding) => f.severity?.toLowerCase() === 'low').length;
-                  
                   return (
                     <motion.div variants={itemVariants} className="h-full rounded-xl overflow-hidden border border-[rgba(255,255,255,0.08)] bg-gradient-to-br from-[rgba(255,255,255,0.02)] to-[rgba(255,255,255,0.005)] shadow-lg p-5 relative flex flex-col min-h-[250px]">
                       {/* Header */}
@@ -2884,31 +2973,8 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                                   setAiSummaryLoading(true);
                                   setAiSummaryProjectId(summaryProjectId);
                                   try {
-                                    const projFindings = pf.map((f: Finding) =>
-                                      `- [${f.severity?.toUpperCase()}] ${f.title} | File: ${f.file_path || 'N/A'}${f.line_number ? ':' + f.line_number : ''}`
-                                    ).join('\n');
-                                    const summaryPrompt = `You are AITriage, an expert security engineer powered by SecureCoder. Analyze this project and provide a comprehensive security summary.
-        
-        Project: ${proj.name}
-        Total findings: ${pf.length} (${pCrit} critical, ${pHigh} high, ${pMed} medium, ${pLow} low)
-        
-        Findings:
-        ${projFindings}
-        
-        Provide exactly 4 sections in your response (do not use Markdown headers like # or ##, just bold text for labels):
-        1. A brief 1-sentence overview of what this project likely is based on its name, files, and vulnerabilities.
-        2. **Security Status:** [Emoji 🔴/🟡/🟢] [Brief status explanation].
-        3. **Main Priority:** [Top issue to fix immediately and why].
-        4. **Quick Win:** [Easiest thing to improve right now].
-        
-        Be specific: cite file names, vulnerabilities. Be concise but thorough. ${aiSummaryLang === 'ru' ? 'Respond completely in Russian (Русский язык), translating the labels to Russian (e.g. **Статус безопасности:**, **Главный приоритет:**, **Быстрое улучшение:**).' : 'Respond in English.'}`;
-                                    const res = await fetch('/api/chat', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ messages: [{ role: 'user', content: summaryPrompt }] }),
-                                    });
-                                    const data = await res.json();
-                                    setAiSummary(data.ok ? (data.content || 'No response') : `Error: ${data.error}`);
+                                    const summary = await securityService.getAISummary(summaryProjectId, aiSummaryLang);
+                                    setAiSummary(summary || 'No response');
                                   } catch (err) {
                                     setAiSummary('Failed to generate summary. Check API key configuration.');
                                   } finally {

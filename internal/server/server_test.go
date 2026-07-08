@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cybertortuga/aitriage/internal/agent/llm"
 	"github.com/cybertortuga/aitriage/internal/server/middleware"
 	"github.com/golang-jwt/jwt/v5"
 	_ "modernc.org/sqlite"
@@ -46,6 +47,16 @@ func addAuthCookie(req *http.Request) {
 		Name:  "token",
 		Value: tokenString,
 	})
+}
+
+type summaryCaptureLLM struct {
+	messages []llm.Message
+	response string
+}
+
+func (m *summaryCaptureLLM) Chat(ctx context.Context, messages []llm.Message) (string, llm.Usage, error) {
+	m.messages = append([]llm.Message(nil), messages...)
+	return m.response, llm.Usage{}, nil
 }
 
 func TestNewServer(t *testing.T) {
@@ -122,6 +133,118 @@ func TestHandleCreateUserValidation(t *testing.T) {
 
 	if rrDel.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for invalid ID, got %d", rrDel.Code)
+	}
+}
+
+func TestHandleSummaryUsesSecureCoderEvidenceContract(t *testing.T) {
+	s := setupTestServer(t)
+	projectDir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(projectDir, "package.json"), []byte(`{
+  "name": "ait-dodo-landing",
+  "scripts": {"build": "tsc -b && vite build"},
+  "dependencies": {"react": "19.2.6", "react-dom": "19.2.6"},
+  "devDependencies": {"vite": "8.0.12", "@vitejs/plugin-react": "6.0.1"}
+}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "vite.config.ts"), []byte("export default {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectDir, "src"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "src", "main.tsx"), []byte("import React from 'react'\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "src", "App.tsx"), []byte("export default function App() { return null }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "SECURITY_TRIAGE_REPORT.md"), []byte(`# Security triage report
+
+Current application shape: static Vite + React landing page. The repository has no backend server, API routes, auth middleware, database client, form submission endpoint, cookies, or user-controlled HTML rendering.
+
+Authentication Middleware Missing: false positive for the current repository.
+Rate Limiting Missing: false positive for the current repository.
+`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := s.db.Exec(`INSERT INTO products (name, repo_url, tech_stack, business_criticality, lifecycle) VALUES (?, ?, ?, ?, ?)`, "ait-dodo-landing", projectDir, "Vite + React", "medium", "production")
+	if err != nil {
+		t.Fatalf("failed to insert product: %v", err)
+	}
+	productID, _ := res.LastInsertId()
+	res, err = s.db.Exec(`INSERT INTO engagements (product_id, name, scan_path, status) VALUES (?, ?, ?, ?)`, productID, "scan", projectDir, "completed")
+	if err != nil {
+		t.Fatalf("failed to insert engagement: %v", err)
+	}
+	engagementID, _ := res.LastInsertId()
+
+	_, err = s.db.Exec(`
+		INSERT INTO findings (engagement_id, product_id, rule_id, title, severity, file_path, line_number, description, fix_suggestion, status, kanban_column, stack, is_false_positive, fp_reason)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, engagementID, productID, "AUTH-MIDDLEWARE", "Authentication Middleware Missing", "CRITICAL", "", 0, "Project-level auth rule", "No backend/API route evidence in this static landing page.", "false_positive", "done", "nfr", 1, "static landing page")
+	if err != nil {
+		t.Fatalf("failed to insert false positive finding: %v", err)
+	}
+	_, err = s.db.Exec(`
+		INSERT INTO findings (engagement_id, product_id, rule_id, title, severity, file_path, line_number, description, fix_suggestion, status, kanban_column, stack)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, engagementID, productID, "SEC-HEADERS", "Missing Security Headers", "HIGH", "vite.config.ts", 10, "Preview server headers need verification.", "Set CSP and related headers.", "open", "backlog", "deploy")
+	if err != nil {
+		t.Fatalf("failed to insert active finding: %v", err)
+	}
+
+	capture := &summaryCaptureLLM{response: "**Статус безопасности:** evidence-based"}
+	s.llmClient = capture
+
+	req, _ := http.NewRequest("GET", "/api/ai-summary?product_id="+strconv.FormatInt(productID, 10)+"&lang=ru", nil)
+	addAuthCookie(req)
+	rr := httptest.NewRecorder()
+	s.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["summary"] != capture.response {
+		t.Fatalf("unexpected summary response: %#v", resp)
+	}
+	if len(capture.messages) != 2 {
+		t.Fatalf("expected two LLM messages, got %d", len(capture.messages))
+	}
+
+	systemPrompt := capture.messages[0].Content
+	for _, want := range []string{
+		"Do not infer backend/API/auth/rate-limit risk",
+		"Scanner titles are hypotheses, not proof",
+		"Respond in Russian",
+	} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Fatalf("system prompt missing %q:\n%s", want, systemPrompt)
+		}
+	}
+
+	userPrompt := capture.messages[1].Content
+	for _, want := range []string{
+		"Product: ait-dodo-landing",
+		"Active findings: 1",
+		"Non-active/suppressed findings: 1",
+		"Detected project markers: package.json, vite.config.ts, src/main.tsx, src/App.tsx",
+		"Backend dependency markers: none",
+		"Server/API route file markers: none",
+		"[non-active][CRITICAL][AUTH-MIDDLEWARE] Authentication Middleware Missing",
+		"status=false_positive",
+		"[active][HIGH][SEC-HEADERS] Missing Security Headers at `vite.config.ts:10`",
+		"Current application shape: static Vite + React landing page",
+	} {
+		if !strings.Contains(userPrompt, want) {
+			t.Fatalf("user prompt missing %q:\n%s", want, userPrompt)
+		}
 	}
 }
 

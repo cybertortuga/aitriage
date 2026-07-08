@@ -31,7 +31,11 @@ import (
 // The cache is OFF unless AITRIAGE_CACHE_DIR is set, so default behaviour is
 // unchanged and tests are hermetic.
 
-const verdictCacheSchemaVersion = 3
+// Schema v4: the key context gained DisableThinking, and the resolved LLM
+// identity from the CLI/yaml config now overrides the env-derived defaults —
+// pre-v4 namespaces could record "default" provider/model while a specific
+// model produced the verdicts.
+const verdictCacheSchemaVersion = 4
 const verdictCacheRulesDigestVersion = "rules-v1"
 
 type verdictCacheKeyContext struct {
@@ -39,6 +43,7 @@ type verdictCacheKeyContext struct {
 	Provider        string   `json:"provider"`
 	Model           string   `json:"model"`
 	BaseURLHash     string   `json:"base_url_hash"`
+	DisableThinking bool     `json:"disable_thinking,omitempty"`
 	AITriageVersion string   `json:"aitriage_version"`
 	PromptVersion   string   `json:"prompt_version"`
 	RulesDigest     string   `json:"rules_digest"`
@@ -53,6 +58,27 @@ type verdictCacheKeyContext struct {
 }
 
 type verdictCacheOption func(*verdictCacheKeyContext)
+
+// withVerdictCacheLLMIdentity pins the cache namespace to the provider/model
+// that actually serves the run. Env vars stay as fallback for callers that do
+// not resolve an identity (empty fields never override).
+func withVerdictCacheLLMIdentity(state *AgentState) verdictCacheOption {
+	return func(ctx *verdictCacheKeyContext) {
+		if state == nil {
+			return
+		}
+		if v := strings.TrimSpace(state.LLMProvider); v != "" {
+			ctx.Provider = v
+		}
+		if v := strings.TrimSpace(state.LLMModel); v != "" {
+			ctx.Model = v
+		}
+		if v := strings.TrimSpace(state.LLMBaseURL); v != "" {
+			ctx.BaseURLHash = hashCacheField(v)
+		}
+		ctx.DisableThinking = state.LLMDisableThinking
+	}
+}
 
 func withVerdictCachePolicy(policy healthcheck.Policy) verdictCacheOption {
 	return func(ctx *verdictCacheKeyContext) {
@@ -222,17 +248,45 @@ func (c *verdictCache) Save() {
 	if !c.enabled || !c.dirty {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(c.path), 0o755); err != nil {
-		return
-	}
 	data, err := json.MarshalIndent(c.entries, "", "  ")
 	if err != nil {
 		return
 	}
-	if err := os.WriteFile(c.path, data, 0o644); err != nil {
+	if err := writeCacheFileAtomic(c.path, data); err != nil {
 		return
 	}
 	c.stats.Saved = true
+}
+
+// writeCacheFileAtomic writes via a temp file + rename so a killed process can
+// never leave a truncated JSON where a valid cache used to be.
+func writeCacheFileAtomic(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	return nil
 }
 
 func (c *verdictCache) Stats() VerdictCacheStats {

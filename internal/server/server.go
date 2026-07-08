@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -2051,139 +2052,542 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
+type aiSummaryCounts struct {
+	Critical int
+	High     int
+	Medium   int
+	Low      int
+	Other    int
+}
+
+func (c aiSummaryCounts) total() int {
+	return c.Critical + c.High + c.Medium + c.Low + c.Other
+}
+
+type aiSummaryFinding struct {
+	RuleID          string
+	Title           string
+	Severity        string
+	File            string
+	Line            int
+	Description     string
+	FixSuggestion   string
+	Status          string
+	Stack           string
+	AITriageStatus  string
+	AITriageSummary string
+	IsFalsePositive bool
+}
+
+type aiSummaryEvidence struct {
+	ProductID           int
+	ProductName         string
+	RepoPath            string
+	ScanPath            string
+	TechStack           string
+	Platform            string
+	BusinessCriticality string
+	Lifecycle           string
+	ProjectShape        []string
+	LocalAuditExcerpt   string
+	ActiveCounts        aiSummaryCounts
+	SuppressedCounts    aiSummaryCounts
+	Findings            []aiSummaryFinding
+}
+
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	productIDStr := r.URL.Query().Get("product_id")
-	var productID int
-	var errConv error
-	useProduct := false
-	if productIDStr != "" {
-		productID, errConv = strconv.Atoi(productIDStr)
-		if errConv == nil {
-			useProduct = true
-		}
-	}
+	productID, useProduct := parseOptionalInt(r.URL.Query().Get("product_id"))
+	lang := normalizedSummaryLang(r.URL.Query().Get("lang"))
 
-	var openCount, critCount, highCount, medCount, lowCount int
-	var findingTitles []string
-	var err error
-
-	if useProduct {
-		_ = s.db.QueryRowContext(r.Context(), `
-			SELECT COUNT(*) FROM findings 
-			WHERE status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive') AND product_id = ?
-		`, productID).Scan(&openCount)
-
-		_ = s.db.QueryRowContext(r.Context(), `
-			SELECT COUNT(*) FROM findings 
-			WHERE status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive') AND severity = 'CRITICAL' AND product_id = ?
-		`, productID).Scan(&critCount)
-
-		_ = s.db.QueryRowContext(r.Context(), `
-			SELECT COUNT(*) FROM findings 
-			WHERE status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive') AND severity = 'HIGH' AND product_id = ?
-		`, productID).Scan(&highCount)
-
-		_ = s.db.QueryRowContext(r.Context(), `
-			SELECT COUNT(*) FROM findings 
-			WHERE status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive') AND severity = 'MEDIUM' AND product_id = ?
-		`, productID).Scan(&medCount)
-
-		_ = s.db.QueryRowContext(r.Context(), `
-			SELECT COUNT(*) FROM findings 
-			WHERE status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive') AND severity = 'LOW' AND product_id = ?
-		`, productID).Scan(&lowCount)
-
-		rows, errQuery := s.db.QueryContext(r.Context(), `
-			SELECT title FROM findings 
-			WHERE status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive') AND product_id = ?
-			LIMIT 5
-		`, productID)
-		err = errQuery
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var t string
-				if err := rows.Scan(&t); err == nil {
-					findingTitles = append(findingTitles, t)
-				}
-			}
-		}
-	} else {
-		_ = s.db.QueryRowContext(r.Context(), `
-			SELECT COUNT(*) FROM findings 
-			WHERE status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive')
-		`).Scan(&openCount)
-
-		_ = s.db.QueryRowContext(r.Context(), `
-			SELECT COUNT(*) FROM findings 
-			WHERE status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive') AND severity = 'CRITICAL'
-		`).Scan(&critCount)
-
-		_ = s.db.QueryRowContext(r.Context(), `
-			SELECT COUNT(*) FROM findings 
-			WHERE status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive') AND severity = 'HIGH'
-		`).Scan(&highCount)
-
-		_ = s.db.QueryRowContext(r.Context(), `
-			SELECT COUNT(*) FROM findings 
-			WHERE status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive') AND severity = 'MEDIUM'
-		`).Scan(&medCount)
-
-		_ = s.db.QueryRowContext(r.Context(), `
-			SELECT COUNT(*) FROM findings 
-			WHERE status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive') AND severity = 'LOW'
-		`).Scan(&lowCount)
-
-		rows, errQuery := s.db.QueryContext(r.Context(), `
-			SELECT title FROM findings 
-			WHERE status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive')
-			LIMIT 5
-		`)
-		err = errQuery
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var t string
-				if err := rows.Scan(&t); err == nil {
-					findingTitles = append(findingTitles, t)
-				}
-			}
-		}
+	evidence, err := s.loadAISummaryEvidence(r.Context(), productID, useProduct)
+	if err != nil {
+		jsonError(w, fmt.Sprintf("failed to build summary evidence: %v", err), http.StatusInternalServerError)
+		return
 	}
 
 	var summary string
-	if s.llmClient != nil && openCount > 0 {
-		prompt := fmt.Sprintf("Project has %d open findings: %d critical, %d high, %d medium, %d low. Top finding titles: %s.", openCount, critCount, highCount, medCount, lowCount, strings.Join(findingTitles, ", "))
+	if s.llmClient != nil && (evidence.ActiveCounts.total() > 0 || evidence.SuppressedCounts.total() > 0) {
 		messages := []llm.Message{
-			{
-				Role:    "system",
-				Content: "You are an expert AI security engineer and consultant. Write a brief (max 3 sentences) security posture summary of the project in Russian. Do NOT use markdown. Start with a clear statement on the overall risk level.",
-			},
-			{
-				Role:    "user",
-				Content: prompt,
-			},
+			{Role: "system", Content: buildAISummarySystemPrompt(lang)},
+			{Role: "user", Content: buildAISummaryUserPrompt(evidence, lang)},
 		}
 		reply, _, err := s.llmClient.Chat(r.Context(), messages)
-		if err == nil && reply != "" {
-			summary = reply
+		if err == nil && strings.TrimSpace(reply) != "" {
+			summary = strings.TrimSpace(reply)
 		}
 	}
 
 	if summary == "" {
-		if openCount == 0 {
-			summary = "В проекте не обнаружено активных уязвимостей. Система находится в номинальном состоянии."
-		} else {
-			summary = fmt.Sprintf("Анализ проекта завершен. Обнаружено %d активных уязвимостей (Critical: %d, High: %d, Medium: %d, Low: %d). Рекомендуется в первую очередь исправить критические уязвимости.", openCount, critCount, highCount, medCount, lowCount)
-		}
+		summary = buildAISummaryFallback(evidence, lang)
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":      true,
 		"summary": summary,
 	})
+}
+
+func parseOptionalInt(value string) (int, bool) {
+	if strings.TrimSpace(value) == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(value)
+	return n, err == nil
+}
+
+func normalizedSummaryLang(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "en":
+		return "en"
+	default:
+		return "ru"
+	}
+}
+
+func (s *Server) loadAISummaryEvidence(ctx context.Context, productID int, useProduct bool) (aiSummaryEvidence, error) {
+	evidence := aiSummaryEvidence{ProductID: productID}
+
+	if useProduct {
+		err := s.db.QueryRowContext(ctx, `
+			SELECT name, COALESCE(repo_url,''), COALESCE(tech_stack,''), COALESCE(platform,''),
+			       COALESCE(business_criticality,''), COALESCE(lifecycle,'')
+			FROM products
+			WHERE id = ?
+		`, productID).Scan(
+			&evidence.ProductName,
+			&evidence.RepoPath,
+			&evidence.TechStack,
+			&evidence.Platform,
+			&evidence.BusinessCriticality,
+			&evidence.Lifecycle,
+		)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return evidence, fmt.Errorf("product %d not found", productID)
+			}
+			return evidence, err
+		}
+
+		_ = s.db.QueryRowContext(ctx, `
+			SELECT COALESCE(scan_path,'')
+			FROM engagements
+			WHERE product_id = ?
+			ORDER BY started_at DESC, id DESC
+			LIMIT 1
+		`, productID).Scan(&evidence.ScanPath)
+	} else {
+		evidence.ProductName = "All scanned projects"
+	}
+
+	projectPath := firstNonEmpty(evidence.ScanPath, evidence.RepoPath)
+	evidence.ProjectShape = s.projectShapeEvidence(projectPath)
+	evidence.LocalAuditExcerpt = s.localAuditExcerpt(projectPath)
+
+	countsQuery := `
+		SELECT COALESCE(severity,''), COALESCE(status,''), COALESCE(is_false_positive,0)
+		FROM findings`
+	countsArgs := []any{}
+	if useProduct {
+		countsQuery += ` WHERE product_id = ?`
+		countsArgs = append(countsArgs, productID)
+	}
+	rows, err := s.db.QueryContext(ctx, countsQuery, countsArgs...)
+	if err != nil {
+		return evidence, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var severity, status string
+		var isFalsePositive bool
+		if err := rows.Scan(&severity, &status, &isFalsePositive); err != nil {
+			return evidence, err
+		}
+		if isActiveSummaryStatus(status, isFalsePositive) {
+			incrementSummaryCount(&evidence.ActiveCounts, severity)
+		} else {
+			incrementSummaryCount(&evidence.SuppressedCounts, severity)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return evidence, err
+	}
+
+	findingsQuery := `
+		SELECT COALESCE(rule_id,''), title, COALESCE(severity,''), COALESCE(file_path,''), COALESCE(line_number,0),
+		       COALESCE(description,''), COALESCE(fix_suggestion,''), COALESCE(status,''), COALESCE(stack,''),
+		       COALESCE(ai_triage_status,''), COALESCE(ai_triage_summary,''), COALESCE(is_false_positive,0)
+		FROM findings`
+	findingsArgs := []any{}
+	if useProduct {
+		findingsQuery += ` WHERE product_id = ?`
+		findingsArgs = append(findingsArgs, productID)
+	}
+	findingsQuery += `
+		ORDER BY
+			CASE
+				WHEN status NOT IN ('resolved', 'closed', 'risk_accepted', 'false_positive') AND COALESCE(is_false_positive,0) = 0 THEN 0
+				ELSE 1
+			END,
+			CASE UPPER(severity)
+				WHEN 'CRITICAL' THEN 0
+				WHEN 'HIGH' THEN 1
+				WHEN 'MEDIUM' THEN 2
+				WHEN 'LOW' THEN 3
+				ELSE 4
+			END,
+			id
+		LIMIT 40`
+
+	findingRows, err := s.db.QueryContext(ctx, findingsQuery, findingsArgs...)
+	if err != nil {
+		return evidence, err
+	}
+	defer findingRows.Close()
+
+	for findingRows.Next() {
+		var f aiSummaryFinding
+		if err := findingRows.Scan(
+			&f.RuleID,
+			&f.Title,
+			&f.Severity,
+			&f.File,
+			&f.Line,
+			&f.Description,
+			&f.FixSuggestion,
+			&f.Status,
+			&f.Stack,
+			&f.AITriageStatus,
+			&f.AITriageSummary,
+			&f.IsFalsePositive,
+		); err != nil {
+			return evidence, err
+		}
+		evidence.Findings = append(evidence.Findings, f)
+	}
+	if err := findingRows.Err(); err != nil {
+		return evidence, err
+	}
+
+	return evidence, nil
+}
+
+func isActiveSummaryStatus(status string, isFalsePositive bool) bool {
+	if isFalsePositive {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "resolved", "closed", "risk_accepted", "accepted_risk", "false_positive":
+		return false
+	default:
+		return true
+	}
+}
+
+func incrementSummaryCount(counts *aiSummaryCounts, severity string) {
+	switch strings.ToUpper(strings.TrimSpace(severity)) {
+	case "CRITICAL":
+		counts.Critical++
+	case "HIGH":
+		counts.High++
+	case "MEDIUM":
+		counts.Medium++
+	case "LOW":
+		counts.Low++
+	default:
+		counts.Other++
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func (s *Server) projectShapeEvidence(projectPath string) []string {
+	if strings.TrimSpace(projectPath) == "" {
+		return []string{"No project filesystem path is recorded in products or engagements."}
+	}
+
+	fullPath := s.toContainerPath(projectPath)
+	info, err := os.Stat(fullPath)
+	if err != nil || !info.IsDir() {
+		return []string{fmt.Sprintf("Project path is not readable from the server runtime: %s", projectPath)}
+	}
+
+	fileMarkers := []string{
+		"package.json",
+		"vite.config.ts",
+		"vite.config.js",
+		"src/main.tsx",
+		"src/main.jsx",
+		"src/App.tsx",
+		"src/App.jsx",
+		"server.ts",
+		"server.js",
+		"src/server.ts",
+		"src/server.js",
+		"pages/api",
+		"app/api",
+		"go.mod",
+		"requirements.txt",
+	}
+	var present []string
+	for _, marker := range fileMarkers {
+		if _, err := os.Stat(filepath.Join(fullPath, marker)); err == nil {
+			present = append(present, marker)
+		}
+	}
+
+	lines := []string{}
+	if len(present) > 0 {
+		lines = append(lines, "Detected project markers: "+strings.Join(present, ", "))
+	} else {
+		lines = append(lines, "No common application markers detected at project root.")
+	}
+
+	packagePath := filepath.Join(fullPath, "package.json")
+	if data, err := os.ReadFile(packagePath); err == nil {
+		var pkg struct {
+			Name            string            `json:"name"`
+			Scripts         map[string]string `json:"scripts"`
+			Dependencies    map[string]string `json:"dependencies"`
+			DevDependencies map[string]string `json:"devDependencies"`
+		}
+		if err := json.Unmarshal(data, &pkg); err == nil {
+			if pkg.Name != "" {
+				lines = append(lines, "package.json name: "+pkg.Name)
+			}
+			if len(pkg.Scripts) > 0 {
+				lines = append(lines, "package.json scripts: "+summaryMapKeys(pkg.Scripts, 8))
+			}
+
+			allDeps := make(map[string]string)
+			for k, v := range pkg.Dependencies {
+				allDeps[k] = v
+			}
+			for k, v := range pkg.DevDependencies {
+				allDeps[k] = v
+			}
+			frontendMarkers := intersectDependencyNames(allDeps, []string{"react", "react-dom", "vite", "@vitejs/plugin-react", "tailwindcss"})
+			backendMarkers := intersectDependencyNames(allDeps, []string{"express", "fastify", "koa", "hono", "next", "@remix-run/node", "@nestjs/core"})
+			if len(frontendMarkers) > 0 {
+				lines = append(lines, "Frontend dependency markers: "+strings.Join(frontendMarkers, ", "))
+			}
+			if len(backendMarkers) > 0 {
+				lines = append(lines, "Backend dependency markers: "+strings.Join(backendMarkers, ", "))
+			} else {
+				lines = append(lines, "Backend dependency markers: none among express, fastify, koa, hono, next, remix, nest.")
+			}
+		}
+	}
+
+	serverRouteMarkers := []string{"server.ts", "server.js", "src/server.ts", "src/server.js", "pages/api", "app/api"}
+	var routeMarkers []string
+	for _, marker := range serverRouteMarkers {
+		if _, err := os.Stat(filepath.Join(fullPath, marker)); err == nil {
+			routeMarkers = append(routeMarkers, marker)
+		}
+	}
+	if len(routeMarkers) == 0 {
+		lines = append(lines, "Server/API route file markers: none among server.ts, server.js, src/server.ts, src/server.js, pages/api, app/api.")
+	} else {
+		lines = append(lines, "Server/API route file markers: "+strings.Join(routeMarkers, ", "))
+	}
+
+	return lines
+}
+
+func (s *Server) localAuditExcerpt(projectPath string) string {
+	if strings.TrimSpace(projectPath) == "" {
+		return ""
+	}
+	fullPath := s.toContainerPath(projectPath)
+	data, err := os.ReadFile(filepath.Join(fullPath, "SECURITY_TRIAGE_REPORT.md"))
+	if err != nil {
+		return ""
+	}
+	text := strings.TrimSpace(string(data))
+	if len(text) > 3000 {
+		text = text[:3000] + "\n... (truncated)"
+	}
+	return text
+}
+
+func summaryMapKeys(values map[string]string, limit int) string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	if len(keys) > limit {
+		keys = keys[:limit]
+		keys = append(keys, "...")
+	}
+	return strings.Join(keys, ", ")
+}
+
+func intersectDependencyNames(deps map[string]string, candidates []string) []string {
+	var result []string
+	for _, candidate := range candidates {
+		if _, ok := deps[candidate]; ok {
+			result = append(result, candidate)
+		}
+	}
+	return result
+}
+
+func buildAISummarySystemPrompt(lang string) string {
+	language := "Russian"
+	if lang == "en" {
+		language = "English"
+	}
+	return fmt.Sprintf(`You are AITriage SecureCoder writing a short security posture summary for a scanned project.
+
+Use SecureCoder methodology: actual repository evidence first, threat model second, scanner finding interpretation third.
+
+Hard rules:
+- Respond in %s.
+- Do not use emoji.
+- Do not invent project type, backend services, API endpoints, forms, authentication, rate limits, database access, secrets, or deployment exposure.
+- Do not infer backend/API/auth/rate-limit risk unless the evidence explicitly shows request handlers, API routes, forms, auth/session code, database access, or network services.
+- Scanner titles are hypotheses, not proof. If evidence only contains a scanner title, say it needs confirmation.
+- Treat statuses false_positive, risk_accepted, resolved, and closed as non-active. Mention them only as suppressed/context evidence.
+- Cite concrete rule IDs and file paths when making a claim.
+- If a finding is project-level with no file, explain the missing affected file as a verification gap instead of pretending the whole project is exploitable.
+
+Output exactly four short paragraphs with bold labels, no markdown headings:
+1. Project overview grounded in evidence.
+2. Security status.
+3. Main priority.
+4. Quick win.`, language)
+}
+
+func buildAISummaryUserPrompt(e aiSummaryEvidence, lang string) string {
+	var sb strings.Builder
+	sb.WriteString("## Summary Evidence\n\n")
+	sb.WriteString(fmt.Sprintf("Requested language: %s\n", lang))
+	sb.WriteString(fmt.Sprintf("Product: %s\n", firstNonEmpty(e.ProductName, "unknown")))
+	if e.RepoPath != "" {
+		sb.WriteString(fmt.Sprintf("Repo path: %s\n", e.RepoPath))
+	}
+	if e.ScanPath != "" {
+		sb.WriteString(fmt.Sprintf("Latest scan path: %s\n", e.ScanPath))
+	}
+	if e.TechStack != "" {
+		sb.WriteString(fmt.Sprintf("Recorded tech stack: %s\n", e.TechStack))
+	}
+	if e.Platform != "" {
+		sb.WriteString(fmt.Sprintf("Platform: %s\n", e.Platform))
+	}
+	if e.BusinessCriticality != "" {
+		sb.WriteString(fmt.Sprintf("Business criticality: %s\n", e.BusinessCriticality))
+	}
+	if e.Lifecycle != "" {
+		sb.WriteString(fmt.Sprintf("Lifecycle: %s\n", e.Lifecycle))
+	}
+
+	sb.WriteString("\n## Project Filesystem Evidence\n")
+	for _, line := range e.ProjectShape {
+		sb.WriteString("- " + line + "\n")
+	}
+
+	sb.WriteString("\n## Finding Counts\n")
+	sb.WriteString(fmt.Sprintf("- Active findings: %d (critical=%d, high=%d, medium=%d, low=%d, other=%d)\n",
+		e.ActiveCounts.total(), e.ActiveCounts.Critical, e.ActiveCounts.High, e.ActiveCounts.Medium, e.ActiveCounts.Low, e.ActiveCounts.Other))
+	sb.WriteString(fmt.Sprintf("- Non-active/suppressed findings: %d (critical=%d, high=%d, medium=%d, low=%d, other=%d)\n",
+		e.SuppressedCounts.total(), e.SuppressedCounts.Critical, e.SuppressedCounts.High, e.SuppressedCounts.Medium, e.SuppressedCounts.Low, e.SuppressedCounts.Other))
+
+	sb.WriteString("\n## Findings Evidence\n")
+	if len(e.Findings) == 0 {
+		sb.WriteString("- No findings recorded for this scope.\n")
+	} else {
+		for _, f := range e.Findings {
+			active := "non-active"
+			if isActiveSummaryStatus(f.Status, f.IsFalsePositive) {
+				active = "active"
+			}
+			loc := formatPromptLocation(firstNonEmpty(f.File, "project-level/no-file"), f.Line)
+			sb.WriteString(fmt.Sprintf("- [%s][%s][%s] %s at `%s`; status=%s; stack=%s",
+				active, strings.ToUpper(f.Severity), firstNonEmpty(f.RuleID, "no-rule-id"), f.Title, loc, firstNonEmpty(f.Status, "open"), firstNonEmpty(f.Stack, "unknown")))
+			if f.AITriageStatus != "" {
+				sb.WriteString("; ai_triage=" + f.AITriageStatus)
+			}
+			sb.WriteString("\n")
+			if strings.TrimSpace(f.Description) != "" {
+				sb.WriteString("  Description: " + truncateForPrompt(f.Description, 260) + "\n")
+			}
+			if strings.TrimSpace(f.FixSuggestion) != "" {
+				sb.WriteString("  Fix suggestion: " + truncateForPrompt(f.FixSuggestion, 220) + "\n")
+			}
+			if strings.TrimSpace(f.AITriageSummary) != "" {
+				sb.WriteString("  AI triage summary: " + truncateForPrompt(f.AITriageSummary, 220) + "\n")
+			}
+		}
+	}
+
+	if e.LocalAuditExcerpt != "" {
+		sb.WriteString("\n## Existing Local Security Triage Report Excerpt\n")
+		sb.WriteString(e.LocalAuditExcerpt)
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("\n## Required Behavior\n")
+	sb.WriteString("- Prefer the existing local security triage report when it contradicts raw scanner titles.\n")
+	sb.WriteString("- If the project evidence looks frontend/static, do not state that API/auth/rate limiting is exploitable unless actual API/request handling evidence is listed above.\n")
+	sb.WriteString("- Main priority must be a confirmed active issue or an explicit verification step, not a guessed backend remediation.\n")
+	sb.WriteString("- Quick win must be tied to evidence in files or recorded findings.\n")
+
+	return sb.String()
+}
+
+func truncateForPrompt(value string, limit int) string {
+	value = strings.ReplaceAll(strings.TrimSpace(value), "\n", " ")
+	if len(value) <= limit {
+		return value
+	}
+	if limit < 4 {
+		return value[:limit]
+	}
+	return value[:limit-3] + "..."
+}
+
+func buildAISummaryFallback(e aiSummaryEvidence, lang string) string {
+	product := firstNonEmpty(e.ProductName, "project")
+	active := e.ActiveCounts.total()
+	suppressed := e.SuppressedCounts.total()
+
+	var top *aiSummaryFinding
+	for i := range e.Findings {
+		if isActiveSummaryStatus(e.Findings[i].Status, e.Findings[i].IsFalsePositive) {
+			top = &e.Findings[i]
+			break
+		}
+	}
+
+	if lang == "en" {
+		if active == 0 {
+			return fmt.Sprintf("**Project overview:** `%s` has no active findings in the current AITriage database scope.\n\n**Security status:** No active vulnerability is confirmed from recorded evidence. %d non-active or suppressed findings remain as audit context.\n\n**Main priority:** Verify the deployed host applies the recorded hardening controls before calling production fully clean.\n\n**Quick win:** Keep suppressed scanner findings documented with rationale so auth/rate-limit style checks do not reappear as unverified critical blockers.", product, suppressed)
+		}
+		if top != nil {
+			return fmt.Sprintf("**Project overview:** `%s` has %d active findings in the current AITriage database scope.\n\n**Security status:** Active findings require review: critical=%d, high=%d, medium=%d, low=%d.\n\n**Main priority:** Confirm and address `%s` (`%s`) at `%s`; treat scanner-only or project-level findings as verification work until an affected entry point is proven.\n\n**Quick win:** Start with the cited file/rule evidence and suppress or reclassify findings that do not apply to the actual project surface.", product, active, e.ActiveCounts.Critical, e.ActiveCounts.High, e.ActiveCounts.Medium, e.ActiveCounts.Low, top.Title, firstNonEmpty(top.RuleID, "no-rule-id"), formatPromptLocation(firstNonEmpty(top.File, "project-level/no-file"), top.Line))
+		}
+		return fmt.Sprintf("**Project overview:** `%s` has %d active findings in the current AITriage database scope.\n\n**Security status:** Active findings require review, but no detailed finding evidence was available to this summary endpoint.\n\n**Main priority:** Re-run or refresh the scan evidence before remediation.\n\n**Quick win:** Ensure every active finding has rule ID, file path, status, and rationale.", product, active)
+	}
+
+	if active == 0 {
+		return fmt.Sprintf("**Обзор проекта:** `%s` не имеет активных findings в текущем scope базы AITriage.\n\n**Статус безопасности:** По записанным evidence активная уязвимость не подтверждена. %d неактивных или подавленных findings остаются как audit context.\n\n**Главный приоритет:** Проверить реальный production-host и применение hardening-контролей перед финальным выводом.\n\n**Быстрое улучшение:** Хранить rationale для подавленных scanner findings, чтобы auth/rate-limit проверки не возвращались как неподтвержденные critical blockers.", product, suppressed)
+	}
+	if top != nil {
+		return fmt.Sprintf("**Обзор проекта:** `%s` имеет %d активных findings в текущем scope базы AITriage.\n\n**Статус безопасности:** Активные findings требуют проверки: critical=%d, high=%d, medium=%d, low=%d.\n\n**Главный приоритет:** Подтвердить и разобрать `%s` (`%s`) в `%s`; scanner-only или project-level findings считать задачей на верификацию, пока не доказан конкретный affected entry point.\n\n**Быстрое улучшение:** Начать с указанного file/rule evidence и подавить либо переклассифицировать findings, которые не применимы к реальной поверхности проекта.", product, active, e.ActiveCounts.Critical, e.ActiveCounts.High, e.ActiveCounts.Medium, e.ActiveCounts.Low, top.Title, firstNonEmpty(top.RuleID, "no-rule-id"), formatPromptLocation(firstNonEmpty(top.File, "project-level/no-file"), top.Line))
+	}
+	return fmt.Sprintf("**Обзор проекта:** `%s` имеет %d активных findings в текущем scope базы AITriage.\n\n**Статус безопасности:** Findings требуют проверки, но detailed evidence недоступен summary endpoint.\n\n**Главный приоритет:** Обновить scan evidence перед remediation.\n\n**Быстрое улучшение:** Убедиться, что у каждого active finding есть rule ID, file path, status и rationale.", product, active)
 }
 
 func (s *Server) handleChatSessions(w http.ResponseWriter, r *http.Request) {
@@ -2433,6 +2837,13 @@ func (s *Server) handleRunwaySession(w http.ResponseWriter, r *http.Request) {
 				session.CurrentStep = int(fval)
 			}
 		}
+		if val, ok := body["progress_message"]; ok {
+			if sval, ok := val.(string); ok {
+				session.ProgressMessage = &sval
+			} else if val == nil {
+				session.ProgressMessage = nil
+			}
+		}
 		if val, ok := body["auto_mode"]; ok {
 			if bval, ok := val.(bool); ok {
 				session.AutoMode = bval
@@ -2659,6 +3070,11 @@ func (s *Server) handleRunwayStart(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, fmt.Sprintf("session not found: %v", err), http.StatusNotFound)
 		return
 	}
+	if strings.EqualFold(session.Status, "running") && session.ErrorMessage == nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "message": "Runway scan already running"})
+		return
+	}
 
 	product, err := s.productRepo.GetByID(ctx, session.ProductID)
 	if err != nil || product == nil {
@@ -2675,6 +3091,15 @@ func (s *Server) handleRunwayStart(w http.ResponseWriter, r *http.Request) {
 	// Start background orchestrator
 	go func() {
 		bgCtx := context.Background()
+		updateProgress := func(step int, progressMessage string) {
+			session.Status = "running"
+			session.CurrentStep = step
+			session.ProgressMessage = &progressMessage
+			session.ErrorMessage = nil
+			if err := s.runwayRepo.Update(bgCtx, session); err != nil {
+				slog.Error("Failed to update runway progress", "session_id", session.ID, "step", step, "progress", progressMessage, "error", err)
+			}
+		}
 
 		path := "/host"
 		if product.RepoURL != nil && *product.RepoURL != "" {
@@ -2683,8 +3108,9 @@ func (s *Server) handleRunwayStart(w http.ResponseWriter, r *http.Request) {
 
 		cfg := config.LoadConfig(".")
 		state := &graph.AgentState{
-			ProjectPath: path,
-			BatchSize:   cfg.LLM.BatchSize,
+			ProjectPath:    path,
+			BatchSize:      cfg.LLM.BatchSize,
+			RunwayProgress: updateProgress,
 		}
 
 		for _, f := range findings {
@@ -2709,6 +3135,10 @@ func (s *Server) handleRunwayStart(w http.ResponseWriter, r *http.Request) {
 		}
 
 		session.Status = "running"
+		session.CurrentStep = 1
+		progressMessage := "preparing_context"
+		session.ProgressMessage = &progressMessage
+		session.ErrorMessage = nil
 		if err := s.runwayRepo.Update(bgCtx, session); err != nil {
 			slog.Error("Failed to mark runway session running", "session_id", session.ID, "error", err)
 			return
@@ -2717,11 +3147,18 @@ func (s *Server) handleRunwayStart(w http.ResponseWriter, r *http.Request) {
 		err := graph.Run(bgCtx, state, s.llmClient)
 		if err != nil {
 			errMsg := err.Error()
+			progressMessage := "failed"
 			session.ErrorMessage = &errMsg
 			session.Status = "failed"
+			session.ProgressMessage = &progressMessage
+			if session.CurrentStep == 0 {
+				session.CurrentStep = 1
+			}
 		} else {
+			progressMessage := "completed"
 			session.Status = "completed"
 			session.CurrentStep = 7
+			session.ProgressMessage = &progressMessage
 
 			tmJSON := "{}"
 			if state.ThreatModel != nil {
@@ -2738,6 +3175,12 @@ func (s *Server) handleRunwayStart(w http.ResponseWriter, r *http.Request) {
 			session.PoC = &pocJSON
 
 			session.AuditReport = &state.ReportMarkdown
+			if strings.TrimSpace(state.SummaryMarkdown) != "" {
+				session.SecurityPlan = &state.SummaryMarkdown
+			}
+			if strings.TrimSpace(state.AIFixSpec) != "" {
+				session.Remediation = &state.AIFixSpec
+			}
 		}
 
 		if err := s.runwayRepo.Update(bgCtx, session); err != nil {

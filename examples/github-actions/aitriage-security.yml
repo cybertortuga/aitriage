@@ -127,17 +127,29 @@ jobs:
 
       - name: Restore AITriage AI caches
         id: aitriage-cache-restore
+        # GitHub caches are immutable per key, so the primary key is unique per
+        # run: every completed agent run can save its (possibly enriched) cache,
+        # and later runs restore the newest one via the restore keys. AITriage
+        # validates restored entries against exact content-hash keys, so a
+        # prefix restore can never be mistaken for an exact artifact hit.
         # actions/cache/restore@v4.3.0
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: .aitriage-cache
-          key: aitriage-ai-v2-${{ runner.os }}-${{ github.repository_id }}-${{ github.sha }}
+          key: aitriage-ai-v3-${{ runner.os }}-${{ github.repository_id }}-${{ github.sha }}-run-${{ github.run_id }}
+          restore-keys: |
+            aitriage-ai-v3-${{ runner.os }}-${{ github.repository_id }}-${{ github.sha }}-
+            aitriage-ai-v3-${{ runner.os }}-${{ github.repository_id }}-
 
       - name: Run AI triage
         # AI triage is mandatory for every authorised pipeline run. Any provider
         # or agent failure fails this job and therefore the whole pipeline.
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Extra retry passes for findings the model leaves unclassified; the
+          # Needs-Manual-Review fallback is safe but not cacheable and blocks
+          # artifact-bundle reuse on the next run.
+          AITRIAGE_CLASSIFY_RETRIES: '4'
         uses: cybertortuga/aitriage@v1
         with:
           command: agent
@@ -167,13 +179,14 @@ jobs:
           retention-days: 14
 
       - name: Save AITriage AI caches
+        # The run-scoped primary key never pre-exists, so every completed agent
+        # run persists its cache — including runs that enriched a restored one.
         if: >-
           always() &&
-          steps.aitriage-cache-restore.outputs.cache-hit != 'true' &&
           hashFiles('.aitriage-cache/triage_cache.json') != '' &&
           hashFiles('.aitriage-cache/artifact_bundle_cache.json') != ''
         # actions/cache/save@v4.3.0
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: .aitriage-cache
-          key: aitriage-ai-v2-${{ runner.os }}-${{ github.repository_id }}-${{ github.sha }}
+          key: aitriage-ai-v3-${{ runner.os }}-${{ github.repository_id }}-${{ github.sha }}-run-${{ github.run_id }}

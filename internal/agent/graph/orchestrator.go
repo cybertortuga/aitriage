@@ -25,6 +25,7 @@ import (
 func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	// Step 0: Gather repository context (reads files from disk, no LLM)
 	fmt.Fprintf(os.Stderr, "📂 Gathering Repository Context...\n")
+	reportRunwayProgress(state, 1, "preparing_context")
 	gatherRepoContext(state)
 
 	fmt.Fprintf(os.Stderr, "🤖 Context Enrichment...\n")
@@ -32,6 +33,7 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 
 	// SecureCoder Step 1: Threat Model (classifies each finding as TP/FP/NR)
 	fmt.Fprintf(os.Stderr, "🏗️ Building Threat Model (SecureCoder)...\n")
+	reportRunwayProgress(state, 1, "building_threat_model")
 	if err := buildThreatModel(ctx, state, llmClient); err != nil {
 		return fmt.Errorf("threat-model analysis failed: %w", err)
 	}
@@ -58,6 +60,7 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	if !artifactCacheHit {
 		// SecureCoder Step 2: PoC Verification (proves exploitability of True Positives)
 		fmt.Fprintf(os.Stderr, "🧪 PoC Verification (SecureCoder)...\n")
+		reportRunwayProgress(state, 2, "verifying_poc")
 		if err := runPoCVerification(ctx, state, llmClient); err != nil {
 			return fmt.Errorf("PoC verification failed: %w", err)
 		}
@@ -66,6 +69,7 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	// Health Check: compute AFTER all triage is complete (Threat Model + PoC).
 	// This ensures the CI gate verdict uses the final, authoritative dispositions.
 	fmt.Fprintf(os.Stderr, "🩺 Computing Security Health Check (all sources, FP-aware)...\n")
+	reportRunwayProgress(state, 3, "computing_health_check")
 	computeHealthCheck(state)
 	fmt.Fprintf(os.Stderr, "   ✅ Health Check: %d/100 (%s) — %d active, %d ignored (FP), %d deduped\n",
 		state.HealthCheck.Score, state.HealthCheck.Grade,
@@ -75,21 +79,27 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 
 	if !artifactCacheHit {
 		fmt.Fprintf(os.Stderr, "🤖 Generating Security Report (CS-XXX-NNN format)...\n")
+		reportRunwayProgress(state, 4, "generating_report")
 		if err := generateReport(ctx, state, llmClient); err != nil {
 			return err
 		}
 
 		fmt.Fprintf(os.Stderr, "🤖 Generating AI Fix Specification...\n")
+		reportRunwayProgress(state, 5, "generating_fix_spec")
 		if err := generateAIFixSpec(ctx, state, llmClient); err != nil {
 			return err
 		}
 
 		if artifactCache.enabled && artifactKeyMiss == "" {
+			if uncached := countUncachedVerdicts(state); uncached > 0 {
+				artifactCache.stats.UncachedVerdicts = uncached
+				fmt.Fprintf(os.Stderr, "   ⚠️ Artifact cache: %d unique verdicts are not backed by the verdict cache (NR-fallback or sensitive-skip) — a future run will re-classify them, so an exact artifact hit is unlikely\n", uncached)
+			}
 			artifactCache.Store(state, artifactKey)
 			artifactCache.Save()
 			stats := artifactCache.Stats()
-			fmt.Fprintf(os.Stderr, "   ℹ️ Artifact cache store: stores=%d saved=%t skipped_sensitive=%d\n",
-				stats.Stores, stats.Saved, stats.SkippedSensitive)
+			fmt.Fprintf(os.Stderr, "   ℹ️ Artifact cache store: stores=%d saved=%t skipped_sensitive=%d uncached_verdicts=%d\n",
+				stats.Stores, stats.Saved, stats.SkippedSensitive, stats.UncachedVerdicts)
 		}
 	}
 	state.ArtifactCacheStats = artifactCache.Stats()
@@ -97,6 +107,7 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	// Generate the final summary only after every required AI stage has finished,
 	// so its usage and findings cannot be partial or pre-triage.
 	fmt.Fprintf(os.Stderr, "📋 Generating Actionable Summary (TP/NR only)...\n")
+	reportRunwayProgress(state, 6, "generating_summary")
 	generateSummary(state)
 
 	// Print LLM usage summary
@@ -106,7 +117,14 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 			formatLLMUsage(u))
 	}
 
+	reportRunwayProgress(state, 7, "completed")
 	return nil
+}
+
+func reportRunwayProgress(state *AgentState, step int, progressMessage string) {
+	if state != nil && state.RunwayProgress != nil {
+		state.RunwayProgress(step, progressMessage)
+	}
 }
 
 // gatherRepoContext reads the repository from disk and builds structured context.
@@ -296,6 +314,23 @@ func hcKey(id, file string, line int) string {
 	return fmt.Sprintf("%s|%s|%d", strings.ToLower(id), strings.ToLower(file), line)
 }
 
+// countUncachedVerdicts returns how many unique verdicts a re-run cannot get
+// from the verdict cache: NR-fallback dispositions (never cached — they must
+// be re-triaged) plus verdicts skipped as sensitive. Each of them forces an
+// LLM call on the next run, whose output text changes the artifact cache key.
+func countUncachedVerdicts(state *AgentState) int {
+	seen := make(map[string]bool)
+	n := 0
+	for _, d := range state.FindingDispositions {
+		if d.DispositionSource != dispositionSourceNRFallback || seen[d.Fingerprint] {
+			continue
+		}
+		seen[d.Fingerprint] = true
+		n++
+	}
+	return n + state.VerdictCacheStats.SkippedSensitive
+}
+
 func sortEnrichedFindings(findings []EnrichedFinding) {
 	sort.SliceStable(findings, func(i, j int) bool {
 		a, b := findings[i], findings[j]
@@ -450,7 +485,7 @@ func buildThreatModel(ctx context.Context, state *AgentState, llmClient llm.Clie
 		repoContextText = state.RepoContext.FormatForLLM(5000) // ~5K tokens for threat model
 	}
 
-	tm, dispositions, audit, cacheStats, err := ClassifyFindingsWithAudit(ctx, repoContextText, state.ProjectPath, state.EnrichedFindings, trackTriageLLMStages(state, llmClient), &state.TotalUsage, GetBatchSize(state), withVerdictCachePolicy(state.Policy))
+	tm, dispositions, audit, cacheStats, err := ClassifyFindingsWithAudit(ctx, repoContextText, state.ProjectPath, state.EnrichedFindings, trackTriageLLMStages(state, llmClient), &state.TotalUsage, GetBatchSize(state), withVerdictCachePolicy(state.Policy), withVerdictCacheLLMIdentity(state))
 	state.VerdictCacheStats = cacheStats
 	if err != nil {
 		return err
@@ -859,7 +894,7 @@ func generateSummary(state *AgentState) {
 		if missReason == "" {
 			missReason = "n/a"
 		}
-		sb.WriteString(fmt.Sprintf("\n_AITriage artifact cache: %s · restored poc=%t report=%t fixspec=%t · stored=%d · sensitive skipped=%d · corrupt ignored=%t · miss_reason=%s · saved=%t._\n",
+		sb.WriteString(fmt.Sprintf("\n_AITriage artifact cache: %s · restored poc=%t report=%t fixspec=%t · stored=%d · sensitive skipped=%d · corrupt ignored=%t · miss_reason=%s · saved=%t · uncached verdicts=%d._\n",
 			status,
 			state.ArtifactCacheStats.RestoredPoC,
 			state.ArtifactCacheStats.RestoredReport,
@@ -868,7 +903,8 @@ func generateSummary(state *AgentState) {
 			state.ArtifactCacheStats.SkippedSensitive,
 			state.ArtifactCacheStats.CorruptCacheIgnored,
 			missReason,
-			state.ArtifactCacheStats.Saved))
+			state.ArtifactCacheStats.Saved,
+			state.ArtifactCacheStats.UncachedVerdicts))
 	}
 
 	state.SummaryMarkdown = sb.String()

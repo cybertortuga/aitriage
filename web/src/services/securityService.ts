@@ -141,9 +141,11 @@ export const securityService = {
     return data.metrics;
   },
 
-  getAISummary: async (productId?: number | null): Promise<string> => {
-    const url = productId ? `/ai-summary?product_id=${productId}` : '/ai-summary';
-    const { data } = await api.get(url);
+  getAISummary: async (productId?: number | null, lang?: 'en' | 'ru'): Promise<string> => {
+    const params: Record<string, string | number> = {};
+    if (productId) params.product_id = productId;
+    if (lang) params.lang = lang;
+    const { data } = await api.get('/ai-summary', { params });
     return data.summary || '';
   },
 

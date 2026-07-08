@@ -35,6 +35,38 @@ func enrichedOrderSignature(findings []EnrichedFinding) []string {
 	return out
 }
 
+func TestCountUncachedVerdicts(t *testing.T) {
+	state := &AgentState{
+		FindingDispositions: []FindingDisposition{
+			{Fingerprint: "fp-a", DispositionSource: dispositionSourceNRFallback},
+			{Fingerprint: "fp-a", DispositionSource: dispositionSourceNRFallback}, // duplicate projection
+			{Fingerprint: "fp-b", DispositionSource: dispositionSourceNRFallback},
+			{Fingerprint: "fp-c", DispositionSource: dispositionSourceLLM},
+			{Fingerprint: "fp-d", DispositionSource: dispositionSourceCache},
+		},
+	}
+	state.VerdictCacheStats.SkippedSensitive = 1
+
+	if got := countUncachedVerdicts(state); got != 3 {
+		t.Fatalf("countUncachedVerdicts = %d, want 2 unique NR-fallback + 1 sensitive-skipped", got)
+	}
+}
+
+func TestClassifyMaxRetriesEnvOverride(t *testing.T) {
+	t.Setenv("AITRIAGE_CLASSIFY_RETRIES", "")
+	if got := classifyMaxRetries(); got != threatModelMaxRetries {
+		t.Fatalf("default retries = %d, want %d", got, threatModelMaxRetries)
+	}
+	t.Setenv("AITRIAGE_CLASSIFY_RETRIES", "4")
+	if got := classifyMaxRetries(); got != 4 {
+		t.Fatalf("env retries = %d, want 4", got)
+	}
+	t.Setenv("AITRIAGE_CLASSIFY_RETRIES", "not-a-number")
+	if got := classifyMaxRetries(); got != threatModelMaxRetries {
+		t.Fatalf("invalid env retries = %d, want fallback %d", got, threatModelMaxRetries)
+	}
+}
+
 func TestClassifyVulnCodeIsDeterministicForAmbiguousMessages(t *testing.T) {
 	// Real remote-run messages that match several VulnClassCodes keys. Map
 	// iteration used to pick a random winner, which changed CS-* IDs — and every

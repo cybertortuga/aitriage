@@ -264,7 +264,7 @@ func TestGenerateSummaryReportsArtifactCacheStats(t *testing.T) {
 	generateSummary(state)
 
 	summary := state.SummaryMarkdown
-	want := "AITriage artifact cache: exact hit · restored poc=true report=true fixspec=true · stored=0 · sensitive skipped=1 · corrupt ignored=true · miss_reason=n/a · saved=false"
+	want := "AITriage artifact cache: exact hit · restored poc=true report=true fixspec=true · stored=0 · sensitive skipped=1 · corrupt ignored=true · miss_reason=n/a · saved=false · uncached verdicts=0"
 	if !strings.Contains(summary, want) {
 		t.Fatalf("summary does not contain artifact cache stats %q: %s", want, summary)
 	}

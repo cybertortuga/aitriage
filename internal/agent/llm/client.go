@@ -30,6 +30,6 @@ type Config struct {
 	Model           string `yaml:"model"`
 	APIKey          string `yaml:"api_key"`
 	BaseURL         string `yaml:"base_url"`         // для ollama и openai-compatible
-	Timeout         int    `yaml:"timeout"`          // секунды, default 120
+	Timeout         int    `yaml:"timeout"`          // секунды, default 600 (см. NewClient)
 	DisableThinking bool   `yaml:"disable_thinking"` // Send thinking:{type:disabled} for reasoning models
 }

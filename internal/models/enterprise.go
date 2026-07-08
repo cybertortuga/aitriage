@@ -139,6 +139,7 @@ type RunwaySession struct {
 	ProductID       int64     `json:"product_id"`
 	Status          string    `json:"status"`
 	CurrentStep     int       `json:"current_step"`
+	ProgressMessage *string   `json:"progress_message"`
 	AutoMode        bool      `json:"auto_mode"`
 	ThreatModel     *string   `json:"threat_model"`
 	SecurityPlan    *string   `json:"security_plan"`

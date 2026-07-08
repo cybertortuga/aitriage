@@ -20,6 +20,18 @@ type AgentState struct {
 	DeepScan    bool
 	BatchSize   int
 
+	// RunwayProgress is optional; web Runway uses it to persist live progress.
+	RunwayProgress func(step int, progressMessage string)
+
+	// Resolved LLM identity (never credentials). Cache keys must reflect the
+	// provider/model that actually produced the verdicts; env vars alone miss
+	// configurations coming from CLI flags, yaml config, or API-key
+	// auto-detection. Empty fields fall back to the env-derived defaults.
+	LLMProvider        string
+	LLMModel           string
+	LLMBaseURL         string
+	LLMDisableThinking bool
+
 	// Deterministic Go findings
 	CoreFindings     []core.CheckResult
 	ExternalFindings []external.UnifiedFinding

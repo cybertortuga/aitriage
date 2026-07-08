@@ -245,6 +245,7 @@ CREATE TABLE IF NOT EXISTS runway_sessions (
   product_id          INTEGER REFERENCES products(id) ON DELETE CASCADE,
   status              TEXT NOT NULL DEFAULT 'in_progress',
   current_step        INTEGER NOT NULL DEFAULT 0,
+  progress_message    TEXT,
   auto_mode           INTEGER DEFAULT 0,
   threat_model        TEXT,
   security_plan       TEXT,
@@ -287,6 +288,7 @@ func InitDB(dbPath string) (*sql.DB, error) {
 	_, _ = db.Exec("ALTER TABLE findings ADD COLUMN verification_status TEXT")
 	_, _ = db.Exec("ALTER TABLE findings ADD COLUMN verification_summary TEXT")
 	_, _ = db.Exec("ALTER TABLE findings ADD COLUMN verification_last_run_at DATETIME")
+	_, _ = db.Exec("ALTER TABLE runway_sessions ADD COLUMN progress_message TEXT")
 
 	// 2b. Patch old engine_llm_model to gemini-2.5-flash
 	_, _ = db.Exec("UPDATE system_config SET config_val = 'gemini-2.5-flash' WHERE config_key = 'engine_llm_model' AND config_val = 'gemini-2.0-flash'")

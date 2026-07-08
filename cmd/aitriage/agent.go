@@ -166,20 +166,27 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "🤖 Step 2/3: LLM Analysis (Map-Reduce)...\n")
 
 	state := &graph.AgentState{
-		ProjectPath:      projectPath,
-		DeepScan:         true,
-		BatchSize:        llmCfg.BatchSize,
-		CoreFindings:     richResult.Report.Results,
-		ExternalFindings: richResult.External,
-		NFRFindings:      richResult.NFR,
-		DeployFindings:   richResult.Deploy,
-		NetworkFindings:  richResult.Network,
-		SecurityScore:    richResult.Report.SecurityScore,
-		SecurityGrade:    richResult.Report.SecurityGrade,
-		Policy:           policy,
-		Diagram:          richResult.Diagram,
-		CriticalFiles:    richResult.CriticalFiles,
-		HistoryLeaks:     richResult.HistoryLeaks,
+		ProjectPath: projectPath,
+		DeepScan:    true,
+		BatchSize:   llmCfg.BatchSize,
+		// Resolved LLM identity (never the API key): cache keys must reflect
+		// the provider/model that actually produced the verdicts, including
+		// flag/yaml/API-key-derived configuration that env vars would miss.
+		LLMProvider:        llmCfg.Provider,
+		LLMModel:           llmCfg.Model,
+		LLMBaseURL:         llmCfg.BaseURL,
+		LLMDisableThinking: llmCfg.DisableThinking,
+		CoreFindings:       richResult.Report.Results,
+		ExternalFindings:   richResult.External,
+		NFRFindings:        richResult.NFR,
+		DeployFindings:     richResult.Deploy,
+		NetworkFindings:    richResult.Network,
+		SecurityScore:      richResult.Report.SecurityScore,
+		SecurityGrade:      richResult.Report.SecurityGrade,
+		Policy:             policy,
+		Diagram:            richResult.Diagram,
+		CriticalFiles:      richResult.CriticalFiles,
+		HistoryLeaks:       richResult.HistoryLeaks,
 	}
 
 	if err := graph.Run(ctx, state, client); err != nil {

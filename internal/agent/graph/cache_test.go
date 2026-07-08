@@ -193,6 +193,14 @@ func TestVerdictCacheIgnoresCorruptCache(t *testing.T) {
 }
 
 func TestContainsSensitiveCacheValueTokenShape(t *testing.T) {
+	fakeOpenAIKey := "sk" + "-" + strings.Repeat("a", 24)
+	fakeGitHubPAT := "gh" + "p_" + strings.Repeat("a", 28)
+	fakeFineGrainedPAT := "github" + "_pat_" + strings.Repeat("a", 28)
+	fakeSlackBotToken := "xo" + "xb-" + strings.Repeat("a", 24)
+	fakeSlackUserToken := "xo" + "xp-" + strings.Repeat("a", 24)
+	fakeAWSAccessKeyID := "AK" + "IA" + strings.Repeat("A", 16)
+	fakePrivateKeyHeader := "-----BEGIN " + "PRIVATE KEY-----"
+
 	tests := []struct {
 		name      string
 		value     string
@@ -200,14 +208,14 @@ func TestContainsSensitiveCacheValueTokenShape(t *testing.T) {
 	}{
 		{name: "safe package name", value: "flask-limiter", sensitive: false},
 		{name: "safe package guidance", value: "Use flask-limiter or slowapi for rate limiting.", sensitive: false},
-		{name: "openai style token", value: "token sk-aaaaaaaaaaaaaaaaaaaaaaaa must not persist", sensitive: true},
-		{name: "github classic pat", value: "token ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaa must not persist", sensitive: true},
-		{name: "github fine grained pat", value: "token github_pat_aaaaaaaaaaaaaaaaaaaaaaaaaaaa must not persist", sensitive: true},
-		{name: "slack bot token", value: "token xoxb-aaaaaaaaaaaaaaaaaaaaaaaa must not persist", sensitive: true},
-		{name: "slack user token", value: "token xoxp-aaaaaaaaaaaaaaaaaaaaaaaa must not persist", sensitive: true},
+		{name: "openai style token", value: "token " + fakeOpenAIKey + " must not persist", sensitive: true},
+		{name: "github classic pat", value: "token " + fakeGitHubPAT + " must not persist", sensitive: true},
+		{name: "github fine grained pat", value: "token " + fakeFineGrainedPAT + " must not persist", sensitive: true},
+		{name: "slack bot token", value: "token " + fakeSlackBotToken + " must not persist", sensitive: true},
+		{name: "slack user token", value: "token " + fakeSlackUserToken + " must not persist", sensitive: true},
 		{name: "jwt token", value: "token eyJaaaaaaaaaaa.bbbbbbbbbbbb.cccccccccccc must not persist", sensitive: true},
-		{name: "aws access key id", value: "token AKIA1234567890ABCDEF must not persist", sensitive: true},
-		{name: "private key", value: "-----BEGIN PRIVATE KEY-----", sensitive: true},
+		{name: "aws access key id", value: "token " + fakeAWSAccessKeyID + " must not persist", sensitive: true},
+		{name: "private key", value: fakePrivateKeyHeader, sensitive: true},
 	}
 
 	for _, tt := range tests {
@@ -222,13 +230,14 @@ func TestContainsSensitiveCacheValueTokenShape(t *testing.T) {
 func TestVerdictCacheDoesNotPersistSensitiveEvidence(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("AITRIAGE_CACHE_DIR", dir)
+	fakeOpenAIKey := "sk" + "-" + strings.Repeat("a", 24)
 
 	c := newVerdictCache("model-a")
 	c.Set("fp-secret", FindingDisposition{
 		Disposition: "False Positive",
-		Rationale:   "Mitigated, but sample token sk-aaaaaaaaaaaaaaaaaaaaaaaa must not persist",
+		Rationale:   "Mitigated, but sample token " + fakeOpenAIKey + " must not persist",
 		Confidence:  "high",
-		Evidence:    &DispositionEvidence{Basis: "code_mitigation", File: "config.go", Line: 1, Observed: "token := \"sk-aaaaaaaaaaaaaaaaaaaaaaaa\""},
+		Evidence:    &DispositionEvidence{Basis: "code_mitigation", File: "config.go", Line: 1, Observed: "token := \"" + fakeOpenAIKey + "\""},
 	})
 	c.Save()
 
@@ -243,7 +252,7 @@ func TestVerdictCacheDoesNotPersistSensitiveEvidence(t *testing.T) {
 		if readErr != nil {
 			t.Fatalf("read cache file: %v", readErr)
 		}
-		if strings.Contains(string(data), "sk-aaaaaaaaaaaaaaaaaaaaaaaa") {
+		if strings.Contains(string(data), fakeOpenAIKey) {
 			t.Fatalf("cache file persisted sensitive evidence: %s", data)
 		}
 	}

@@ -171,3 +171,15 @@ func TestIsRetryable(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultedTimeoutGuardsAgainstZero(t *testing.T) {
+	if got := defaultedTimeout(0); got != 600 {
+		t.Fatalf("defaultedTimeout(0) = %d, want 600", got)
+	}
+	if got := defaultedTimeout(-5); got != 600 {
+		t.Fatalf("defaultedTimeout(-5) = %d, want 600", got)
+	}
+	if got := defaultedTimeout(120); got != 120 {
+		t.Fatalf("defaultedTimeout(120) = %d, want 120", got)
+	}
+}
