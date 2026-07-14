@@ -3,7 +3,7 @@
 ```
      _    ___ _____ ____  ___    _    ____ _____ 
     / \  |_ _|_   _|  _ \|_ _|  / \  / ___| ____|
-   / _ \  | |  | | | |_) || |  / _ \| |  _|  _|  
+   / _ \  | |  | | |_) || |  / _ \| |  _|  _|  
   / ___ \ | |  | | |  _ < | | / ___ \ |_| | |___ 
  /_/   \_\___|_|_| |_| \_\___/_/   \_\____|_____|
               Security Audit Engine
@@ -23,11 +23,11 @@
 
 ## At a Glance
 
-- **Deterministic evidence first:** built-in rules and integrated scanners collect findings, SARIF, annotations, and artifacts without failing a trusted CI run on untriaged results.
+- **Deterministic evidence first:** 187 built-in rules and integrated external scanners collect findings, SARIF, annotations, and artifacts without failing a trusted CI run on untriaged results.
 - **Mandatory AI gate in the primary CI workflow:** AI triage removes false positives, writes the authoritative summary, then is the sole policy gate. If the AI provider or agent fails, the workflow fails closed.
 - **Deterministic AI caching:** verdict and artifact-bundle caches make repeat CI runs on the same code cheap — cached verdicts skip per-finding LLM classification, and an exact artifact hit skips PoC/report/fixspec generation entirely.
 - **Built for local development and CI:** run a deterministic scan locally without an LLM, use the hardened GitHub Actions workflow for trusted code, or expose security context through MCP.
-- **Go 1.25+ for source builds:** released binaries and the Homebrew formula do not require a local Go toolchain.
+- **Go 1.25.5 for source builds:** released binaries and the Homebrew formula do not require a local Go toolchain.
 
 ---
 
@@ -35,20 +35,32 @@
 
 AI coding assistants generate code at light speed — but they also propagate **security vulnerabilities** just as fast. AITriage is a hybrid security scanner designed specifically for the post-AI software development era. It bridges the gap between deterministic pattern matching and intelligent context analysis by catching what traditional SAST tools often miss:
 
-*   **Hardcoded secrets** hidden in complex AI structures.
-*   **Unreviewed LLM scaffold residue** and boilerplate left in production.
-*   **Happy-path logic** generated with zero error handling.
-*   **Hallucinated dependencies** and packages that could lead to supply-chain attacks.
+- **Hardcoded secrets** hidden in complex AI-generated structures.
+- **Unreviewed LLM scaffold residue** and boilerplate left in production code.
+- **Happy-path logic** generated with zero error handling or input validation.
+- **Hallucinated dependencies** and packages that could lead to supply-chain attacks.
 
 ---
 
 ## How It Works
 
-AITriage utilizes a **single-pass O(N) concurrent audit engine** written in Go. Code files are loaded and streamed simultaneously through the AST, Entropy, and Config engines. There is zero redundant disk I/O, allowing you to run scans in seconds.
+AITriage uses a **single-pass O(N) concurrent audit engine** written in Go. Code files are loaded and streamed simultaneously through the AST, Entropy, and Config engines. There is zero redundant disk I/O, allowing scans to complete in seconds.
 
 ```
 Files ──► Loader ──► [ AST Engine + Entropy Engine + Config Auditor ] ──► Scorer ──► Report
                               (concurrent, single pass)
+```
+
+For AI-powered triage, the agent orchestrator runs a multi-stage pipeline:
+
+```
+Scan ──► Context Enrichment ──► Threat Model (TP/FP/NR) ──► PoC Verification
+                                                              │
+                                                              ▼
+                          Health Check ◄── Report ◄── Fix Specification
+                                                              │
+                                                              ▼
+                                          Summary + Canonical JSON Inventory
 ```
 
 ---
@@ -58,13 +70,17 @@ Files ──► Loader ──► [ AST Engine + Entropy Engine + Config Auditor 
 | Capability | Description |
 | :--- | :--- |
 | **AST Analysis** | Tree-sitter powered scanning for Go, Python, and TypeScript/JavaScript. Tracks SQLi, XSS, CSRF, and path traversal at the syntax level. |
-| **Entropy Engine** | Shannon Entropy analysis catches high-entropy variables and hardcoded keys, plus AI chat remnants. |
-| **Silent Luxury TUI** | Professional interactive terminal dashboard for audit triage, code browsing, and real-time review. |
-| **MCP Native** | Model Context Protocol server exposing security context tools directly to AI assistants (Cursor, Claude, Windsurf). |
-| **Orchestration** | Wraps and unifies findings from Semgrep, Trivy, Gitleaks, and Bandit into a single consolidated stream. |
+| **Entropy Engine** | Shannon Entropy analysis catches high-entropy variables, hardcoded keys, and AI chat remnants. |
+| **Interactive TUI** | Professional terminal dashboard for audit triage, code browsing, and real-time review. |
+| **MCP Server** | Model Context Protocol server exposing 13 security tools and 2 resources to AI assistants (Cursor, Claude, Windsurf). |
+| **External Orchestration** | Wraps and unifies findings from Semgrep, Trivy, Gitleaks, and Bandit into a single consolidated stream. |
 | **AI Agent Mode** | LLM-driven triage that classifies every finding, suppresses false positives, and produces a full report, actionable summary, fix specification, and canonical JSON inventory. |
 | **AI Response Caching** | Two deterministic cache layers keyed by content fingerprints: per-finding verdict reuse plus exact reuse of the PoC/report/fixspec bundle on identical re-runs. |
 | **AI IDE Remediation Brief** | Gives an AI IDE the verified finding context and a secure operating contract: audit and plan first, implement only confirmed true positives, then verify; manual-review items are not changed speculatively. |
+| **Web Dashboard** | Browser-based React/TypeScript dashboard with multi-project scanning, RBAC, and persistent SQLite storage. |
+| **SBOM Generation** | CycloneDX 1.5 and SPDX 2.3 Software Bill of Materials exports from the dependency graph. |
+| **Git Baseline** | Accept current findings as a baseline to suppress legacy alerts and track only new regressions. |
+| **Sentinel Watch** | Background file-watcher that runs incremental scans on every edit with configurable debouncing. |
 
 ---
 
@@ -86,43 +102,61 @@ aitriage scan .
 # Run the interactive TUI dashboard
 aitriage scan . -i
 
-# See all supported commands and flags in the installed version
+# See all supported commands and flags
 aitriage --help
 ```
+
+### LLM Provider Configuration
+
+AI-powered commands (`agent`, `fix`, `preaudit`) auto-detect the provider from environment variables:
+
+| Provider | Env Variable | Default Model |
+| :--- | :--- | :--- |
+| **Google Gemini** (default) | `GEMINI_API_KEY` | `gemini-2.5-flash` |
+| **Anthropic Claude** | `ANTHROPIC_API_KEY` | `claude-sonnet-4-5` |
+| **OpenAI** | `OPENAI_API_KEY` | `gpt-4o` |
+| **Ollama** (local) | — (no key needed) | configured via `--model` |
+| **Groq** | `GROQ_API_KEY` | configured via `--model` |
+
+Override with `--provider` and `--model` flags, or configure permanently in [`.aitriage.yaml`](.aitriage.yaml.example).
 
 ---
 
 ## Commands Reference
 
-### Core & Scanning
+### Scanning
 ```bash
-aitriage scan .                    # Basic scan
-aitriage scan . --format json      # Structured JSON output
-aitriage scan . --format sarif     # SARIF 2.1 stream for CI platforms
-aitriage scan . --format sarif -o results.sarif # Write SARIF to a file
-aitriage scan . --health-profile standard       # Apply the standard policy profile
+aitriage scan .                              # Basic scan
+aitriage scan . --format json                # Structured JSON output
+aitriage scan . --format sarif               # SARIF 2.1 stream for CI platforms
+aitriage scan . --format sarif -o results.sarif  # Write SARIF to a file
+aitriage scan . --format html                # HTML report
+aitriage scan . --health-profile standard    # Apply the standard policy profile
+aitriage scan . -i                           # Interactive TUI dashboard
 ```
 
 ### Incremental Scanning
 ```bash
-aitriage scan . --diff HEAD~1      # Scan files changed since the previous commit
-aitriage scan . --diff origin/main # Scan files changed compared to the main branch
-aitriage scan . --staged           # Scan git-staged changes (ideal for pre-commit hooks)
+aitriage scan . --diff HEAD~1                # Scan files changed since the previous commit
+aitriage scan . --diff origin/main           # Scan files changed compared to the main branch
+aitriage scan . --staged                     # Scan git-staged changes (pre-commit hooks)
 ```
 
 ### Baseline Management
-Avoid alert fatigue on legacy codebases. Accepting current findings as a baseline suppresses old alerts, allowing the scanner to notify you only about new regressions.
+Suppress alert fatigue on legacy codebases. Accepting current findings as a baseline hides old alerts, so the scanner notifies you only about new regressions.
 ```bash
-aitriage baseline create .         # Save current security status as baseline
-aitriage baseline show .           # Show current baseline statistics
-aitriage scan . --baseline         # Scan and hide baseline findings (fails only on new code)
+aitriage baseline create .                   # Save current security status as baseline
+aitriage baseline show .                     # Show current baseline statistics
+aitriage baseline update .                   # Re-scan and update the baseline
+aitriage baseline clear .                    # Remove the baseline file
+aitriage scan . --baseline                   # Scan and hide baseline findings
 ```
 
 ### AI Agent Mode
 ```bash
-aitriage agent .                   # Scan + LLM triage + report + fix spec (interactive Q&A)
-aitriage agent . --no-chat         # Skip interactive Q&A (CI/CD)
-aitriage agent . --provider gemini --model gemini-1.5-pro
+aitriage agent .                             # Scan + LLM triage + report + fix spec (interactive Q&A)
+aitriage agent . --no-chat                   # Skip interactive Q&A (CI/CD)
+aitriage agent . --provider gemini --model gemini-2.5-pro
 aitriage agent . --health-profile standard --fail-on any \
   --summary-out summary.md --report-out report.md \
   --fixspec-out fixspec.md --triage-out triage-findings.json
@@ -130,55 +164,69 @@ aitriage agent . --health-profile standard --fail-on any \
 
 ### AI-Powered Remediation
 ```bash
-aitriage fix .                     # Generate fix specifications for issues
-aitriage fix . --dry-run           # Preview changes without editing files
-aitriage fix . --severity high     # Only generate fixes for high+ issues
+aitriage fix .                               # Generate fix specifications for issues
+aitriage fix . --dry-run                     # Preview changes without editing files
+aitriage fix . --severity high               # Only generate fixes for high+ issues
+aitriage fix . --auto                        # Auto-apply safe fixes (LOW/MEDIUM)
 
 # Deterministic fixes: dry run by default; writes only with --apply
-aitriage autofix .
-aitriage autofix . --apply
+aitriage autofix .                           # Preview deterministic fixes
+aitriage autofix . --apply                   # Write fixes to disk
+```
+
+### Pre-Audit & Spec Generation
+```bash
+aitriage preaudit --arch "Next.js, Go API, Postgres"  # NFR check before writing code
+aitriage generate-spec .                     # Generate CLAUDE.md AI-agent spec from scan results
 ```
 
 ### Sentinel (Watch Mode)
 ```bash
-aitriage watch .                   # Run background sentinel that watches file edits
-aitriage watch . --debounce 500    # Set debouncing timeout in milliseconds
+aitriage watch .                             # Background sentinel watching file edits
+aitriage watch . --debounce 500              # Custom debounce (ms)
+aitriage watch . --fail-on critical          # Exit non-zero on critical findings
 ```
 
 ### SBOM Generation
 ```bash
-aitriage sbom .                    # Generate CycloneDX 1.5 SBOM format
-aitriage sbom . --format spdx      # Generate SPDX 2.3 format
+aitriage sbom .                              # CycloneDX 1.5 to stdout
+aitriage sbom . --format spdx                # SPDX 2.3 format
+aitriage sbom . --format cyclonedx -o sbom.json  # Save to file
 ```
 
-### Plugin & Rule Packs
+### Rule Packs
 ```bash
-aitriage rules list                # List all built-in and external rules
-aitriage rules install owasp-2025  # Install specific package from registry
+aitriage rules list                          # List installed and available rule packs
+aitriage rules install owasp-api-2025        # Install from registry
+aitriage rules install ./my-rules/           # Install from local directory
+aitriage rules remove owasp-api-2025         # Remove a rule pack
+aitriage rules info owasp-api-2025           # Show details about a rule pack
 ```
 
 ### Setup & IDE Integration
 ```bash
-aitriage init                      # Launch onboarding setup wizard
-aitriage init --ci --pre-commit    # Generate config + pre-commit hook + GHA workflow
-aitriage generate-spec .           # Generate an AI-agent spec file (CLAUDE.md) from scan results
-aitriage preaudit .                # Pre-audit NFR check before writing code
-aitriage install-mcp               # Install AITriage as an MCP Server
-aitriage serve                     # Run the MCP server over stdio
-aitriage serve --transport sse --port 8080
+aitriage init                                # Onboarding wizard: config + IDE settings
+aitriage init --ci --pre-commit              # Generate config + pre-commit hook + GHA workflow
+aitriage init --mcp                          # Configure MCP server for Claude Desktop
+aitriage install-mcp                         # Install AITriage as MCP server in Claude Desktop
+aitriage serve                               # Run MCP server over stdio
+aitriage serve --transport sse --port 9090   # Run MCP server over SSE
 ```
 
 ### Web Dashboard
 ```bash
-# Start the browser dashboard from the repository checkout
-docker compose up -d web
+# Start from the repository checkout
+make up                                      # Build frontend + backend, launch in Docker
 
 # Or scan a mounted host filesystem with the published image
 docker run --rm -p 8080:8080 -v /:/host:ro \
   ghcr.io/cybertortuga/aitriage:v1 web
+
+# Full enterprise stack (Web UI + API + SQLite)
+make enterprise-up
 ```
 
-Open `http://localhost:8080` after the service starts.
+Open `http://localhost:8080` after the service starts. Default login: `admin` / `admin`.
 
 ---
 
@@ -187,7 +235,7 @@ Open `http://localhost:8080` after the service starts.
 Repeat CI runs on the same commit should not pay for the same LLM analysis twice. The agent ships two deterministic, opt-in cache layers (both disabled unless a cache directory is configured):
 
 | Layer | File | What it saves |
-|---|---|---|
+| :--- | :--- | :--- |
 | **Verdict cache** | `triage_cache.json` | The TP/FP/Needs-Review verdict per finding fingerprint. On a warm cache, per-finding LLM classification drops to zero calls. |
 | **Artifact bundle cache** | `artifact_bundle_cache.json` | The complete PoC-verification results, `report.md`, and `fixspec.md` for an exact repeat run. On an exact hit those LLM stages are skipped entirely. |
 
@@ -213,28 +261,51 @@ Safety properties, by design:
 
 ## Built-in Rules Ecosystem
 
-AITriage ships with **180+ static security rules** across 11 technology stacks, loaded directly from the [rules/](rules/) directory at compile time. The current rule catalog is maintained in [rules/README.md](rules/README.md).
+AITriage ships with **187 security rules** across **11 categories**, loaded directly from the embedded `default_rules.yaml` at compile time. The browsable rule catalog is maintained in [rules/README.md](rules/README.md).
 
-| Technology | Rules | Key Detections |
+| Category | Rules | Key Detections |
 | :--- | :--- | :--- |
-| **[Universal](rules/universal/)** | 32 | Plaintext keys, weak cryptography, SSRF, prototype pollution, AI residue |
+| **[Universal](rules/universal/)** | 26 | Plaintext keys, weak cryptography, SSRF, prototype pollution, AI residue |
 | **[Next.js / React](rules/nextjs/)** | 28 | Cross-site scripting (XSS), server-side injection, raw DOM nodes |
-| **[FastAPI](rules/fastapi/)** | 25 | Unsafe pickle loaders, SSTI, synchronous database calls inside async handlers |
-| **[Flask](rules/flask/)** | 14 | Dev debug flags, SSTI, unescaped templates, insecure cookies |
+| **[FastAPI](rules/fastapi/)** | 25 | Unsafe pickle loaders, SSTI, synchronous DB calls inside async handlers |
 | **[Django](rules/django/)** | 16 | Missing CSRF middleware, raw SQL execution, DEBUG mode enabled |
-| **[ExpressJS](rules/express/)** | 14 | Missing helmet protection, NoSQL injection patterns, shell child processes |
-| **[Go](rules/golang/)** | 14 | SSRF, unsafe pointers, crypto/rand package omission, error swallowing |
+| **[Flask](rules/flask/)** | 14 | Dev debug flags, SSTI, unescaped templates, insecure cookies |
+| **[Express.js](rules/express/)** | 14 | Missing helmet protection, NoSQL injection, shell child processes |
+| **[Go](rules/golang/)** | 14 | SSRF, unsafe pointers, crypto/rand omission, error swallowing |
 | **[Python](rules/python/)** | 12 | YAML unsafe loading, subprocess shells, eval/exec execution |
-| **[LLM / AI Security](rules/llm/)** | 10 | OWASP Top 10 for LLMs: prompt injections, execution flows, excessive agency |
-| **[Docker / IaC](rules/docker/)** | 11 | Root user configurations, privileged containers, secret leakage in env keys |
-| **[ASP.NET Core](rules/aspnetcore/)** | 10 | Deserialization flaws, unsafe XML parsing (XXE), CORS wildcards |
+| **[LLM / AI Security](rules/llm/)** | 10 | OWASP LLM Top 10: prompt injection, execution flows, excessive agency |
+| **[Docker / IaC](rules/docker/)** | 11 | Root user configs, privileged containers, secret leakage in env keys |
+| **[ASP.NET Core](rules/aspnetcore/)** | 10 | Deserialization flaws, XXE, CORS wildcards |
+| **Shannon Entropy** | Built-in | High-entropy variables, hardcoded keys, binary analysis (all languages) |
+
+Rules map to **OWASP Top 10:2025** and **OWASP LLM Top 10:2025**. See [rules/README.md](rules/README.md) for the full mapping, rule schema, and instructions for writing custom rules.
 
 ---
 
-## Docker Auto-Escalation
+## Docker & External Scanners
 
-To run comprehensive audits, AITriage orchestrates external scanners (e.g., `semgrep`, `trivy`, `gitleaks`, `bandit`).
-If these utilities are **missing locally** but a Docker daemon is active, AITriage can transparently re-launch itself in a container. The current local fallback follows `ghcr.io/cybertortuga/aitriage:latest`; this is separate from the published GitHub Action, whose `@v1` metadata pins an immutable GHCR digest for every release.
+The published Docker image (`ghcr.io/cybertortuga/aitriage`) is an all-in-one runtime with all external scanners pre-installed:
+
+| Tool | Version | Purpose |
+| :--- | :--- | :--- |
+| **Semgrep** | latest (pipx) | Multi-language static analysis |
+| **Bandit** | latest (pipx) | Python-specific security linter |
+| **Gitleaks** | v8.30.1 | Secret detection in code and Git history |
+| **Trivy** | v0.70.0 | Container, dependency, and IaC scanning |
+
+### Docker Auto-Escalation
+
+If external scanners are **missing locally** but a Docker daemon is active, AITriage transparently re-launches itself in a container. The local fallback follows `ghcr.io/cybertortuga/aitriage:latest`; this is separate from the published GitHub Action, whose `@v1` metadata pins an immutable GHCR digest for every release.
+
+### Docker Make Targets
+
+```bash
+make docker-build                            # Build the local Docker image
+make docker-tui                              # TUI in Docker (scans current directory)
+make docker-tui PROJECT=/path/to/app         # TUI in Docker (specific project)
+make docker-web                              # Web dashboard in Docker
+make docker-scan                             # CLI scan with JSON output (CI/CD)
+```
 
 ---
 
@@ -263,7 +334,7 @@ trusted same-repository PR / main push / manual dispatch
        save AI caches · fails on any remaining True Positive or score below 70
 ```
 
-### Install the primary workflow
+### Install the Primary Workflow
 
 Copy the [canonical workflow](examples/github-actions/aitriage-security.yml) to `.github/workflows/aitriage.yml`. It pins third-party Actions to reviewed commits and contains the complete static evidence, SARIF, artifact, AI-cache, and mandatory AI-triage flow. Do not copy an abbreviated workflow from an old issue or README snippet.
 
@@ -274,13 +345,22 @@ Before the first run:
 3. Protect the workflow file and repository access. YAML cannot stop an administrator or writer from changing the allowlist.
 4. Run `workflow_dispatch` once from the permitted account, then make **AI Triage & Fix Specs** the required branch-protection check. Do not make deterministic collection a required check: it is evidence-only.
 
+### Example Workflows
+
+| Workflow | Description |
+| :--- | :--- |
+| [aitriage-security.yml](examples/github-actions/aitriage-security.yml) | **Primary:** deterministic evidence + mandatory AI triage gate (recommended) |
+| [aitriage-pr-gate.yml](examples/github-actions/aitriage-pr-gate.yml) | Fast deterministic-only gate for PRs (no LLM required) |
+| [aitriage-ai-advisor.yml](examples/github-actions/aitriage-ai-advisor.yml) | Non-blocking AI triage with report and fix specs (advisory) |
+| [aitriage-manual-html-report.yml](examples/github-actions/aitriage-manual-html-report.yml) | On-demand HTML security report via manual dispatch |
+
 ### Dual Output: Actionable Summary vs Full Report
 
 The completed AI agent produces separate outputs to maximise signal-to-noise ratio:
 
 | Output | Contains | Destination |
-|---|---|---|
-| **Job Summary / `summary.md`** | Security assessment, AI IDE implementation brief, and structured TP/Needs Review data | `$GITHUB_STEP_SUMMARY` and optional artifact file |
+| :--- | :--- | :--- |
+| **Job Summary / `summary.md`** | Security assessment, AI IDE implementation brief, structured TP/Needs Review data | `$GITHUB_STEP_SUMMARY` and optional artifact file |
 | **Full Report** (`report.md`) | All findings, including false-positive rationale | AI-triage artifact on a successful agent run |
 | **Fix Specification** (`fixspec.md`) | Detailed remediation specification | AI-triage artifact on a successful agent run |
 | **Canonical Inventory** (`triage-findings.json`) | Machine-readable record of every finding and disposition, health check, LLM usage per stage, and cache telemetry | AI-triage artifact on a successful agent run |
@@ -295,15 +375,17 @@ The completed AI agent produces separate outputs to maximise signal-to-noise rat
 
 AITriage calculates a comprehensive Security Score and evaluates a policy verdict (`health_check.verdict.passed`). In the canonical GitHub Actions workflow, that verdict is applied only after AI triage has removed false positives.
 
-### 1. Built-in Security Profiles
-You can configure a profile via the `health-profile` action parameter or `.aitriage.yaml`:
+### Built-in Security Profiles
 
-*   **`baseline`** (Default): Blocks only active `CRITICAL` and `HIGH` findings. General codebase score is informational.
-*   **`standard`** (Sensitive/Business apps): Enforces a minimum codebase score of `70` and blocks any active `CRITICAL` or `HIGH` vulnerabilities.
-*   **`strict`** (High-assurance systems): Blocks on *any* active vulnerability (critical, high, or medium) and requires a minimum score of `90`.
+Configure a profile via the `health-profile` action parameter or `.aitriage.yaml`:
 
-### 2. Configuration Options
-Configure your security policy details in [`.aitriage.yaml`](.aitriage.yaml.example):
+- **`baseline`** (Default): Blocks only active `CRITICAL` and `HIGH` findings. General codebase score is informational.
+- **`standard`** (Sensitive/Business apps): Enforces a minimum codebase score of `70` and blocks any active `CRITICAL` or `HIGH` vulnerabilities.
+- **`strict`** (High-assurance systems): Blocks on *any* active vulnerability (critical, high, or medium) and requires a minimum score of `90`.
+
+### Configuration
+
+Configure your security policy in [`.aitriage.yaml`](.aitriage.yaml.example):
 
 ```yaml
 health_check:
@@ -311,7 +393,7 @@ health_check:
   fail_on: critical       # critical | any | never
   minimum_score: 70       # Fail if general score falls below this value
   max_critical: 0         # Max allowed active critical findings
-  max_high: 2            # Max allowed active high findings
+  max_high: 2             # Max allowed active high findings
   max_medium: 5
   block_sources:
     - gitleaks            # Explicitly fail if gitleaks finds active secrets
@@ -324,12 +406,87 @@ health_check:
 
 ---
 
+## MCP Server
+
+AITriage exposes a Model Context Protocol server with 13 security tools and 2 resources, allowing AI assistants like Claude, Cursor, and Windsurf to query security context directly.
+
+### Tools
+
+| Tool | Description |
+| :--- | :--- |
+| `scan` | Run a security scan on a project path |
+| `secrets` | Detect hardcoded secrets and high-entropy strings |
+| `entropy_check` | Shannon entropy analysis for a specific file |
+| `architecture` | Analyze project architecture and security posture |
+| `fix_plan` | Generate a remediation plan for findings |
+| `scanners_list` | List available external scanners and their status |
+| `external_scan` | Run external scanner (Semgrep, Trivy, Gitleaks, Bandit) |
+| `securecoder_scan` | Full SecureCoder scan with unified findings |
+| `securecoder_deps` | Check dependency safety against advisories |
+| `deploy` | Audit deployment configuration (Docker, IaC) |
+| `nfr` | Non-functional requirements security check |
+| `diagram` | Generate an architecture diagram |
+| `history` | Scan Git history for leaked secrets |
+
+### Resources
+
+- **Security Playbook** — step-by-step remediation guidance
+- **Secure Coding Guidelines** — language-specific best practices
+
+### Usage
+
+```bash
+# stdio (default, for Claude Desktop and IDE integration)
+aitriage serve
+
+# SSE (for remote clients and LangGraph agent)
+aitriage serve --transport sse --port 9090
+
+# Auto-install in Claude Desktop config
+aitriage install-mcp
+```
+
+---
+
+## LangGraph Agent
+
+AITriage includes an optional LangGraph-based Python agent that connects to the MCP server and runs a stateful security remediation workflow with human-in-the-loop support.
+
+```bash
+# Start the MCP server + LangGraph agent
+docker compose --profile agent up -d
+
+# Human-in-the-loop mode (agent pauses before applying fixes)
+AGENT_HITL=1 docker compose --profile agent up -d
+
+# Full autopilot
+AGENT_HITL=0 docker compose --profile agent up -d
+```
+
+The agent connects to the MCP server at `http://localhost:9090/sse` and uses LangSmith for optional observability and tracing.
+
+---
+
+## Pre-Commit Hooks
+
+AITriage supports the [pre-commit framework](https://pre-commit.com). Add to your `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/cybertortuga/aitriage
+    rev: v1.0.0
+    hooks:
+      - id: aitriage           # Full security scan on changed files
+      - id: aitriage-secrets   # Secret detection via Shannon Entropy
+```
+
+---
+
 ## Enterprise Deployment
 
-AITriage Enterprise provides multi-repo dashboards, role-based access controls (RBAC), and persistent audit logs.
+AITriage Enterprise provides multi-repo dashboards, role-based access controls (RBAC), JWT authentication, and persistent audit logs via SQLite.
 
-### 1. Environment Configuration
-Set the following keys for production enterprise nodes:
+### Environment Configuration
 
 ```bash
 JWT_SECRET=your-32-character-secret-key-for-api-authentication
@@ -337,48 +494,111 @@ GEMINI_API_KEY=your-gemini-key
 DB_PATH=/var/lib/aitriage/production.db
 ```
 
-### 2. Role-Based Access Controls (RBAC)
-AITriage enforces granular roles:
-*   `superadmin` / `admin`: Full system configurations and team setups.
-*   `security_lead`: Audit policy sign-offs and report reviews.
-*   `analyst`: Finding triaging, validating AI-generated fixes, and false-positive marking.
-*   `developer`: Viewing project findings and applying security fixes.
-*   `viewer`: Read-only reporting dashboards.
+### Role-Based Access Controls
 
-### 3. Startup Stack
-Start the enterprise stack (Web UI, API server, and SQLite storage) via Docker Compose:
+| Role | Permissions |
+| :--- | :--- |
+| `superadmin` / `admin` | Full system configuration and team management |
+| `security_lead` | Audit policy sign-offs and report reviews |
+| `analyst` | Finding triage, validating AI fixes, false-positive marking |
+| `developer` | Viewing project findings and applying security fixes |
+| `viewer` | Read-only reporting dashboards |
+
+### Startup
 
 ```bash
-# Start the stack in background daemon mode
-docker compose up -d
+# Web UI + API + SQLite (default)
+make up
+
+# Full enterprise stack
+make enterprise-up
+
+# Stop
+make down
 ```
 
 ---
 
-## Project Structure
+## Development
 
-*   [cmd/](cmd/) — CLI commands and sub-command definitions.
-*   [internal/](internal/) — Core Go library, AST query processing engines, scoring, and telemetry logic.
-*   [rules/](rules/) — Static security rule patterns grouped by stack.
-*   [web/](web/) — Vite-powered React/TypeScript web app.
-*   [testdata/](testdata/) — Standard sample repositories containing security flaws for engine testing.
+### Prerequisites
+
+- Go 1.25.5+
+- Node.js 22+ (for web frontend)
+- CGO enabled (tree-sitter requires C compilation)
+
+### Build & Test
+
+```bash
+make build          # Build the binary to bin/aitriage
+make test           # Run the full test suite with verbose output
+make lint           # Run golangci-lint
+make format         # Format Go + web sources
+make build-web      # Build the web frontend
+make sync-web       # Build frontend and sync assets into Go binary
+make release        # Run GoReleaser snapshot (local test)
+make clean          # Remove build artifacts
+```
+
+### Project Structure
+
+```
+aitriage/
+├── cmd/aitriage/          # CLI commands (scan, agent, fix, serve, web, etc.)
+├── internal/
+│   ├── agent/             # AI agent: graph orchestrator, LLM clients, MCP server
+│   │   ├── graph/         # Multi-stage triage pipeline (classify, PoC, report, fixspec)
+│   │   ├── llm/           # Provider-agnostic LLM client (Gemini, OpenAI, Anthropic, Ollama, Groq)
+│   │   ├── mcp/           # MCP server with 13 tools and 2 resources
+│   │   ├── remedy/        # Deterministic autofix engine and spec generation
+│   │   └── architect/     # Threat modeling and architecture diagrams
+│   ├── engine/            # Core audit engine, baseline, history, orchestrator
+│   ├── scanner/           # AST, entropy, external, NFR, deploy, network scanners
+│   ├── server/            # Web API server, handlers, repositories, SQLite
+│   ├── healthpolicy/      # Security policy profiles and verdict computation
+│   ├── report/            # Health check and reporter
+│   ├── telemetry/         # Usage tracking and telemetry
+│   └── ui/tui/            # Terminal UI dashboard
+├── rules/                 # 187 security rules across 11 categories
+├── web/                   # React 19 + TypeScript + Vite + TailwindCSS 4
+├── testdata/              # Sample vulnerable repos for engine testing
+├── examples/              # Example GitHub Actions workflows
+├── Dockerfile             # Multi-stage build (web + Go + runtime with scanners)
+├── docker-compose.yaml    # Web, MCP, and LangGraph agent services
+├── action.yml             # GitHub Docker Action definition
+└── .goreleaser.yaml       # Cross-platform release + Homebrew cask config
+```
 
 ---
 
 ## Roadmap
 
-- [x] Concurrent O(N) Scanning Architecture
-- [x] Premium TUI Dashboard
-- [x] Model Context Protocol (MCP) Server
-- [x] Full Git Baseline support (`--baseline`)
+- [x] Concurrent O(N) scanning architecture
+- [x] Interactive TUI dashboard
+- [x] Model Context Protocol (MCP) server
+- [x] Git baseline support (`--baseline`)
 - [x] Incremental git-diff audits (`--diff`, `--staged`)
-- [x] Information Security Policy Gate & Verdict system
-- [x] Watch Sentinel engine (`aitriage watch`)
-- [x] Rule Pack Package Management (`aitriage rules`)
+- [x] Information Security Policy Gate & verdict system
+- [x] Sentinel watch engine (`aitriage watch`)
+- [x] Rule pack package management (`aitriage rules`)
 - [x] CycloneDX / SPDX SBOM exports (`aitriage sbom`)
-- [x] AI-Triage & Remediation engine (`aitriage fix`)
+- [x] AI triage & remediation engine (`aitriage agent`, `aitriage fix`)
 - [x] Deterministic AI verdict & artifact caching for CI re-runs
-- [ ] Compliance Mappings (SOC 2, ISO 27001, OWASP Top 10)
+- [x] Web dashboard with RBAC and SQLite storage
+- [x] LangGraph Python agent with human-in-the-loop
+- [ ] Compliance mappings (SOC 2, ISO 27001, OWASP Top 10)
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feat/my-feature`)
+3. Run tests (`make test`) and linting (`make lint`)
+4. Commit with conventional commits (`feat:`, `fix:`, `docs:`, etc.)
+5. Open a pull request
+
+For rule contributions, see [rules/README.md](rules/README.md) for the rule schema and guidelines.
 
 ---
 
