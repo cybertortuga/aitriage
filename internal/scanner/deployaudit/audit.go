@@ -19,7 +19,7 @@ type DeployFinding struct {
 	Advice   string `json:"advice"`
 }
 
-// AuditDeployFiles проверяет файлы деплоя на security-проблемы.
+// AuditDeployFiles checks deployment files for security issues.
 func AuditDeployFiles(projectPath string) ([]DeployFinding, error) {
 	var findings []DeployFinding
 
@@ -91,7 +91,7 @@ func auditDockerfile(path string) ([]DeployFinding, error) {
 		lineNum++
 		line := strings.TrimSpace(scanner.Text())
 
-		// Проверка: запуск от root
+		// Check: running as root
 		if strings.HasPrefix(line, "USER root") || (strings.HasPrefix(line, "USER") && !strings.Contains(line, "USER ")) {
 			findings = append(findings, DeployFinding{
 				File: path, Line: lineNum,
@@ -101,7 +101,7 @@ func auditDockerfile(path string) ([]DeployFinding, error) {
 			})
 		}
 
-		// Проверка: ADD вместо COPY (ADD может раскрывать URLs)
+		// Check: ADD instead of COPY (ADD can expand URLs)
 		if strings.HasPrefix(line, "ADD ") && !strings.Contains(line, ".tar") {
 			findings = append(findings, DeployFinding{
 				File: path, Line: lineNum,
@@ -111,7 +111,7 @@ func auditDockerfile(path string) ([]DeployFinding, error) {
 			})
 		}
 
-		// Проверка: hardcoded secrets в ENV
+		// Check: hardcoded secrets in ENV
 		if strings.HasPrefix(line, "ENV ") && (strings.Contains(line, "PASSWORD") ||
 			strings.Contains(line, "SECRET") || strings.Contains(line, "API_KEY")) {
 			findings = append(findings, DeployFinding{

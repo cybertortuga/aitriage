@@ -41,14 +41,14 @@ type ScanReport struct {
 	Config              *config.Config       `json:"-"` // not serialized; used by CLI
 }
 
-// ToJSON сериализует ScanReport в JSON. Используется MCP tools и agent mode.
+// ToJSON serializes ScanReport to JSON. Used by MCP tools and agent mode.
 func (r ScanReport) ToJSON() ([]byte, error) {
 	return json.Marshal(r)
 }
 
-// Scan выполняет полное детерминированное сканирование проекта.
-// Принимает context для корректной отмены из MCP и agent режимов.
-// Возвращает ScanReport и ошибку — НЕ вызывает os.Exit.
+// Scan runs a full deterministic scan of the project.
+// Accepts a context for cancellation from MCP and agent modes.
+// Returns ScanReport and error — does NOT call os.Exit.
 func Scan(ctx context.Context, projectPath string, opts ScanOptions) (ScanReport, error) {
 	start := time.Now()
 
@@ -62,7 +62,7 @@ func Scan(ctx context.Context, projectPath string, opts ScanOptions) (ScanReport
 		return empty, fmt.Errorf("path %q is not a valid directory", projectPath)
 	}
 
-	// Проверить отмену контекста
+	// Check context cancellation
 	select {
 	case <-ctx.Done():
 		return empty, ctx.Err()
@@ -121,7 +121,7 @@ func Scan(ctx context.Context, projectPath string, opts ScanOptions) (ScanReport
 
 	// Run engine on each project in the workspace
 	for _, proj := range projects {
-		// Проверить отмену контекста между проектами
+		// Check context cancellation between projects
 		select {
 		case <-ctx.Done():
 			return empty, ctx.Err()

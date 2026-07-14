@@ -1,14 +1,15 @@
 package nfr_test
 
 import (
-	"github.com/cybertortuga/aitriage/internal/scanner/nfr"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/cybertortuga/aitriage/internal/scanner/nfr"
 )
 
 func TestCheckNFR_FindsMissingDotEnvExample(t *testing.T) {
-	// Создать временный проект без .env.example
+	// Create a temporary project without .env.example
 	tmpDir := t.TempDir()
 	_ = os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main"), 0644)
 

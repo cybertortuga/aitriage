@@ -1,6 +1,6 @@
 package healthcheck
 
-// OWASPMap — маппинг Rule ID → OWASP Top 10 2021 категория
+// OWASPMap maps Rule ID → OWASP Top 10 2021 category
 var OWASPMap = map[string]string{
 	"ENTROPY-SECRET":   "A02:2021 – Cryptographic Failures",
 	"ENTR-FRAGILE":     "A04:2021 – Insecure Design",
@@ -13,8 +13,8 @@ var OWASPMap = map[string]string{
 	"NFR-ENV-002":      "A02:2021 – Cryptographic Failures",
 }
 
-// GetOWASP возвращает OWASP категорию для rule ID.
-// Если маппинга нет — возвращает пустую строку.
+// GetOWASP returns the OWASP category for a rule ID.
+// Returns an empty string if no mapping exists.
 func GetOWASP(ruleID string) string {
 	return OWASPMap[ruleID]
 }

@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/telemetry"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/cybertortuga/aitriage/internal/telemetry"
 )
 
 // renderMarkdownToTerminal converts raw markdown (from LLM) into styled
@@ -97,7 +97,7 @@ var (
 			Background(colorPrimaryCont).
 			Bold(true)
 
-	// Фон colorBG обязателен, иначе терминал подставяет свой чёрный
+	// Background colorBG is mandatory, otherwise the terminal substitutes its own black
 	inactiveTabStyle = lipgloss.NewStyle().
 				Foreground(colorGray).
 				Background(colorBG)
@@ -107,7 +107,7 @@ var (
 			Background(colorBG).
 			Bold(true)
 
-	// panelStyle — базовый блок; фон обязателен
+	// panelStyle — base block; background is mandatory
 	panelStyle = lipgloss.NewStyle().
 			Background(colorBG).
 			Foreground(colorText)
@@ -2225,8 +2225,6 @@ func (m DashboardModel) renderGraph(w, h int) string {
 			arrow = "  "
 		}
 
-
-
 		var line string
 		if isSel {
 			st := lipgloss.NewStyle().Foreground(colorOnPrimary).Background(colorPrimaryCont).Bold(true)
@@ -2974,7 +2972,7 @@ func (m DashboardModel) renderChat(w, h int) string {
 	if rightW < 10 {
 		rightW = 10
 	}
-	// Safety: если сумма превышает w, уменьшаем левую панель
+	// Safety: if the sum exceeds w, shrink the left panel
 	if leftW+sepW+rightW > w {
 		leftW = w - sepW - rightW
 		if leftW < 10 {

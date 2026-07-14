@@ -2,12 +2,13 @@ package external_test
 
 import (
 	"context"
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
 	"testing"
+
+	"github.com/cybertortuga/aitriage/internal/scanner/external"
 )
 
 func TestIsInstalled_Go(t *testing.T) {
-	// Go всегда установлен в тест-окружении
+	// Go is always installed in the test environment
 	if !external.IsInstalled("go") {
 		t.Error("Expected go to be installed")
 	}

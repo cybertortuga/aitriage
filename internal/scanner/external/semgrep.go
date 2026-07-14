@@ -20,8 +20,8 @@ type semgrepOutput struct {
 	} `json:"results"`
 }
 
-// RunSemgrep запускает semgrep и возвращает унифицированные находки.
-// config: правила для semgrep, например "auto" или путь к yaml файлу
+// RunSemgrep runs semgrep and returns unified findings.
+// config: semgrep rules, e.g. "auto" or a path to a yaml file
 func RunSemgrep(ctx context.Context, path, config string) ([]UnifiedFinding, error) {
 	if !IsInstalled("semgrep") {
 		return nil, fmt.Errorf("semgrep not installed")

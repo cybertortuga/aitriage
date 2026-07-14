@@ -1,13 +1,14 @@
 <div align="center">
 
-```
-     _    ___ _____ ____  ___    _    ____ _____ 
-    / \  |_ _|_   _|  _ \|_ _|  / \  / ___| ____|
-   / _ \  | |  | | |_) || |  / _ \| |  _|  _|  
-  / ___ \ | |  | | |  _ < | | / ___ \ |_| | |___ 
- /_/   \_\___|_|_| |_| \_\___/_/   \_\____|_____|
-              Security Audit Engine
-```
+<pre>
+    _     ___  _____  ____   ___     _      ____  _____ 
+   / \   |_ _||_   _||  _ \ |_ _|   / \    / ___|| ____|
+  / _ \   | |   | |  | |_) | | |   / _ \  | |  _ |  _|  
+ / ___ \  | |   | |  |  _ <  | |  / ___ \ | |_| || |___ 
+/_/   \_\|___|  |_|  |_| \_\|___|/_/   \_\ \____||_____|
+
+                    Security Audit Engine
+</pre>
 
 **Deterministic Security Scanner & AI-Powered Triage for Modern Codebases**
 
@@ -27,7 +28,7 @@
 - **Mandatory AI gate in the primary CI workflow:** AI triage removes false positives, writes the authoritative summary, then is the sole policy gate. If the AI provider or agent fails, the workflow fails closed.
 - **Deterministic AI caching:** verdict and artifact-bundle caches make repeat CI runs on the same code cheap — cached verdicts skip per-finding LLM classification, and an exact artifact hit skips PoC/report/fixspec generation entirely.
 - **Built for local development and CI:** run a deterministic scan locally without an LLM, use the hardened GitHub Actions workflow for trusted code, or expose security context through MCP.
-- **Go 1.25.5 for source builds:** released binaries and the Homebrew formula do not require a local Go toolchain.
+- **Go 1.25.5 for source builds:** released binaries and the Homebrew cask do not require a local Go toolchain.
 
 ---
 
@@ -295,7 +296,7 @@ The published Docker image (`ghcr.io/cybertortuga/aitriage`) is an all-in-one ru
 
 ### Docker Auto-Escalation
 
-If external scanners are **missing locally** but a Docker daemon is active, AITriage transparently re-launches itself in a container. The local fallback follows `ghcr.io/cybertortuga/aitriage:latest`; this is separate from the published GitHub Action, whose `@v1` metadata pins an immutable GHCR digest for every release.
+If external scanners are **missing locally** but a Docker daemon is active, AITriage transparently re-launches itself in a container. The local fallback follows `ghcr.io/cybertortuga/aitriage:latest`; this is separate from the published GitHub Action, which references the maintained `:v1` image.
 
 ### Docker Make Targets
 
@@ -311,7 +312,7 @@ make docker-scan                             # CLI scan with JSON output (CI/CD)
 
 ## CI/CD Pipeline Architecture
 
-AITriage is published as a pre-built Docker Action. Consumers use `cybertortuga/aitriage@v1`; the Action metadata for that release resolves to an immutable GHCR image digest rather than a mutable container tag.
+AITriage is published as a pre-built Docker Action. Consumers use `cybertortuga/aitriage@v1`; the Action references the maintained `ghcr.io/cybertortuga/aitriage:v1` image, which the `docker-publish` workflow rebuilds and pushes on every merge to `main` and on tagged releases. Because the image is built once and pulled at run time, Action runtime drops from a full Dockerfile build to a few seconds.
 
 The primary workflow has a deliberate trust boundary: raw scanner output is evidence, not a merge decision. Mandatory AI triage is the only security-policy gate.
 
@@ -385,20 +386,23 @@ Configure a profile via the `health-profile` action parameter or `.aitriage.yaml
 
 ### Configuration
 
-Configure your security policy in [`.aitriage.yaml`](.aitriage.yaml.example):
+Copy [`.aitriage.yaml.example`](.aitriage.yaml.example) to `.aitriage.yaml` and adjust:
 
 ```yaml
 health_check:
-  profile: baseline
+  profile: baseline       # baseline | standard | strict
   fail_on: critical       # critical | any | never
-  minimum_score: 70       # Fail if general score falls below this value
-  max_critical: 0         # Max allowed active critical findings
-  max_high: 2             # Max allowed active high findings
-  max_medium: 5
-  block_sources:
-    - gitleaks            # Explicitly fail if gitleaks finds active secrets
-  block_classes:
-    - hardcoded-secret    # Block any hardcoded secrets regardless of severity
+  minimum_score: 0        # Fail if Health Check score < this value (0 disables score gating)
+  max_critical: -1        # -1 = unlimited, 0 = block any active critical finding
+  max_high: -1            # -1 = unlimited, 0 = block any active high finding
+  max_medium: -1          # -1 = unlimited, 0 = block any active medium finding
+  block_sources: []       # e.g. ["gitleaks"] — fail if a listed scanner finds active issues
+  block_classes: []       # e.g. ["hardcoded-secret"] — block a finding class regardless of severity
+
+llm:
+  provider: gemini        # gemini | openai | anthropic | ollama
+  model: gemini-2.5-flash
+  api_key: $GEMINI_API_KEY  # Never hardcode — reference an environment variable
 ```
 
 > [!TIP]
@@ -448,22 +452,23 @@ aitriage install-mcp
 
 ---
 
-## LangGraph Agent
+## LangGraph Agent (Optional Companion)
 
-AITriage includes an optional LangGraph-based Python agent that connects to the MCP server and runs a stateful security remediation workflow with human-in-the-loop support.
+An optional Python companion agent runs a stateful, human-in-the-loop remediation workflow on top of the MCP server. It is wired into [`docker-compose.yaml`](docker-compose.yaml) under the `agent` profile and expects an `agent/` build context (provided separately from the core Go binary).
 
 ```bash
-# Start the MCP server + LangGraph agent
+# Start the MCP server (SSE, port 9090) + LangGraph agent
 docker compose --profile agent up -d
-
-# Human-in-the-loop mode (agent pauses before applying fixes)
-AGENT_HITL=1 docker compose --profile agent up -d
-
-# Full autopilot
-AGENT_HITL=0 docker compose --profile agent up -d
 ```
 
-The agent connects to the MCP server at `http://localhost:9090/sse` and uses LangSmith for optional observability and tracing.
+Behaviour is driven by environment variables:
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `AITRIAGE_MCP_URL` | `http://aitriage-mcp:9090/sse` | MCP server endpoint the agent connects to |
+| `AGENT_MODEL` | `google-genai:gemini-2.5-flash` | LLM used by the agent |
+| `AGENT_HITL` | `0` | `1` pauses before applying fixes; `0` is full autopilot |
+| `LANGCHAIN_TRACING_V2` | `false` | Enable LangSmith observability and tracing |
 
 ---
 
@@ -609,5 +614,5 @@ Distributed under the MIT License. See [LICENSE](LICENSE) for details.
 ---
 
 <div align="center">
-  <sub>Designed and built for high-assurance security triaging. &copy; 2026 Tortuga Co.</sub>
+  <sub>Designed and built for high-assurance security triaging. &copy; 2026 cybertortuga.</sub>
 </div>

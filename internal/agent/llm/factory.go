@@ -171,7 +171,7 @@ func defaultedTimeout(seconds int) int {
 	return seconds
 }
 
-// NewClient создаёт LLM клиент нужного провайдера на основе конфига.
+// NewClient creates an LLM client for the configured provider.
 // All clients are automatically wrapped with RetryClient (3 retries,
 // exponential backoff) to handle transient 429/5xx/network errors.
 func NewClient(cfg Config) (Client, error) {

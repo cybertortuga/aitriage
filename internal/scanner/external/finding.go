@@ -1,6 +1,6 @@
 package external
 
-// UnifiedFinding — общая структура для результатов от всех сканеров
+// UnifiedFinding — common structure for results from all scanners
 type UnifiedFinding struct {
 	Source             string `json:"source"` // "aitriage" | "semgrep" | "gitleaks" | "trivy" | "bandit" | "securecoder"
 	RuleID             string `json:"rule_id"`

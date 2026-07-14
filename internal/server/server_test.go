@@ -13,11 +13,12 @@ import (
 	"strings"
 	"testing"
 
+	"time"
+
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
 	"github.com/cybertortuga/aitriage/internal/server/middleware"
 	"github.com/golang-jwt/jwt/v5"
 	_ "modernc.org/sqlite"
-	"time"
 )
 
 func setupTestServer(t *testing.T) *Server {
@@ -196,7 +197,7 @@ Rate Limiting Missing: false positive for the current repository.
 		t.Fatalf("failed to insert active finding: %v", err)
 	}
 
-	capture := &summaryCaptureLLM{response: "**Статус безопасности:** evidence-based"}
+	capture := &summaryCaptureLLM{response: "**Security status:** evidence-based"}
 	s.llmClient = capture
 
 	req, _ := http.NewRequest("GET", "/api/ai-summary?product_id="+strconv.FormatInt(productID, 10)+"&lang=ru", nil)

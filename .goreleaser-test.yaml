@@ -78,7 +78,7 @@ homebrew_casks:
       name: homebrew-aitriage
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/cybertortuga/aitriage"
-    description: "AI-Powered Security Audit Engine — 180+ rules, 11 stacks, zero dependencies"
+    description: "AI-Powered Security Audit Engine — 187 rules, 11 stacks, zero dependencies"
     license: "MIT"
 
 # ── Release Notes ─────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ release:
   header: |
     ## AITriage v{{ .Version }}
 
-    AI-Powered Security Audit Engine with 180+ built-in rules across 11 technology stacks.
+    AI-Powered Security Audit Engine with 187 built-in rules across 11 technology stacks.
 
     ### Install
     ```bash

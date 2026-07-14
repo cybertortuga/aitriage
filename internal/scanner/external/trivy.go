@@ -18,8 +18,8 @@ type trivyOutput struct {
 	} `json:"Results"`
 }
 
-// RunTrivy запускает trivy и возвращает унифицированные находки.
-// scanType: "fs" (filesystem) или "config" (IaC конфиги)
+// RunTrivy runs trivy and returns unified findings.
+// scanType: "fs" (filesystem) or "config" (IaC configs)
 func RunTrivy(ctx context.Context, path, scanType string) ([]UnifiedFinding, error) {
 	if !IsInstalled("trivy") {
 		return nil, fmt.Errorf("trivy not installed")

@@ -29,12 +29,12 @@ func runInstallMCP(cmd *cobra.Command, args []string) error {
 
 	configPath, err := claudeDesktopConfigPath()
 	if err != nil {
-		// Если не нашли — вывести инструкцию для ручной установки
+		// If not found, print manual install instructions
 		printManualInstall(binaryPath)
 		return nil
 	}
 
-	// Читаем существующий конфиг или создаём новый
+	// Read existing config or create a new one
 	data, err := os.ReadFile(configPath)
 	var config map[string]interface{}
 	if err != nil {
@@ -43,7 +43,7 @@ func runInstallMCP(cmd *cobra.Command, args []string) error {
 		_ = json.Unmarshal(data, &config)
 	}
 
-	// Добавляем AITriage
+	// Add AITriage
 	if config["mcpServers"] == nil {
 		config["mcpServers"] = map[string]interface{}{}
 	}
@@ -53,7 +53,7 @@ func runInstallMCP(cmd *cobra.Command, args []string) error {
 		"args":    []string{"serve"},
 	}
 
-	// Сохраняем
+	// Save
 	out, _ := json.MarshalIndent(config, "", "  ")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		return err

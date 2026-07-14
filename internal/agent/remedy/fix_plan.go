@@ -27,8 +27,8 @@ type FixPlan struct {
 	MediumActions   []FixItem `json:"medium_actions"`
 }
 
-// GenerateFixPlan создаёт структурированный план исправлений без LLM.
-// Использует маппинг Rule ID → шаблон из templates.go
+// GenerateFixPlan creates a structured fix plan without an LLM.
+// Uses Rule ID → template mapping from templates.go
 func GenerateFixPlan(results []core.CheckResult) FixPlan {
 	plan := FixPlan{
 		GeneratedAt:   time.Now(),
@@ -61,7 +61,7 @@ func GenerateFixPlan(results []core.CheckResult) FixPlan {
 	return plan
 }
 
-// ToMarkdown конвертирует план в Markdown для вставки в Claude Code / Cursor
+// ToMarkdown converts the plan to Markdown for insertion into Claude Code / Cursor
 func (p FixPlan) ToMarkdown() string {
 	var sb strings.Builder
 	sb.WriteString("# AITriage Security Fix Plan\n")

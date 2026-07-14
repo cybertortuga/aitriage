@@ -12,8 +12,8 @@ type Component struct {
 	Type string // "app" | "db" | "cache" | "proxy" | "storage"
 }
 
-// GenerateMermaidDiagram анализирует проект и генерирует Mermaid-диаграмму.
-// Определяет компоненты по наличию ключевых файлов и зависимостей.
+// GenerateMermaidDiagram analyzes the project and generates a Mermaid diagram.
+// Detects components by presence of key files and dependencies.
 func GenerateMermaidDiagram(projectPath string) (string, error) {
 	components := DetectComponents(projectPath)
 	if len(components) == 0 {
@@ -23,7 +23,7 @@ func GenerateMermaidDiagram(projectPath string) (string, error) {
 	var sb strings.Builder
 	sb.WriteString("graph TD\n")
 
-	// Основное приложение всегда есть
+	// Main application is always present
 	mainApp := findMainApp(components)
 	sb.WriteString(fmt.Sprintf("    %s[\"%s\"]\n", sanitize(mainApp.Name), mainApp.Name))
 
@@ -57,7 +57,7 @@ func GenerateMermaidDiagram(projectPath string) (string, error) {
 func DetectComponents(projectPath string) []Component {
 	var components []Component
 
-	// Определить тип основного приложения
+	// Detect main application type
 	if fileExists(filepath.Join(projectPath, "go.mod")) {
 		components = append(components, Component{Name: "Go App", Type: "app"})
 	} else if fileExists(filepath.Join(projectPath, "package.json")) {
@@ -68,7 +68,7 @@ func DetectComponents(projectPath string) []Component {
 		components = append(components, Component{Name: "Application", Type: "app"})
 	}
 
-	// Определить зависимости по наличию файлов и строк в docker-compose
+	// Detect dependencies by file presence and docker-compose content
 	composeFiles := []string{"docker-compose.yml", "docker-compose.yaml"}
 	for _, cf := range composeFiles {
 		data, err := os.ReadFile(filepath.Join(projectPath, cf))

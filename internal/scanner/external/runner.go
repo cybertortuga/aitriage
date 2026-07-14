@@ -6,15 +6,15 @@ import (
 	"os/exec"
 )
 
-// RunResult содержит результат запуска внешнего инструмента
+// RunResult holds the result of running an external tool
 type RunResult struct {
 	Stdout   string
 	Stderr   string
 	ExitCode int
 }
 
-// RunTool запускает внешний CLI-инструмент и возвращает его вывод.
-// Не паникует при ненулевом exit code — просто возвращает его в ExitCode.
+// RunTool runs an external CLI tool and returns its output.
+// Does not panic on non-zero exit codes — just returns it in ExitCode.
 func RunTool(ctx context.Context, name string, args ...string) (RunResult, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	var outBuf, errBuf bytes.Buffer
@@ -24,7 +24,7 @@ func RunTool(ctx context.Context, name string, args ...string) (RunResult, error
 	exitCode := 0
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		exitCode = exitErr.ExitCode()
-		_ = err // ненулевой exit code — не ошибка, инструмент так работает
+		_ = err // non-zero exit code is not an error, the tool works that way
 	} else if err != nil {
 		return RunResult{}, err
 	}
@@ -35,7 +35,7 @@ func RunTool(ctx context.Context, name string, args ...string) (RunResult, error
 	}, nil
 }
 
-// IsInstalled проверяет доступность инструмента в PATH
+// IsInstalled checks whether a tool is available in PATH
 func IsInstalled(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil

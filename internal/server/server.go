@@ -1909,7 +1909,7 @@ For common vulnerability types, check:
 Return ONLY a valid JSON object with no other text:
 {
   "status": "true_positive" | "false_positive" | "needs_review",
-  "summary": "Конкретное объяснение на русском (1-3 предложения): укажите ПОЧЕМУ — какой именно код уязвим/защищён, какие entry points задействованы, какие митигации есть или отсутствуют"
+  "summary": "Specific explanation (1-3 sentences): state WHY — which exact code is vulnerable/protected, which entry points are involved, which mitigations exist or are missing"
 }`, findingContext, codeContextBlock)
 
 	slog.Info("AI Triage prompt built", "finding_id", findingID, "has_code_context", fileContent != "", "prompt_len", len(prompt))
@@ -1964,7 +1964,7 @@ Return ONLY a valid JSON object with no other text:
 		slog.Warn("AI Triage JSON parse failed, using fallback", "finding_id", findingID, "error", err, "raw", reply[:min(len(reply), 200)])
 		triageRes.Status = "needs_review"
 		// Extract something useful from the raw reply
-		triageRes.Summary = "AI анализ не смог вернуть структурированный ответ. Необходима ручная проверка. Ответ AI: " + reply
+		triageRes.Summary = "AI analysis could not return a structured response. Manual review required. AI response: " + reply
 		if len(triageRes.Summary) > 500 {
 			triageRes.Summary = triageRes.Summary[:500] + "..."
 		}
@@ -2582,12 +2582,12 @@ func buildAISummaryFallback(e aiSummaryEvidence, lang string) string {
 	}
 
 	if active == 0 {
-		return fmt.Sprintf("**Обзор проекта:** `%s` не имеет активных findings в текущем scope базы AITriage.\n\n**Статус безопасности:** По записанным evidence активная уязвимость не подтверждена. %d неактивных или подавленных findings остаются как audit context.\n\n**Главный приоритет:** Проверить реальный production-host и применение hardening-контролей перед финальным выводом.\n\n**Быстрое улучшение:** Хранить rationale для подавленных scanner findings, чтобы auth/rate-limit проверки не возвращались как неподтвержденные critical blockers.", product, suppressed)
+		return fmt.Sprintf("**Project overview:** `%s` has no active findings in the current AITriage database scope.\n\n**Security status:** Based on recorded evidence, no active vulnerability is confirmed. %d inactive or suppressed findings remain as audit context.\n\n**Top priority:** Verify the actual production host and hardening controls before making a final assessment.\n\n**Quick win:** Store rationale for suppressed scanner findings so auth/rate-limit checks don't resurface as unconfirmed critical blockers.", product, suppressed)
 	}
 	if top != nil {
-		return fmt.Sprintf("**Обзор проекта:** `%s` имеет %d активных findings в текущем scope базы AITriage.\n\n**Статус безопасности:** Активные findings требуют проверки: critical=%d, high=%d, medium=%d, low=%d.\n\n**Главный приоритет:** Подтвердить и разобрать `%s` (`%s`) в `%s`; scanner-only или project-level findings считать задачей на верификацию, пока не доказан конкретный affected entry point.\n\n**Быстрое улучшение:** Начать с указанного file/rule evidence и подавить либо переклассифицировать findings, которые не применимы к реальной поверхности проекта.", product, active, e.ActiveCounts.Critical, e.ActiveCounts.High, e.ActiveCounts.Medium, e.ActiveCounts.Low, top.Title, firstNonEmpty(top.RuleID, "no-rule-id"), formatPromptLocation(firstNonEmpty(top.File, "project-level/no-file"), top.Line))
+		return fmt.Sprintf("**Project overview:** `%s` has %d active findings in the current AITriage database scope.\n\n**Security status:** Active findings require verification: critical=%d, high=%d, medium=%d, low=%d.\n\n**Top priority:** Confirm and triage `%s` (`%s`) in `%s`; treat scanner-only or project-level findings as verification tasks until a specific affected entry point is proven.\n\n**Quick win:** Start with the indicated file/rule evidence and suppress or reclassify findings that don't apply to the project's actual attack surface.", product, active, e.ActiveCounts.Critical, e.ActiveCounts.High, e.ActiveCounts.Medium, e.ActiveCounts.Low, top.Title, firstNonEmpty(top.RuleID, "no-rule-id"), formatPromptLocation(firstNonEmpty(top.File, "project-level/no-file"), top.Line))
 	}
-	return fmt.Sprintf("**Обзор проекта:** `%s` имеет %d активных findings в текущем scope базы AITriage.\n\n**Статус безопасности:** Findings требуют проверки, но detailed evidence недоступен summary endpoint.\n\n**Главный приоритет:** Обновить scan evidence перед remediation.\n\n**Быстрое улучшение:** Убедиться, что у каждого active finding есть rule ID, file path, status и rationale.", product, active)
+	return fmt.Sprintf("**Project overview:** `%s` has %d active findings in the current AITriage database scope.\n\n**Security status:** Findings require verification, but detailed evidence is unavailable from the summary endpoint.\n\n**Top priority:** Update scan evidence before remediation.\n\n**Quick win:** Ensure every active finding has a rule ID, file path, status, and rationale.", product, active)
 }
 
 func (s *Server) handleChatSessions(w http.ResponseWriter, r *http.Request) {

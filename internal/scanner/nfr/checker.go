@@ -28,8 +28,8 @@ type Rule struct {
 	Message       string   `yaml:"message"`
 	Advice        string   `yaml:"advice"`
 	Check         string   `yaml:"check"`   // "file_contains" | "file_exists" | "file_not_exists"
-	Pattern       string   `yaml:"pattern"` // regex для file_contains
-	Files         []string `yaml:"files"`   // glob паттерны файлов для проверки
+	Pattern       string   `yaml:"pattern"` // regex for file_contains
+	Files         []string `yaml:"files"`   // glob patterns of files to check
 	compiledRegex *regexp.Regexp
 }
 
@@ -78,7 +78,7 @@ type NFRFinding struct {
 	Advice   string `json:"advice"`
 }
 
-// CheckNFR проверяет проект на соответствие NFR встроенным правилам
+// CheckNFR checks the project against built-in NFR rules
 func CheckNFR(projectPath string) ([]NFRFinding, error) {
 	allRules, err := getRules()
 	if err != nil {
@@ -135,13 +135,13 @@ func evaluateRule(projectPath string, rule Rule) (bool, error) {
 				}
 			}
 		}
-		return !found, nil // NFR нарушено если паттерн НЕ найден
+		return !found, nil // NFR violated if pattern is NOT found
 	case "file_exists":
 		_, err := os.Stat(filepath.Join(projectPath, rule.Pattern))
-		return os.IsNotExist(err), nil // нарушено если файл НЕ существует
+		return os.IsNotExist(err), nil // violated if file does NOT exist
 	case "file_not_exists":
 		_, err := os.Stat(filepath.Join(projectPath, rule.Pattern))
-		return err == nil, nil // нарушено если файл СУЩЕСТВУЕТ
+		return err == nil, nil // violated if file EXISTS
 	default:
 		return false, nil
 	}

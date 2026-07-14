@@ -29,7 +29,7 @@ type Config struct {
 	Provider        string `yaml:"provider"` // "gemini" | "anthropic" | "openai" | "ollama" | "groq"
 	Model           string `yaml:"model"`
 	APIKey          string `yaml:"api_key"`
-	BaseURL         string `yaml:"base_url"`         // для ollama и openai-compatible
-	Timeout         int    `yaml:"timeout"`          // секунды, default 600 (см. NewClient)
+	BaseURL         string `yaml:"base_url"`         // for ollama and openai-compatible endpoints
+	Timeout         int    `yaml:"timeout"`          // seconds, default 600 (see NewClient)
 	DisableThinking bool   `yaml:"disable_thinking"` // Send thinking:{type:disabled} for reasoning models
 }

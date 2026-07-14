@@ -17,7 +17,7 @@ type banditOutput struct {
 	} `json:"results"`
 }
 
-// RunBandit запускает bandit (Python SAST) и возвращает унифицированные находки.
+// RunBandit runs bandit (Python SAST) and returns unified findings.
 func RunBandit(ctx context.Context, path string) ([]UnifiedFinding, error) {
 	if !IsInstalled("bandit") {
 		return nil, fmt.Errorf("bandit not installed")

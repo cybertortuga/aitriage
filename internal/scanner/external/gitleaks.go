@@ -14,7 +14,7 @@ type gitleaksOutput []struct {
 	Secret      string `json:"Secret"`
 }
 
-// RunGitleaks запускает gitleaks и возвращает унифицированные находки.
+// RunGitleaks runs gitleaks and returns unified findings.
 func RunGitleaks(ctx context.Context, path string) ([]UnifiedFinding, error) {
 	if !IsInstalled("gitleaks") {
 		return nil, fmt.Errorf("gitleaks not installed")
