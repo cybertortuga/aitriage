@@ -367,8 +367,48 @@ func TestRunArtifactCacheWarmThenExactHitSkipsSecondaryLLMStages(t *testing.T) {
 	if !hitState.ArtifactCacheStats.ExactHit || !hitState.ArtifactCacheStats.RestoredReport || !hitState.ArtifactCacheStats.RestoredFixSpec {
 		t.Fatalf("hit artifact stats = %+v, want exact restored hit", hitState.ArtifactCacheStats)
 	}
-	if hitState.ReportMarkdown != "# report\n" || hitState.AIFixSpec != "# fixspec\n" {
-		t.Fatalf("hit state did not restore report/fixspec: report=%q fixspec=%q", hitState.ReportMarkdown, hitState.AIFixSpec)
+	// The restored artifacts must be byte-identical to what the warm run stored
+	// (LLM narrative + deterministic canonical section), proving no drift.
+	if hitState.ReportMarkdown != warmState.ReportMarkdown || hitState.AIFixSpec != warmState.AIFixSpec {
+		t.Fatalf("hit artifacts not byte-identical to warm:\nreport hit=%q warm=%q", hitState.ReportMarkdown, warmState.ReportMarkdown)
+	}
+	if !strings.Contains(hitState.ReportMarkdown, "Canonical Finding Inventory") || !strings.Contains(hitState.ReportMarkdown, "CS-MISC-001") {
+		t.Fatalf("restored report missing canonical section: %q", hitState.ReportMarkdown)
+	}
+}
+
+func TestRunArtifactCacheStrictFallbackNotEligible(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AITRIAGE_VERDICT_CACHE_DIR", dir)
+	t.Setenv("AITRIAGE_ARTIFACT_CACHE_DIR", dir)
+	pinConcurrency(t)
+
+	project := t.TempDir()
+	if err := os.WriteFile(filepath.Join(project, "app.go"), []byte("package app\n"), 0o644); err != nil {
+		t.Fatalf("write project file: %v", err)
+	}
+
+	// A classifier that never classifies the finding forces an NR fallback,
+	// which is not cacheable — so the bundle must not be stored (strict mode).
+	warmState := artifactRunState(project)
+	if err := Run(context.Background(), warmState, newFallbackRunLLM(t)); err != nil {
+		t.Fatalf("warm Run() error = %v", err)
+	}
+	if warmState.ArtifactCacheStats.UncachedVerdicts == 0 {
+		t.Fatalf("expected uncached verdicts from NR fallback, got stats=%+v", warmState.ArtifactCacheStats)
+	}
+	if !warmState.ArtifactCacheStats.EligibilitySkipped || warmState.ArtifactCacheStats.Stores != 0 {
+		t.Fatalf("strict mode should skip storing the bundle, stats=%+v", warmState.ArtifactCacheStats)
+	}
+
+	// A second run must NOT get an exact hit (nothing eligible was stored).
+	hitLLM := newFallbackRunLLM(t)
+	hitState := artifactRunState(project)
+	if err := Run(context.Background(), hitState, hitLLM); err != nil {
+		t.Fatalf("second Run() error = %v", err)
+	}
+	if hitState.ArtifactCacheStats.ExactHit {
+		t.Fatalf("second run must not exact-hit an ineligible bundle, stats=%+v", hitState.ArtifactCacheStats)
 	}
 }
 
@@ -440,6 +480,23 @@ func (m *artifactRunLLM) Chat(ctx context.Context, messages []llm.Message) (stri
 		m.t.Fatalf("unexpected LLM prompt: %s", system)
 		return "", llm.Usage{}, nil
 	}
+}
+
+// fallbackRunLLM behaves like artifactRunLLM but never classifies findings
+// (the classification call returns an empty disposition list), forcing every
+// finding into the uncacheable NR-fallback path.
+type fallbackRunLLM struct{ inner *artifactRunLLM }
+
+func newFallbackRunLLM(t *testing.T) *fallbackRunLLM {
+	return &fallbackRunLLM{inner: newArtifactRunLLM(t)}
+}
+
+func (m *fallbackRunLLM) Chat(ctx context.Context, messages []llm.Message) (string, llm.Usage, error) {
+	if len(messages) > 0 && strings.Contains(messages[0].Content, "Current Task: Finding Classification") {
+		m.inner.calls["classification"]++
+		return `{"finding_dispositions":[]}`, llm.Usage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2}, nil
+	}
+	return m.inner.Chat(ctx, messages)
 }
 
 func parseClassificationPromptFindings(user string) []classificationPromptFinding {

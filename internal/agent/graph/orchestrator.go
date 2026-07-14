@@ -90,16 +90,42 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 			return err
 		}
 
+		// Canonical integrity: never publish or cache report/fixspec that drift
+		// from the authoritative dispositions. On failure, they are rebuilt
+		// deterministically (the gate already uses canonical state, so it is
+		// unaffected).
+		if enforceArtifactIntegrity(state) {
+			artifactCache.stats.IntegrityFailed = true
+			fmt.Fprintf(os.Stderr, "   ⚠️ Artifact integrity check failed: report/fixspec rebuilt deterministically; bundle NOT cached.\n")
+		}
+
 		if artifactCache.enabled && artifactKeyMiss == "" {
-			if uncached := countUncachedVerdicts(state); uncached > 0 {
-				artifactCache.stats.UncachedVerdicts = uncached
-				fmt.Fprintf(os.Stderr, "   ⚠️ Artifact cache: %d unique verdicts are not backed by the verdict cache (NR-fallback or sensitive-skip) — a future run will re-classify them, so an exact artifact hit is unlikely\n", uncached)
+			uncached := countUncachedVerdicts(state)
+			artifactCache.stats.UncachedVerdicts = uncached
+			switch {
+			case artifactCache.stats.IntegrityFailed:
+				// Do not cache a run whose generated artifacts had to be
+				// corrected; keep the cache honest and reusable only for clean
+				// runs.
+				artifactCache.stats.EligibilitySkipped = true
+				artifactCache.stats.MissReason = "integrity_failed_not_eligible"
+				fmt.Fprintf(os.Stderr, "   ⚠️ Artifact cache: integrity failure; bundle NOT stored (not eligible for exact reuse).\n")
+			case uncached > 0:
+				// Strict fallback mode: a run with uncached verdicts (NR-fallback
+				// or sensitive-skip) can never produce an exact artifact hit — the
+				// next run re-classifies those findings and the disposition hashes
+				// change. Storing the bundle would only waste cache and mislead.
+				// The verdict cache is untouched and still gives partial reuse.
+				artifactCache.stats.EligibilitySkipped = true
+				artifactCache.stats.MissReason = "fallback_present_not_eligible"
+				fmt.Fprintf(os.Stderr, "   ⚠️ Artifact cache: %d unique verdicts are not backed by the verdict cache (NR-fallback or sensitive-skip); bundle NOT stored (not eligible for exact reuse). Verdict cache still saved.\n", uncached)
+			default:
+				artifactCache.Store(state, artifactKey)
+				artifactCache.Save()
 			}
-			artifactCache.Store(state, artifactKey)
-			artifactCache.Save()
 			stats := artifactCache.Stats()
-			fmt.Fprintf(os.Stderr, "   ℹ️ Artifact cache store: stores=%d saved=%t skipped_sensitive=%d uncached_verdicts=%d\n",
-				stats.Stores, stats.Saved, stats.SkippedSensitive, stats.UncachedVerdicts)
+			fmt.Fprintf(os.Stderr, "   ℹ️ Artifact cache store: stores=%d saved=%t skipped_sensitive=%d uncached_verdicts=%d eligibility_skipped=%t\n",
+				stats.Stores, stats.Saved, stats.SkippedSensitive, stats.UncachedVerdicts, stats.EligibilitySkipped)
 		}
 	}
 	state.ArtifactCacheStats = artifactCache.Stats()
@@ -799,7 +825,12 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 		return fmt.Errorf("failed to generate report: %w", err)
 	}
 
-	state.ReportMarkdown = response
+	// The LLM output is advisory narrative. Append the authoritative finding
+	// inventory built deterministically from state so the report always carries
+	// the canonical dispositions verbatim, regardless of any model drift in the
+	// prose above.
+	state.ReportMarkdown = strings.TrimRight(response, "\n") +
+		"\n\n---\n\n" + buildCanonicalFindingsSection(state)
 	return nil
 }
 
@@ -894,7 +925,7 @@ func generateSummary(state *AgentState) {
 		if missReason == "" {
 			missReason = "n/a"
 		}
-		sb.WriteString(fmt.Sprintf("\n_AITriage artifact cache: %s · restored poc=%t report=%t fixspec=%t · stored=%d · sensitive skipped=%d · corrupt ignored=%t · miss_reason=%s · saved=%t · uncached verdicts=%d._\n",
+		sb.WriteString(fmt.Sprintf("\n_AITriage artifact cache: %s · restored poc=%t report=%t fixspec=%t · stored=%d · sensitive skipped=%d · corrupt ignored=%t · miss_reason=%s · saved=%t · uncached verdicts=%d · eligibility skipped=%t · integrity failed=%t._\n",
 			status,
 			state.ArtifactCacheStats.RestoredPoC,
 			state.ArtifactCacheStats.RestoredReport,
@@ -904,7 +935,9 @@ func generateSummary(state *AgentState) {
 			state.ArtifactCacheStats.CorruptCacheIgnored,
 			missReason,
 			state.ArtifactCacheStats.Saved,
-			state.ArtifactCacheStats.UncachedVerdicts))
+			state.ArtifactCacheStats.UncachedVerdicts,
+			state.ArtifactCacheStats.EligibilitySkipped,
+			state.ArtifactCacheStats.IntegrityFailed))
 	}
 
 	state.SummaryMarkdown = sb.String()
@@ -1229,7 +1262,11 @@ func generateAIFixSpec(ctx context.Context, state *AgentState, llmClient llm.Cli
 		return fmt.Errorf("failed to generate fix spec: %w", err)
 	}
 
-	state.AIFixSpec = response
+	// Append the authoritative active-findings brief so the fix spec always
+	// carries the canonical IDs; the model's prose above is advisory and is
+	// checked against these by the integrity validator.
+	state.AIFixSpec = strings.TrimRight(response, "\n") +
+		"\n\n---\n\n" + canonicalActiveFindingsBrief(state)
 	return nil
 }
 

@@ -55,6 +55,14 @@ type ArtifactCacheStats struct {
 	// run will re-classify those findings via LLM and the resulting artifact
 	// key will not match this bundle.
 	UncachedVerdicts int `json:"uncached_verdicts,omitempty"`
+	// EligibilitySkipped is true when the bundle was deliberately NOT stored
+	// because the run is not eligible for exact reuse (strict fallback mode:
+	// uncached verdicts would force re-classification and a key mismatch next
+	// run). The verdict cache is unaffected and still provides partial reuse.
+	EligibilitySkipped bool `json:"eligibility_skipped,omitempty"`
+	// IntegrityFailed is true when report/fixspec failed canonical integrity
+	// validation (hallucinated identifiers or disposition drift).
+	IntegrityFailed bool `json:"integrity_failed,omitempty"`
 }
 
 type cachedArtifactBundle struct {
