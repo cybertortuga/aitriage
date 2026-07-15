@@ -134,7 +134,9 @@ func Run(ctx context.Context, state *AgentState, llmClient llm.Client) error {
 	// so its usage and findings cannot be partial or pre-triage.
 	fmt.Fprintf(os.Stderr, "📋 Generating Actionable Summary (TP/NR only)...\n")
 	reportRunwayProgress(state, 6, "generating_summary")
-	generateSummary(state)
+	if err := generateSummary(state); err != nil {
+		return fmt.Errorf("failed to generate actionable handoff: %w", err)
+	}
 
 	// Print LLM usage summary
 	u := state.TotalUsage
@@ -842,106 +844,16 @@ func generateReport(ctx context.Context, state *AgentState, llmClient llm.Client
 //  3. AI Agent Data — structured JSON in a collapsed &lt;details&gt; block
 //
 // False Positives are excluded from actionable sections but mentioned in stats.
-func generateSummary(state *AgentState) {
-	var sb strings.Builder
-
-	// ── Precompute dispositions ───────────────────────────────────────────
-	tp, fpCount, nr := 0, 0, 0
-	dispositionMap := make(map[int]string) // findingIndex → disposition
-	for _, d := range state.FindingDispositions {
-		switch d.Disposition {
-		case "True Positive":
-			tp++
-		case "False Positive":
-			fpCount++
-		default:
-			nr++
-		}
-		dispositionMap[d.FindingIndex] = d.Disposition
+func generateSummary(state *AgentState) error {
+	handoff, err := BuildAgentHandoff(state, time.Now().UTC())
+	if err != nil {
+		return err
 	}
-
-	// ── Collect actionable findings (TP + NR) ─────────────────────────────
-	var actionable []actionableFinding
-	for i, ef := range state.EnrichedFindings {
-		disp, ok := dispositionMap[i]
-		if !ok {
-			disp = "Needs Manual Review"
-		}
-		if disp == "False Positive" {
-			continue
-		}
-		msg := ef.Message
-		if len(msg) > 120 {
-			msg = msg[:117] + "..."
-		}
-		msg = strings.ReplaceAll(msg, "|", "\\|")
-		msg = strings.ReplaceAll(msg, "\n", " ")
-
-		actionable = append(actionable, actionableFinding{
-			vulnID:      ef.VulnID,
-			source:      ef.Source,
-			severity:    ef.Severity,
-			file:        ef.File,
-			line:        ef.Line,
-			message:     msg,
-			disposition: disp,
-		})
-	}
-
-	// ── Block 1: Human Summary ────────────────────────────────────────────
-	writeHumanSummary(&sb, state, actionable, tp, fpCount, nr)
-
-	// ── Block 2: AI Remediation Prompt ────────────────────────────────────
-	writeAIRemediationPrompt(&sb, state, actionable)
-
-	// ── Block 3: AI Agent Data ────────────────────────────────────────────
-	writeAIAgentData(&sb, state, actionable, tp, fpCount, nr)
-
-	// ── Footer ────────────────────────────────────────────────────────────
-	sb.WriteString("\n---\n")
-	if fpCount > 0 {
-		sb.WriteString(fmt.Sprintf("\n_%d false positive(s) suppressed. Download `report.md` artifact for the full audit trail with FP rationale._\n",
-			fpCount))
-	}
-	if state.TotalUsage.TotalTokens > 0 {
-		sb.WriteString(fmt.Sprintf("\n_LLM usage (provider reported): %s. Cost is not estimated because it depends on provider, model, caching, and billing tier._\n",
-			formatLLMUsage(state.TotalUsage)))
-	}
-	if state.VerdictCacheStats.Enabled {
-		sb.WriteString(fmt.Sprintf("\n_AITriage verdict cache: %d hits · %d misses · %d stored · %d sensitive skipped · %d stale FP invalidated · saved=%t._\n",
-			state.VerdictCacheStats.Hits,
-			state.VerdictCacheStats.Misses,
-			state.VerdictCacheStats.Stores,
-			state.VerdictCacheStats.SkippedSensitive,
-			state.VerdictCacheStats.InvalidatedFalsePositives,
-			state.VerdictCacheStats.Saved))
-	}
-	if state.ArtifactCacheStats.Enabled {
-		status := "miss"
-		if state.ArtifactCacheStats.ExactHit {
-			status = "exact hit"
-		}
-		missReason := state.ArtifactCacheStats.MissReason
-		if missReason == "" {
-			missReason = "n/a"
-		}
-		sb.WriteString(fmt.Sprintf("\n_AITriage artifact cache: %s · restored poc=%t report=%t fixspec=%t · stored=%d · sensitive skipped=%d · corrupt ignored=%t · miss_reason=%s · saved=%t · uncached verdicts=%d · eligibility skipped=%t · integrity failed=%t._\n",
-			status,
-			state.ArtifactCacheStats.RestoredPoC,
-			state.ArtifactCacheStats.RestoredReport,
-			state.ArtifactCacheStats.RestoredFixSpec,
-			state.ArtifactCacheStats.Stores,
-			state.ArtifactCacheStats.SkippedSensitive,
-			state.ArtifactCacheStats.CorruptCacheIgnored,
-			missReason,
-			state.ArtifactCacheStats.Saved,
-			state.ArtifactCacheStats.UncachedVerdicts,
-			state.ArtifactCacheStats.EligibilitySkipped,
-			state.ArtifactCacheStats.IntegrityFailed))
-	}
-
-	state.SummaryMarkdown = sb.String()
-	fmt.Fprintf(os.Stderr, "   Summary: %d actionable, %d suppressed FP\n", len(actionable), fpCount)
+	state.AgentHandoff = &handoff
+	state.SummaryMarkdown = handoff.SummaryMarkdown
+	fmt.Fprintf(os.Stderr, "   Summary: %d actionable, %d suppressed FP\n",
+		len(handoff.AgentData.Findings), handoff.AgentData.Stats.FalsePositives)
+	return nil
 }
 
 // ── Block 1: Human-Readable Summary ─────────────────────────────────────────
@@ -1075,93 +987,9 @@ func writeHumanSummary(sb *strings.Builder, state *AgentState, actionable []acti
 
 // ── Block 2: AI Agent Structured Data ───────────────────────────────────────
 
-func writeAIAgentData(sb *strings.Builder, state *AgentState, actionable []actionableFinding, tp, fp, nr int) {
-	// Build JSON structure
-	type findingJSON struct {
-		ID             string `json:"id"`
-		Severity       string `json:"severity"`
-		File           string `json:"file,omitempty"`
-		Line           int    `json:"line,omitempty"`
-		Title          string `json:"title"`
-		Disposition    string `json:"disposition"`
-		Recommendation string `json:"recommendation,omitempty"`
-	}
-
-	type summaryJSON struct {
-		ScanDate   string `json:"scan_date"`
-		Score      int    `json:"score"`
-		Grade      string `json:"grade"`
-		GateStatus string `json:"gate_status"`
-		Policy     struct {
-			Profile string `json:"profile"`
-			FailOn  string `json:"fail_on"`
-		} `json:"policy"`
-		Stats struct {
-			TruePositives  int `json:"true_positives"`
-			NeedsReview    int `json:"needs_review"`
-			FalsePositives int `json:"false_positives"`
-			Total          int `json:"total"`
-		} `json:"stats"`
-		Findings []findingJSON `json:"findings"`
-	}
-
-	hc := state.HealthCheck
-	data := summaryJSON{
-		ScanDate: time.Now().Format("2006-01-02"),
-		Score:    hc.Score,
-		Grade:    hc.Grade,
-	}
-	if hc.Verdict.Passed {
-		data.GateStatus = "PASSED"
-	} else {
-		data.GateStatus = "FAILED"
-	}
-	data.Policy.Profile = string(hc.Policy.Profile)
-	data.Policy.FailOn = string(hc.Policy.FailOn)
-	data.Stats.TruePositives = tp
-	data.Stats.NeedsReview = nr
-	data.Stats.FalsePositives = fp
-	data.Stats.Total = len(state.EnrichedFindings)
-
-	// Build finding recommendations from dispositions
-	recommendationMap := make(map[string]string)
-	for _, d := range state.FindingDispositions {
-		if d.Disposition != "False Positive" && d.Rationale != "" {
-			recommendationMap[d.FindingID] = d.Rationale
-		}
-	}
-
-	for _, f := range actionable {
-		fj := findingJSON{
-			ID:          f.vulnID,
-			Severity:    f.severity,
-			File:        f.file,
-			Line:        f.line,
-			Title:       strings.ReplaceAll(f.message, "\\|", "|"),
-			Disposition: f.disposition,
-		}
-		if rec, ok := recommendationMap[f.vulnID]; ok {
-			fj.Recommendation = rec
-		}
-		data.Findings = append(data.Findings, fj)
-	}
-
-	jsonBytes, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return
-	}
-
-	sb.WriteString("\n<details>\n")
-	sb.WriteString("<summary>🤖 AI Agent Data (structured findings for Cursor / Claude / Antigravity)</summary>\n\n")
-	sb.WriteString("```json\n")
-	sb.WriteString(string(jsonBytes))
-	sb.WriteString("\n```\n\n")
-	sb.WriteString("</details>\n")
-}
-
 // ── Block 2: AI Remediation Prompt ──────────────────────────────────────────
 
-func writeAIRemediationPrompt(sb *strings.Builder, state *AgentState, actionable []actionableFinding) {
+func writeAIRemediationPrompt(sb *strings.Builder, state *AgentState, actionable []actionableFinding, generatedAt time.Time) {
 	if len(actionable) == 0 {
 		return
 	}
@@ -1179,7 +1007,7 @@ func writeAIRemediationPrompt(sb *strings.Builder, state *AgentState, actionable
 
 	sb.WriteString("## SCAN METADATA\n")
 	sb.WriteString(fmt.Sprintf("- Score: %d/100 (%s)\n", hc.Score, hc.Grade))
-	sb.WriteString(fmt.Sprintf("- Date: %s\n", time.Now().Format("2006-01-02")))
+	sb.WriteString(fmt.Sprintf("- Date: %s\n", generatedAt.Format("2006-01-02")))
 	sb.WriteString(fmt.Sprintf("- Gate: %s\n\n", strings.ToUpper(hc.Verdict.Status)))
 
 	sb.WriteString("## VULNERABILITIES FOUND\n\n")

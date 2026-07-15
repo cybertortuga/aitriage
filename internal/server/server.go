@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/cybertortuga/aitriage/internal/agent/architect"
-	"github.com/cybertortuga/aitriage/internal/agent/graph"
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
 	"github.com/cybertortuga/aitriage/internal/agent/prompts"
 	"github.com/cybertortuga/aitriage/internal/config"
@@ -33,25 +32,26 @@ import (
 )
 
 type Server struct {
-	hostPrefix     string
-	llmClient      llm.Client
-	lastResult     *llm.RichScanResult
-	userRepo       *repositories.UserRepository
-	productRepo    *repositories.ProductRepository
-	engagementRepo *repositories.EngagementRepository
-	findingRepo    *repositories.FindingRepository
-	auditRepo      *repositories.AuditRepository
-	notifRepo      *repositories.NotificationRepository
-	metricsRepo    *repositories.MetricsRepository
-	apiKeyRepo     *repositories.APIKeyRepository
-	topologyRepo   *repositories.TopologyRepository
-	configRepo     *repositories.ConfigRepository
-	reportRepo     *repositories.ReportRepository
-	chatRepo       *repositories.ChatRepository
-	ignoreRepo     *repositories.IgnoreRepository
-	runwayRepo     *repositories.RunwayRepository
-	db             *sql.DB
-	engine         *engine.Engine
+	hostPrefix         string
+	llmClient          llm.Client
+	lastResult         *llm.RichScanResult
+	userRepo           *repositories.UserRepository
+	productRepo        *repositories.ProductRepository
+	engagementRepo     *repositories.EngagementRepository
+	findingRepo        *repositories.FindingRepository
+	auditRepo          *repositories.AuditRepository
+	notifRepo          *repositories.NotificationRepository
+	metricsRepo        *repositories.MetricsRepository
+	apiKeyRepo         *repositories.APIKeyRepository
+	topologyRepo       *repositories.TopologyRepository
+	configRepo         *repositories.ConfigRepository
+	reportRepo         *repositories.ReportRepository
+	chatRepo           *repositories.ChatRepository
+	ignoreRepo         *repositories.IgnoreRepository
+	runwayRepo         *repositories.RunwayRepository
+	runwayArtifactRepo *repositories.RunwayArtifactRepository
+	db                 *sql.DB
+	engine             *engine.Engine
 }
 
 func NewServer(hostPrefix string, db *sql.DB) *Server {
@@ -84,24 +84,25 @@ func NewServer(hostPrefix string, db *sql.DB) *Server {
 	}
 
 	return &Server{
-		hostPrefix:     hostPrefix,
-		llmClient:      llmCl,
-		userRepo:       userRepo,
-		productRepo:    productRepo,
-		engagementRepo: repositories.NewEngagementRepository(db),
-		findingRepo:    repositories.NewFindingRepository(db),
-		auditRepo:      repositories.NewAuditRepository(db),
-		notifRepo:      repositories.NewNotificationRepository(db),
-		metricsRepo:    repositories.NewMetricsRepository(db),
-		apiKeyRepo:     repositories.NewAPIKeyRepository(db),
-		topologyRepo:   repositories.NewTopologyRepository(db),
-		configRepo:     repositories.NewConfigRepository(db),
-		reportRepo:     repositories.NewReportRepository(db),
-		chatRepo:       repositories.NewChatRepository(db),
-		ignoreRepo:     repositories.NewIgnoreRepository(db),
-		runwayRepo:     repositories.NewRunwayRepository(db),
-		db:             db,
-		engine:         eng,
+		hostPrefix:         hostPrefix,
+		llmClient:          llmCl,
+		userRepo:           userRepo,
+		productRepo:        productRepo,
+		engagementRepo:     repositories.NewEngagementRepository(db),
+		findingRepo:        repositories.NewFindingRepository(db),
+		auditRepo:          repositories.NewAuditRepository(db),
+		notifRepo:          repositories.NewNotificationRepository(db),
+		metricsRepo:        repositories.NewMetricsRepository(db),
+		apiKeyRepo:         repositories.NewAPIKeyRepository(db),
+		topologyRepo:       repositories.NewTopologyRepository(db),
+		configRepo:         repositories.NewConfigRepository(db),
+		reportRepo:         repositories.NewReportRepository(db),
+		chatRepo:           repositories.NewChatRepository(db),
+		ignoreRepo:         repositories.NewIgnoreRepository(db),
+		runwayRepo:         repositories.NewRunwayRepository(db),
+		runwayArtifactRepo: repositories.NewRunwayArtifactRepository(db),
+		db:                 db,
+		engine:             eng,
 	}
 }
 
@@ -284,6 +285,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	mux.Handle("/api/runway", middleware.PermissionMiddleware("admin", "manager")(http.HandlerFunc(s.handleRunway)))
 	mux.Handle("/api/runway/all", middleware.PermissionMiddleware("admin", "manager", "viewer")(http.HandlerFunc(s.handleRunwayAll)))
+	mux.Handle("GET /api/runway/artifacts/{id}", middleware.PermissionMiddleware("admin", "manager", "viewer")(http.HandlerFunc(s.handleRunwayArtifactManifest)))
+	mux.Handle("GET /api/runway/handoff/{id}", middleware.PermissionMiddleware("admin", "manager", "viewer")(http.HandlerFunc(s.handleRunwayHandoff)))
+	mux.Handle("GET /api/runway/artifacts/{id}/{kind}", middleware.PermissionMiddleware("admin", "manager", "viewer")(http.HandlerFunc(s.handleRunwayArtifactDownload)))
 	mux.Handle("/api/runway/export/", middleware.PermissionMiddleware("admin", "manager")(http.HandlerFunc(s.handleRunwayExport)))
 	mux.Handle("/api/runway/", middleware.PermissionMiddleware("admin", "manager")(http.HandlerFunc(s.handleRunwaySession)))
 	mux.Handle("/api/runway/start/", middleware.PermissionMiddleware("admin", "manager")(http.HandlerFunc(s.handleRunwayStart)))
@@ -2100,6 +2104,24 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 
 	productID, useProduct := parseOptionalInt(r.URL.Query().Get("product_id"))
 	lang := normalizedSummaryLang(r.URL.Query().Get("lang"))
+	generate := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("generate")), "true")
+
+	// Default (page load): return the previously generated summary from storage
+	// without spending an LLM call, so it survives refreshes. Only regenerate
+	// when the user explicitly asks (the "Generate" button sends generate=true).
+	if !generate && useProduct {
+		if stored, at, ok := s.loadStoredAISummary(r.Context(), productID, lang); ok {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ok":           true,
+				"summary":      stored,
+				"generated_at": at,
+				"generated":    true,
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "summary": "", "generated": false})
+		return
+	}
 
 	evidence, err := s.loadAISummaryEvidence(r.Context(), productID, useProduct)
 	if err != nil {
@@ -2123,10 +2145,40 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		summary = buildAISummaryFallback(evidence, lang)
 	}
 
+	// Persist so the generated text survives page refreshes.
+	if useProduct {
+		s.storeAISummary(r.Context(), productID, lang, summary)
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"ok":      true,
-		"summary": summary,
+		"ok":        true,
+		"summary":   summary,
+		"generated": true,
 	})
+}
+
+// loadStoredAISummary returns the persisted AI summary for a product+lang.
+func (s *Server) loadStoredAISummary(ctx context.Context, productID int, lang string) (string, string, bool) {
+	var summary, generatedAt string
+	err := s.db.QueryRowContext(ctx,
+		"SELECT summary, generated_at FROM ai_summaries WHERE product_id = ? AND lang = ?",
+		productID, lang).Scan(&summary, &generatedAt)
+	if err != nil || strings.TrimSpace(summary) == "" {
+		return "", "", false
+	}
+	return summary, generatedAt, true
+}
+
+// storeAISummary upserts the generated AI summary so it persists across reloads.
+func (s *Server) storeAISummary(ctx context.Context, productID int, lang, summary string) {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO ai_summaries (product_id, lang, summary, generated_at)
+		 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(product_id, lang) DO UPDATE SET summary = excluded.summary, generated_at = CURRENT_TIMESTAMP`,
+		productID, lang, summary)
+	if err != nil {
+		slog.Error("Failed to persist AI summary", "product_id", productID, "lang", lang, "error", err)
+	}
 }
 
 func parseOptionalInt(value string) (int, bool) {
@@ -2980,6 +3032,9 @@ func (s *Server) handleRunwayExport(w http.ResponseWriter, r *http.Request) {
 
 	// Build markdown content
 	var md strings.Builder
+	// Machine marker (invisible in rendered Markdown) so a later scan skips this
+	// report instead of flagging its embedded examples as new vulnerabilities.
+	md.WriteString(core.AITriageArtifactMarker + "\n")
 	md.WriteString("# 🛡️ AITriage Security Audit Report\n\n")
 	md.WriteString(fmt.Sprintf("**Project**: %s\n", product.Name))
 	md.WriteString(fmt.Sprintf("**Date**: %s\n", session.CreatedAt.Format("2006-01-02 15:04")))
@@ -3088,105 +3143,7 @@ func (s *Server) handleRunwayStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Start background orchestrator
-	go func() {
-		bgCtx := context.Background()
-		updateProgress := func(step int, progressMessage string) {
-			session.Status = "running"
-			session.CurrentStep = step
-			session.ProgressMessage = &progressMessage
-			session.ErrorMessage = nil
-			if err := s.runwayRepo.Update(bgCtx, session); err != nil {
-				slog.Error("Failed to update runway progress", "session_id", session.ID, "step", step, "progress", progressMessage, "error", err)
-			}
-		}
-
-		path := "/host"
-		if product.RepoURL != nil && *product.RepoURL != "" {
-			path = *product.RepoURL
-		}
-
-		cfg := config.LoadConfig(".")
-		state := &graph.AgentState{
-			ProjectPath:    path,
-			BatchSize:      cfg.LLM.BatchSize,
-			RunwayProgress: updateProgress,
-		}
-
-		for _, f := range findings {
-			if f.Status == "triage" {
-				continue
-			}
-			filePath := ""
-			if f.FilePath != nil {
-				filePath = *f.FilePath
-			}
-			line := 0
-			if f.LineNumber != nil {
-				line = *f.LineNumber
-			}
-			state.ExternalFindings = append(state.ExternalFindings, external.UnifiedFinding{
-				RuleID:   f.RuleID,
-				Severity: f.Severity,
-				File:     filePath,
-				Line:     line,
-				Message:  f.Title,
-			})
-		}
-
-		session.Status = "running"
-		session.CurrentStep = 1
-		progressMessage := "preparing_context"
-		session.ProgressMessage = &progressMessage
-		session.ErrorMessage = nil
-		if err := s.runwayRepo.Update(bgCtx, session); err != nil {
-			slog.Error("Failed to mark runway session running", "session_id", session.ID, "error", err)
-			return
-		}
-
-		err := graph.Run(bgCtx, state, s.llmClient)
-		if err != nil {
-			errMsg := err.Error()
-			progressMessage := "failed"
-			session.ErrorMessage = &errMsg
-			session.Status = "failed"
-			session.ProgressMessage = &progressMessage
-			if session.CurrentStep == 0 {
-				session.CurrentStep = 1
-			}
-		} else {
-			progressMessage := "completed"
-			session.Status = "completed"
-			session.CurrentStep = 7
-			session.ProgressMessage = &progressMessage
-
-			tmJSON := "{}"
-			if state.ThreatModel != nil {
-				b, _ := json.MarshalIndent(state.ThreatModel, "", "  ")
-				tmJSON = string(b)
-			}
-			session.ThreatModel = &tmJSON
-
-			pocJSON := "[]"
-			if len(state.PoCResults) > 0 {
-				b, _ := json.MarshalIndent(state.PoCResults, "", "  ")
-				pocJSON = string(b)
-			}
-			session.PoC = &pocJSON
-
-			session.AuditReport = &state.ReportMarkdown
-			if strings.TrimSpace(state.SummaryMarkdown) != "" {
-				session.SecurityPlan = &state.SummaryMarkdown
-			}
-			if strings.TrimSpace(state.AIFixSpec) != "" {
-				session.Remediation = &state.AIFixSpec
-			}
-		}
-
-		if err := s.runwayRepo.Update(bgCtx, session); err != nil {
-			slog.Error("Failed to persist runway session result", "session_id", session.ID, "error", err)
-		}
-	}()
+	go s.runRunwaySession(session, product, findings)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "message": "Runway scan started"})

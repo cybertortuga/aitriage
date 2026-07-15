@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"os"
@@ -326,6 +327,36 @@ var defaultIgnoreExts = map[string]bool{
 	".pyc": true, ".class": true,
 }
 
+// AITriageArtifactMarker tags reports that AITriage itself generates. A later
+// scan recognizes this marker and skips the file, so AITriage never re-flags
+// the vulnerability examples/snippets inside its own report as new findings.
+const AITriageArtifactMarker = "<!-- aitriage:generated-report -->"
+
+// isAITriageGeneratedArtifact reports whether a file is AITriage's own output
+// (a generated report), which must never be scanned as if it were source code.
+// It matches the stable runway-report filename cheaply, and falls back to the
+// content marker for any other generated report.
+func isAITriageGeneratedArtifact(path string, size int64) bool {
+	base := strings.ToLower(filepath.Base(path))
+	if strings.HasPrefix(base, "runway-report-") && strings.HasSuffix(base, ".md") {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	if (ext == ".md" || ext == ".markdown") && size > 0 && size < 5*1024*1024 {
+		f, err := os.Open(path)
+		if err != nil {
+			return false
+		}
+		defer f.Close()
+		buf := make([]byte, 512)
+		n, _ := f.Read(buf)
+		if bytes.Contains(buf[:n], []byte(AITriageArtifactMarker)) {
+			return true
+		}
+	}
+	return false
+}
+
 // NewWorkspace initializes a central file index by walking the directory once.
 func NewWorkspace(rootPath string) (*Workspace, error) {
 	ws := &Workspace{
@@ -390,6 +421,12 @@ func NewWorkspace(rootPath string) (*Workspace, error) {
 
 		// Check .gitignore for file
 		if gitIgnorer != nil && gitIgnorer.MatchesPath(relPath) {
+			return nil
+		}
+
+		// Never scan AITriage's own generated reports: their embedded examples
+		// and evidence snippets would otherwise be re-flagged as new findings.
+		if isAITriageGeneratedArtifact(path, info.Size()) {
 			return nil
 		}
 

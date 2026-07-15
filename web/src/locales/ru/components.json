@@ -65,6 +65,7 @@
     "criticalRouting": "КРИТИЧЕСКАЯ_ОШИБКА_МАРШРУТИЗАЦИИ"
   },
   "initializing_system": "Инициализация системы AITriage",
+  "simple_navigation": "Основная навигация простого режима",
   "tab_overview": "Обзор",
   "tab_repositories": "Репозитории",
   "tab_triaged": "Разобрано",

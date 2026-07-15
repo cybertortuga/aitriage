@@ -65,6 +65,7 @@
     "criticalRouting": "CRITICAL_ROUTING_ERROR"
   },
   "initializing_system": "Initializing AITriage System",
+  "simple_navigation": "Simple mode primary navigation",
   "tab_overview": "Overview",
   "tab_repositories": "Repositories",
   "tab_triaged": "Triaged",

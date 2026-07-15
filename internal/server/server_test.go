@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
+	"github.com/cybertortuga/aitriage/internal/models"
 	"github.com/cybertortuga/aitriage/internal/server/middleware"
 	"github.com/golang-jwt/jwt/v5"
 	_ "modernc.org/sqlite"
@@ -112,6 +114,103 @@ func TestNewServer(t *testing.T) {
 	}
 }
 
+func TestRunwayHandoffAndArtifactRoutes(t *testing.T) {
+	s := setupTestServer(t)
+	s.db.SetMaxOpenConns(1)
+	if _, err := s.db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		t.Fatal(err)
+	}
+	productResult, err := s.db.Exec(`INSERT INTO products (name) VALUES (?)`, "handoff-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	productID, _ := productResult.LastInsertId()
+	session := &models.RunwaySession{ProductID: productID, Status: "completed", CurrentStep: 7, AutoMode: true}
+	if err := s.runwayRepo.Create(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
+
+	prompt := "### AI Remediation Prompt\n\n```markdown\nAudit first, then implement.\n```\n"
+	agentData := `{"scan_date":"2026-07-15","score":72,"grade":"C","gate_status":"FAILED","policy":{"profile":"balanced","fail_on":"high"},"stats":{"true_positives":1,"needs_review":1,"false_positives":2,"total":4},"findings":[{"id":"CS-WEB-001","severity":"HIGH","title":"Unsafe output","disposition":"True Positive"}]}`
+	artifacts := []models.RunwayArtifact{
+		newRunwayArtifact(session.ID, models.RunwayArtifactRemediationPromptMarkdown, "text/markdown; charset=utf-8", 1, prompt),
+		newRunwayArtifact(session.ID, models.RunwayArtifactAgentDataJSON, "application/json; charset=utf-8", 1, agentData),
+	}
+	if err := s.runwayArtifactRepo.UpsertMany(context.Background(), artifacts); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.runwayArtifactRepo.UpsertMany(context.Background(), artifacts); err != nil {
+		t.Fatal(err)
+	}
+	var artifactCount int
+	if err := s.db.QueryRow(`SELECT count(*) FROM runway_artifacts WHERE session_id = ?`, session.ID).Scan(&artifactCount); err != nil {
+		t.Fatal(err)
+	}
+	if artifactCount != len(artifacts) {
+		t.Fatalf("idempotent upsert stored %d rows, want %d", artifactCount, len(artifacts))
+	}
+
+	handoffRequest := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/runway/handoff/%d", session.ID), nil)
+	handoffRecorder := httptest.NewRecorder()
+	s.ServeHTTP(handoffRecorder, handoffRequest)
+	if handoffRecorder.Code != http.StatusOK {
+		t.Fatalf("handoff status = %d, body = %s", handoffRecorder.Code, handoffRecorder.Body.String())
+	}
+	var handoff map[string]any
+	if err := json.Unmarshal(handoffRecorder.Body.Bytes(), &handoff); err != nil {
+		t.Fatal(err)
+	}
+	if handoff["remediation_prompt_markdown"] != prompt {
+		t.Fatalf("handoff prompt mismatch: %#v", handoff["remediation_prompt_markdown"])
+	}
+	if handoff["gate_status"] != "FAILED" {
+		t.Fatalf("handoff gate = %#v", handoff["gate_status"])
+	}
+
+	manifestRequest := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/runway/artifacts/%d", session.ID), nil)
+	manifestRecorder := httptest.NewRecorder()
+	s.ServeHTTP(manifestRecorder, manifestRequest)
+	if manifestRecorder.Code != http.StatusOK {
+		t.Fatalf("manifest status = %d, body = %s", manifestRecorder.Code, manifestRecorder.Body.String())
+	}
+	if strings.Contains(manifestRecorder.Body.String(), "Audit first") {
+		t.Fatal("artifact manifest leaked artifact content")
+	}
+
+	downloadRequest := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/runway/artifacts/%d/%s", session.ID, models.RunwayArtifactRemediationPromptMarkdown), nil)
+	downloadRecorder := httptest.NewRecorder()
+	s.ServeHTTP(downloadRecorder, downloadRequest)
+	if downloadRecorder.Code != http.StatusOK {
+		t.Fatalf("download status = %d, body = %s", downloadRecorder.Code, downloadRecorder.Body.String())
+	}
+	if downloadRecorder.Body.String() != prompt {
+		t.Fatal("downloaded prompt content mismatch")
+	}
+	if got := downloadRecorder.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q", got)
+	}
+	if got := downloadRecorder.Header().Get("ETag"); got == "" {
+		t.Fatal("artifact download is missing ETag")
+	}
+
+	invalidRequest := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/runway/artifacts/%d/not-a-real-kind", session.ID), nil)
+	invalidRecorder := httptest.NewRecorder()
+	s.ServeHTTP(invalidRecorder, invalidRequest)
+	if invalidRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("invalid kind status = %d, want 400", invalidRecorder.Code)
+	}
+
+	if err := s.runwayRepo.Delete(context.Background(), session.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRow(`SELECT count(*) FROM runway_artifacts WHERE session_id = ?`, session.ID).Scan(&artifactCount); err != nil {
+		t.Fatal(err)
+	}
+	if artifactCount != 0 {
+		t.Fatalf("cascade delete left %d artifacts", artifactCount)
+	}
+}
+
 func TestHandleCreateUserValidation(t *testing.T) {
 	s := setupTestServer(t)
 
@@ -200,7 +299,7 @@ Rate Limiting Missing: false positive for the current repository.
 	capture := &summaryCaptureLLM{response: "**Security status:** evidence-based"}
 	s.llmClient = capture
 
-	req, _ := http.NewRequest("GET", "/api/ai-summary?product_id="+strconv.FormatInt(productID, 10)+"&lang=ru", nil)
+	req, _ := http.NewRequest("GET", "/api/ai-summary?product_id="+strconv.FormatInt(productID, 10)+"&lang=ru&generate=true", nil)
 	addAuthCookie(req)
 	rr := httptest.NewRecorder()
 	s.ServeHTTP(rr, req)
@@ -246,6 +345,27 @@ Rate Limiting Missing: false positive for the current repository.
 		if !strings.Contains(userPrompt, want) {
 			t.Fatalf("user prompt missing %q:\n%s", want, userPrompt)
 		}
+	}
+
+	// Persistence: a plain GET (no generate) must return the stored summary
+	// without another LLM call, so it survives page refreshes.
+	capture.messages = nil
+	req2, _ := http.NewRequest("GET", "/api/ai-summary?product_id="+strconv.FormatInt(productID, 10)+"&lang=ru", nil)
+	addAuthCookie(req2)
+	rr2 := httptest.NewRecorder()
+	s.ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("stored GET expected 200, got %d: %s", rr2.Code, rr2.Body.String())
+	}
+	var resp2 map[string]any
+	if err := json.NewDecoder(rr2.Body).Decode(&resp2); err != nil {
+		t.Fatalf("failed to decode stored response: %v", err)
+	}
+	if resp2["summary"] != capture.response {
+		t.Fatalf("stored summary not returned on plain GET: %#v", resp2)
+	}
+	if len(capture.messages) != 0 {
+		t.Fatalf("plain GET must not call the LLM, got %d messages", len(capture.messages))
 	}
 }
 

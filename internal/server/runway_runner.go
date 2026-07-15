@@ -1,0 +1,128 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"strings"
+
+	"github.com/cybertortuga/aitriage/internal/agent/graph"
+	"github.com/cybertortuga/aitriage/internal/config"
+	"github.com/cybertortuga/aitriage/internal/models"
+	"github.com/cybertortuga/aitriage/internal/scanner/external"
+)
+
+// runRunwaySession is the canonical Web execution path. Simple mode and the
+// advanced pipeline both use this method, which in turn uses the same graph.Run
+// orchestrator and handoff builder as CI/CD.
+func (s *Server) runRunwaySession(session *models.RunwaySession, product *models.Product, findings []models.Finding) {
+	ctx := context.Background()
+	updateProgress := func(step int, progressMessage string) {
+		session.Status = "running"
+		session.CurrentStep = step
+		session.ProgressMessage = &progressMessage
+		session.ErrorMessage = nil
+		if err := s.runwayRepo.Update(ctx, session); err != nil {
+			slog.Error("Failed to update runway progress", "session_id", session.ID, "step", step, "progress", progressMessage, "error", err)
+		}
+	}
+
+	projectPath := "/host"
+	if product.RepoURL != nil && strings.TrimSpace(*product.RepoURL) != "" {
+		projectPath = *product.RepoURL
+	}
+
+	cfg := config.LoadConfig(".")
+	state := &graph.AgentState{
+		ProjectPath:    projectPath,
+		BatchSize:      cfg.LLM.BatchSize,
+		RunwayProgress: updateProgress,
+	}
+	for _, finding := range findings {
+		if finding.Status == "triage" {
+			continue
+		}
+		filePath := ""
+		if finding.FilePath != nil {
+			filePath = *finding.FilePath
+		}
+		line := 0
+		if finding.LineNumber != nil {
+			line = *finding.LineNumber
+		}
+		state.ExternalFindings = append(state.ExternalFindings, external.UnifiedFinding{
+			RuleID:   finding.RuleID,
+			Severity: finding.Severity,
+			File:     filePath,
+			Line:     line,
+			Message:  finding.Title,
+		})
+	}
+
+	session.Status = "running"
+	session.CurrentStep = 1
+	session.ScanCountBefore = len(state.ExternalFindings)
+	progressMessage := "preparing_context"
+	session.ProgressMessage = &progressMessage
+	session.ErrorMessage = nil
+	if err := s.runwayRepo.Update(ctx, session); err != nil {
+		slog.Error("Failed to mark runway session running", "session_id", session.ID, "error", err)
+		return
+	}
+
+	if err := graph.Run(ctx, state, s.llmClient); err != nil {
+		s.markRunwayFailed(ctx, session, err)
+		return
+	}
+
+	tmJSON := "{}"
+	if state.ThreatModel != nil {
+		value, _ := json.MarshalIndent(state.ThreatModel, "", "  ")
+		tmJSON = string(value)
+	}
+	session.ThreatModel = &tmJSON
+
+	pocJSON := "[]"
+	if len(state.PoCResults) > 0 {
+		value, _ := json.MarshalIndent(state.PoCResults, "", "  ")
+		pocJSON = string(value)
+	}
+	session.PoC = &pocJSON
+	session.AuditReport = &state.ReportMarkdown
+	if strings.TrimSpace(state.SummaryMarkdown) != "" {
+		session.SecurityPlan = &state.SummaryMarkdown
+	}
+	if strings.TrimSpace(state.AIFixSpec) != "" {
+		session.Remediation = &state.AIFixSpec
+	}
+	if state.AgentHandoff != nil {
+		session.ScanCountAfter = state.AgentHandoff.AgentData.Stats.TruePositives + state.AgentHandoff.AgentData.Stats.NeedsReview
+	}
+
+	if err := s.persistRunwayArtifacts(ctx, session.ID, state); err != nil {
+		slog.Error("Failed to persist Runway artifact bundle", "session_id", session.ID, "error", err)
+		s.markRunwayFailed(ctx, session, err)
+		return
+	}
+	progressMessage = "completed"
+	session.Status = "completed"
+	session.CurrentStep = 7
+	session.ProgressMessage = &progressMessage
+	if err := s.runwayRepo.Update(ctx, session); err != nil {
+		slog.Error("Failed to persist runway session result", "session_id", session.ID, "error", err)
+	}
+}
+
+func (s *Server) markRunwayFailed(ctx context.Context, session *models.RunwaySession, cause error) {
+	errorMessage := cause.Error()
+	progressMessage := "failed"
+	session.ErrorMessage = &errorMessage
+	session.Status = "failed"
+	session.ProgressMessage = &progressMessage
+	if session.CurrentStep == 0 {
+		session.CurrentStep = 1
+	}
+	if err := s.runwayRepo.Update(ctx, session); err != nil {
+		slog.Error("Failed to persist runway failure", "session_id", session.ID, "error", err)
+	}
+}

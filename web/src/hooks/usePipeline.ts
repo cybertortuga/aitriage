@@ -26,6 +26,7 @@ export interface PipelineStep {
 export type PipelineStatus = 'idle' | 'running' | 'done' | 'error';
 
 export interface PipelineResult {
+  session_id: number;
   report: string;
   fix_spec: string;
   stats: PipelineStats;
@@ -73,6 +74,7 @@ export const usePipeline = () => {
           setStatus('done');
           setProgress(100);
           setResult({
+            session_id: Number(data.session_id || 0),
             report: data.report || '',
             fix_spec: data.fix_spec || '',
             stats: data.stats || { tp: 0, fp: 0, nr: 0, poc: 0, total: 0 },

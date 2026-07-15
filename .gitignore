@@ -51,6 +51,8 @@ aitriage.yml
 # ALL internal documentation, plans and notes live under .notes/ and are
 # intentionally untracked. Only README.md and LICENSE are public.
 /AITRIAGE_CACHE_BENCHMARK_HANDOFF.md
+/WEB_AUDIT_HANDOFF.md
+/web-ai-remediation-handoff-plan.md
 /.notes/
 /local/
 /artifacts/

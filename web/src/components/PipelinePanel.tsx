@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import Markdown from 'react-markdown';
 import { usePipeline } from '../hooks/usePipeline';
+import { AgentHandoffPanel } from './securecoder/AgentHandoffPanel';
 
 const PIPELINE_STEPS = [
-  { step: 1, label: 'Threat Model', icon: 'security', desc: 'STRIDE analysis, TP/FP/NR classification' },
-  { step: 2, label: 'PoC Verification', icon: 'bug_report', desc: 'Proves exploitability of True Positives' },
-  { step: 3, label: 'Security Report', icon: 'description', desc: 'Full CS-XXX-NNN report with dispositions' },
-  { step: 4, label: 'Fix Specification', icon: 'build', desc: 'AI IDE prompt for Cursor/Claude/Antigravity' },
+  { step: 1, label: 'Threat model', icon: 'security' },
+  { step: 2, label: 'PoC', icon: 'bug_report' },
+  { step: 3, label: 'Policy gate', icon: 'fact_check' },
+  { step: 4, label: 'Report', icon: 'description' },
+  { step: 5, label: 'Fix spec', icon: 'build' },
+  { step: 6, label: 'AI handoff', icon: 'smart_toy' },
 ];
 
 interface PipelinePanelProps {
@@ -15,7 +18,7 @@ interface PipelinePanelProps {
 
 export const PipelinePanel: React.FC<PipelinePanelProps> = ({ productId = 1 }) => {
   const { status, progress, currentStep, steps, result, error, runPipeline, cancel } = usePipeline();
-  const [activeTab, setActiveTab] = useState<'report' | 'fixspec'>('report');
+  const [activeTab, setActiveTab] = useState<'report' | 'fixspec' | 'handoff'>('handoff');
   const [copied, setCopied] = useState(false);
 
   const handleRun = () => {
@@ -30,10 +33,9 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({ productId = 1 }) =
 
   const getStepStatus = (stepNum: number): 'pending' | 'active' | 'done' | 'warning' => {
     if (status === 'idle') return 'pending';
-    const completed = steps.filter(s => s.step === stepNum && s.progress > (stepNum * 20 + 10));
     const hasWarning = steps.find(s => s.step === stepNum && s.warning);
     if (hasWarning) return 'warning';
-    if (completed.length > 0 || (result && stepNum <= 4)) return 'done';
+    if (result || (currentStep && currentStep.step > stepNum)) return 'done';
     if (currentStep?.step === stepNum) return 'active';
     return 'pending';
   };
@@ -51,7 +53,7 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({ productId = 1 }) =
               </span>
             </div>
             <p className="text-[11px] text-v2-muted">
-              Full pipeline: ThreatModel → PoC → Report → FixSpec (same as CI/CD)
+              Canonical CI/CD graph with durable reports and AI implementation handoff
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -78,12 +80,12 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({ productId = 1 }) =
 
       {/* Pipeline Steps */}
       <div className="px-6 py-4 border-b border-v2-border-soft bg-v2-surface-2 shrink-0">
-        <div className="flex items-center gap-2">
-          {PIPELINE_STEPS.map((ps, i) => {
+        <div className="grid grid-cols-6 gap-2">
+          {PIPELINE_STEPS.map((ps) => {
             const stepStatus = getStepStatus(ps.step);
             return (
               <React.Fragment key={ps.step}>
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
+                <div className={`flex min-w-0 items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
                   stepStatus === 'active' ? 'border-primary bg-primary/10 shadow-[0_0_12px_rgba(139,92,246,0.15)]' :
                   stepStatus === 'done' ? 'border-emerald-500/40 bg-emerald-500/10' :
                   stepStatus === 'warning' ? 'border-amber-500/40 bg-amber-500/10' :
@@ -107,12 +109,8 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({ productId = 1 }) =
                       stepStatus === 'warning' ? 'text-amber-400' :
                       'text-v2-muted'
                     }`}>{ps.label}</div>
-                    <div className="text-[9px] text-v2-muted truncate max-w-[120px]">{ps.desc}</div>
                   </div>
                 </div>
-                {i < PIPELINE_STEPS.length - 1 && (
-                  <span className={`text-[10px] ${stepStatus === 'done' ? 'text-emerald-400' : 'text-v2-muted'}`}>→</span>
-                )}
               </React.Fragment>
             );
           })}
@@ -151,10 +149,7 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({ productId = 1 }) =
               <span className="w-2 h-2 rounded-full bg-amber-400" />
               <span className="text-[10px] font-mono text-v2-fg">{result.stats.nr} Needs Review</span>
             </div>
-            <div className="text-[9px] text-v2-muted font-mono ml-auto">
-              {result.usage.total_tokens.toLocaleString()} tokens
-              (≈${((result.usage.prompt_tokens * 0.00000015) + (result.usage.completion_tokens * 0.0000006)).toFixed(4)})
-            </div>
+            <div className="text-[9px] text-v2-muted font-mono ml-auto">Runway #{result.session_id}</div>
           </div>
         )}
       </div>
@@ -196,22 +191,38 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({ productId = 1 }) =
               <span className="material-symbols-outlined text-[14px] mr-1.5 align-middle">build</span>
               AI Fix Spec
             </button>
+            <button
+              onClick={() => setActiveTab('handoff')}
+              className={`px-5 py-3 text-[11px] font-bold tracking-widest uppercase transition-colors ${
+                activeTab === 'handoff'
+                  ? 'text-primary border-b-2 border-primary bg-v2-surface'
+                  : 'text-v2-muted hover:text-v2-fg'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[14px] mr-1.5 align-middle">smart_toy</span>
+              AI Handoff
+            </button>
             <div className="ml-auto flex items-center px-3 gap-2">
-              <button
-                onClick={() => handleCopy(activeTab === 'report' ? result.report : result.fix_spec)}
-                className="v2-tag cursor-pointer hover:bg-v2-surface-2"
-              >
-                <span className="material-symbols-outlined text-[13px]">
-                  {copied ? 'check' : 'content_copy'}
-                </span>
-                {copied ? 'Copied!' : 'Copy'}
-              </button>
+              {activeTab !== 'handoff' && (
+                <button
+                  onClick={() => handleCopy(activeTab === 'report' ? result.report : result.fix_spec)}
+                  className="v2-tag cursor-pointer hover:bg-v2-surface-2"
+                >
+                  <span className="material-symbols-outlined text-[13px]">
+                    {copied ? 'check' : 'content_copy'}
+                  </span>
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              )}
             </div>
           </div>
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto cyber-scrollbar p-6">
-            <div className="prose prose-invert prose-sm max-w-none
+            {activeTab === 'handoff' ? (
+              <AgentHandoffPanel sessionId={result.session_id} />
+            ) : (
+              <div className="prose prose-invert prose-sm max-w-none
               [&_p]:text-[13px] [&_p]:leading-relaxed [&_p]:text-v2-fg-2
               [&_li]:text-[13px] [&_li]:text-v2-fg-2
               [&_code]:text-primary [&_code]:bg-primary/10 [&_code]:px-1
@@ -225,7 +236,8 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({ productId = 1 }) =
               <Markdown>
                 {activeTab === 'report' ? result.report : result.fix_spec}
               </Markdown>
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -237,8 +249,8 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({ productId = 1 }) =
             <span className="material-symbols-outlined text-6xl text-v2-muted/30 block mb-4">rocket_launch</span>
             <h3 className="text-sm font-bold text-v2-fg tracking-wider uppercase mb-2">SecureCoder Pipeline</h3>
             <p className="text-[12px] text-v2-muted leading-relaxed mb-6">
-              Run the full 4-step security pipeline, identical to CI/CD.
-              Analyzes all findings with ThreatModel → PoC → Report → FixSpec.
+              Run the same security graph as CI/CD. It classifies every finding,
+              verifies exploitability, applies the policy gate and publishes a reusable AI handoff.
             </p>
             <button
               onClick={handleRun}

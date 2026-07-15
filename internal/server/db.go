@@ -259,6 +259,27 @@ CREATE TABLE IF NOT EXISTS runway_sessions (
   updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS runway_artifacts (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id          INTEGER NOT NULL REFERENCES runway_sessions(id) ON DELETE CASCADE,
+  kind                TEXT NOT NULL,
+  media_type          TEXT NOT NULL,
+  schema_version      INTEGER NOT NULL DEFAULT 1,
+  content             TEXT NOT NULL,
+  sha256              TEXT NOT NULL,
+  created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(session_id, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_runway_artifacts_session ON runway_artifacts(session_id);
+
+CREATE TABLE IF NOT EXISTS ai_summaries (
+  product_id    INTEGER NOT NULL,
+  lang          TEXT NOT NULL,
+  summary       TEXT NOT NULL,
+  generated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (product_id, lang)
+);
+
 `
 
 func InitDB(dbPath string) (*sql.DB, error) {

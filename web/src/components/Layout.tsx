@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
@@ -19,23 +19,6 @@ import type { Finding } from '../types';
 
 type SimpleTab = 'overview' | 'repositories' | 'triaged' | 'reports' | 'chat' | 'faq';
 
-const TABS: SimpleTab[] = ['overview', 'repositories', 'triaged', 'reports', 'chat', 'faq'];
-
-const slideVariants = {
-  enter: (direction: number) => ({
-    x: direction > 0 ? 30 : direction < 0 ? -30 : 0,
-    opacity: 0,
-  }),
-  center: {
-    x: 0,
-    opacity: 1,
-  },
-  exit: (direction: number) => ({
-    x: direction > 0 ? -30 : direction < 0 ? 30 : 0,
-    opacity: 0,
-  }),
-};
-
 export const Layout: React.FC = () => {
   const { t } = useTranslation('components');
   const { user, setUser, logout } = useAuthStore();
@@ -44,20 +27,10 @@ export const Layout: React.FC = () => {
   const location = useLocation();
   const isCopilotOpen = useCopilotStore((state) => state.isOpen);
   const isCopilotPinned = useCopilotStore((state) => state.isPinned);
+  const reduceMotion = useReducedMotion();
 
-  const [tabState, setTabState] = useState<{ current: SimpleTab; direction: number }>({
-    current: 'overview',
-    direction: 0,
-  });
-  const simpleTab = tabState.current;
-  const setSimpleTab = (nextTab: SimpleTab) => {
-    const currentIndex = TABS.indexOf(tabState.current);
-    const nextIndex = TABS.indexOf(nextTab);
-    setTabState({
-      current: nextTab,
-      direction: nextIndex > currentIndex ? 1 : -1,
-    });
-  };
+  const [simpleTab, setSimpleTab] = useState<SimpleTab>('overview');
+  const [requestedReportId, setRequestedReportId] = useState<number | null>(null);
 
   const [chatContextFinding, setChatContextFinding] = useState<Finding | null>(null);
   const [chatInitialPrompt, setChatInitialPrompt] = useState<string | null>(null);
@@ -75,7 +48,9 @@ export const Layout: React.FC = () => {
       const next = !prev;
       try {
         localStorage.setItem('sidebar_pinned', String(next));
-      } catch {}
+      } catch {
+        // Sidebar pinning remains optional when storage is unavailable.
+      }
       return next;
     });
   };
@@ -101,7 +76,7 @@ export const Layout: React.FC = () => {
     if (viewMode === 'simple' && location.pathname !== '/') {
       navigate('/', { replace: true });
     }
-  }, [viewMode]);
+  }, [location.pathname, navigate, viewMode]);
 
   useEffect(() => {
     api
@@ -177,27 +152,34 @@ export const Layout: React.FC = () => {
             : 'max-h-0 opacity-0 -translate-y-2 pointer-events-none'
         }`}
       >
-        <div className="flex items-center gap-0 px-6">
+        <div role="tablist" aria-label={t('simple_navigation')} className="flex min-w-max items-center gap-0 px-6 overflow-x-auto">
           {([
-            { id: 'overview' as SimpleTab, label: t('tab_overview') },
-            { id: 'repositories' as SimpleTab, label: t('tab_repositories') },
-            { id: 'triaged' as SimpleTab, label: t('tab_triaged') },
-            { id: 'reports' as SimpleTab, label: t('tab_reports') },
-            { id: 'chat' as SimpleTab, label: t('tab_ai_assistant') },
-            { id: 'faq' as SimpleTab, label: t('tab_faq') },
+            { id: 'overview' as SimpleTab, label: t('tab_overview'), icon: 'dashboard' },
+            { id: 'reports' as SimpleTab, label: t('tab_reports'), icon: 'description', primary: true },
+            { id: 'repositories' as SimpleTab, label: t('tab_repositories'), icon: 'folder' },
+            { id: 'triaged' as SimpleTab, label: t('tab_triaged'), icon: 'task_alt' },
+            { id: 'chat' as SimpleTab, label: t('tab_ai_assistant'), icon: 'smart_toy' },
+            { id: 'faq' as SimpleTab, label: t('tab_faq'), icon: 'help' },
           ]).map((tab) => (
             <button
+              type="button"
+              role="tab"
               key={tab.id}
               onClick={() => setSimpleTab(tab.id)}
-              className={`relative px-4 py-2.5 text-[13px] font-medium transition-colors ${
+              aria-selected={simpleTab === tab.id}
+              aria-current={simpleTab === tab.id ? 'page' : undefined}
+              className={`relative flex items-center gap-1.5 px-4 py-2.5 rounded-md text-[13px] outline-none transition-colors focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--accent-color-line)] ${
                 simpleTab === tab.id
-                  ? 'text-[#f4f4f5]'
-                  : 'text-[#52525b] hover:text-[#a1a1aa]'
+                  ? 'text-[#f4f4f5] font-semibold'
+                  : tab.primary
+                    ? 'text-[var(--accent-color)] font-semibold hover:text-[var(--accent-color-hover)]'
+                    : 'text-[#71717a] font-medium hover:text-[#c4c4cc]'
               }`}
             >
+              {tab.icon && <span className="material-symbols-outlined text-[16px]" aria-hidden="true">{tab.icon}</span>}
               {tab.label}
               {simpleTab === tab.id && (
-                <motion.div layoutId="simple-tab-indicator" className="absolute bottom-0 left-4 right-4 h-[1px] bg-[#f4f4f5]" />
+                <motion.div layoutId="simple-tab-indicator" className="absolute bottom-0 left-4 right-4 h-[2px] bg-[var(--accent-color)]" />
               )}
             </button>
           ))}
@@ -233,7 +215,7 @@ export const Layout: React.FC = () => {
 
         <div className="flex-1 min-w-0 flex overflow-hidden relative">
           <main className="flex-1 h-full bg-transparent relative overflow-hidden">
-            <AnimatePresence mode="wait" custom={tabState.direction}>
+            <AnimatePresence mode="wait">
               {viewMode === 'advanced' ? (
                 <motion.div
                   key="advanced"
@@ -248,25 +230,29 @@ export const Layout: React.FC = () => {
               ) : (
                 <motion.div
                   key={`simple-${simpleTab}`}
-                  custom={tabState.direction}
-                  variants={slideVariants}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={{
-                    x: { type: "spring", stiffness: 380, damping: 35 },
-                    opacity: { duration: 0.15 }
-                  }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: reduceMotion ? 0 : 0.12, ease: [0.22, 1, 0.36, 1] }}
                   className="h-full w-full absolute inset-0"
                 >
                   {simpleTab === 'overview' ? (
-                    <SimpleDashboardPage onNavigateToChat={handleNavigateToChat} />
+                    <SimpleDashboardPage
+                      onNavigateToChat={handleNavigateToChat}
+                      onNavigateToReports={(sessionId) => {
+                        setRequestedReportId(sessionId ?? null);
+                        setSimpleTab('reports');
+                      }}
+                    />
                   ) : simpleTab === 'repositories' ? (
                     <RepositoriesPage />
                   ) : simpleTab === 'triaged' ? (
                     <TriagedPage />
                   ) : simpleTab === 'reports' ? (
-                    <RunwayReportsPage />
+                    <RunwayReportsPage
+                      initialSessionId={requestedReportId}
+                      onNavigateToOverview={() => setSimpleTab('overview')}
+                    />
                   ) : simpleTab === 'chat' ? (
                     <SimpleAIChatPage
                       contextFinding={chatContextFinding}

@@ -102,23 +102,16 @@ func TestGenerateSummaryAllFalsePositives(t *testing.T) {
 	}
 }
 
-func TestGenerateSummaryUndisposedFindingsTreatedAsActionable(t *testing.T) {
-	// If threat model fails and no dispositions exist, all findings should be actionable
+func TestGenerateSummaryRejectsUndisposedFindings(t *testing.T) {
 	state := &AgentState{
 		EnrichedFindings: []EnrichedFinding{
 			{ID: "r1", VulnID: "CS-AUTH-001", Type: "core", Severity: "HIGH", File: "api.go", Line: 42, Message: "Missing auth"},
 		},
-		FindingDispositions: nil, // No dispositions — threat model failed
+		FindingDispositions: nil,
 	}
 
-	generateSummary(state)
-
-	summary := state.SummaryMarkdown
-	if !strings.Contains(summary, "CS-AUTH-001") {
-		t.Error("Undisposed finding should appear in summary as actionable")
-	}
-	if !strings.Contains(summary, "Needs Manual Review") {
-		t.Error("Undisposed finding should be labelled 'Needs Manual Review'")
+	if err := generateSummary(state); err == nil {
+		t.Fatal("generateSummary() should reject incomplete dispositions")
 	}
 }
 

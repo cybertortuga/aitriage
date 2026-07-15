@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import Markdown from 'react-markdown';
 import { useTranslation } from 'react-i18next';
 import { useFindings } from '../hooks/useFindings';
@@ -7,9 +7,13 @@ import { useMetrics } from '../hooks/useMetrics';
 import { useProducts } from '../hooks/useProducts';
 import { securityService } from '../services/securityService';
 import type { Finding, Product } from '../types';
+import { AgentHandoffPanel } from '../components/securecoder/AgentHandoffPanel';
+import { downloadRunwayArtifact } from '../services/runwayArtifacts';
+import './SimpleDashboardPage.css';
 
 interface SimpleDashboardPageProps {
   onNavigateToChat?: (findingOrPrompt?: Finding | string) => void;
+  onNavigateToReports?: (sessionId?: number) => void;
 }
 
 /* ── Path Input with Browse ── */
@@ -544,8 +548,13 @@ type SortBy = 'severity' | 'title' | 'file';
 const PAGE_SIZE = 25;
 
 
-const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts }) => {
+const SecureCoderPanel: React.FC<{
+  activeProducts: any[];
+  onClose: () => void;
+  onNavigateToReports?: (sessionId?: number) => void;
+}> = ({ activeProducts, onClose, onNavigateToReports }) => {
   const { t } = useTranslation('pages');
+  const reduceMotion = useReducedMotion();
   const [expandedCat, setExpandedCat] = useState<string | null>(null);
   
   // Agent Runway state
@@ -1042,8 +1051,21 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
     setRunwayAutoMode(false);
   };
 
-  const handleDownloadMarkdown = () => {
+  const handleDownloadMarkdown = async () => {
     if (!runwayProject) return;
+
+    if (runwaySessionId) {
+      try {
+        const downloaded = await downloadRunwayArtifact(
+          runwaySessionId,
+          'summary_markdown',
+          `runway-${runwaySessionId}-summary.md`,
+        );
+        if (downloaded) return;
+      } catch {
+        // Sessions created before canonical artifacts use the compatibility report below.
+      }
+    }
     
     let md = `# 🛡️ AITriage Security Audit Report\n\n`;
     md += `**Project**: ${runwayProject.name}\n`;
@@ -1099,29 +1121,70 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
     }
   };
 
+  const activeViewMeta = expandedCat ? ({
+    scan: {
+      icon: 'document_scanner',
+      title: t('SimpleDashboardPage.runway.quickTargetScan'),
+      detail: `${t('SimpleDashboardPage.runway.file')} / ${t('SimpleDashboardPage.runway.directory')}`
+    },
+    deps: {
+      icon: 'package_2',
+      title: t('SimpleDashboardPage.runway.dependencyScanner'),
+      detail: 'npm · PyPI · Go'
+    },
+    ignore: {
+      icon: 'visibility_off',
+      title: t('SimpleDashboardPage.runway.ignoredFindings'),
+      detail: String(ignoredFindings.length)
+    },
+    config: {
+      icon: 'settings',
+      title: t('SimpleDashboardPage.runway.configurationSettings'),
+      detail: `${configScannerBackend.toUpperCase()} · ${configRuleSet.toUpperCase()}`
+    }
+  } as const)[expandedCat] : null;
+
   return (
-    <motion.div variants={itemVariants} className="border border-[rgba(255,255,255,0.06)] rounded-lg bg-[rgba(255,255,255,0.01)] overflow-hidden mb-6">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(255,255,255,0.06)]">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[var(--accent-color-soft)] border border-[var(--accent-color-line)] flex items-center justify-center">
-            <span className="material-symbols-outlined text-[16px]" style={{ color: 'var(--accent-color)', fontVariationSettings: "'FILL' 1" }}>security</span>
+    <div className="simple-securecoder-panel overflow-hidden">
+      <header className="simple-securecoder-panel__header">
+        <div className="simple-securecoder-panel__identity">
+          <div className="simple-securecoder-panel__mark">
+            <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>security</span>
           </div>
-          <div className="flex-1">
-            <h3 className="text-[12px] font-bold text-[#f4f4f5] tracking-wider uppercase">{t('SimpleDashboardPage.runway.securecoderIntegration')}</h3>
-            <p className="text-[10px] text-[#52525b] tracking-widest uppercase">{t('SimpleDashboardPage.runway.aiAgentCompatibilityLayer')}</p>
+          <div>
+            <h2>SecureCoder</h2>
+            <p>{t('SimpleDashboardPage.runway.aiAgentCompatibilityLayer')}</p>
+          </div>
+        </div>
+        <button type="button" className="simple-securecoder-panel__close" onClick={onClose} aria-label="Close SecureCoder">
+          <span className="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      </header>
+
+      <section className="simple-securecoder-panel__launch">
+        <div className="simple-securecoder-panel__launch-copy">
+          <span className="material-symbols-outlined" aria-hidden="true">auto_fix_high</span>
+          <div>
+            <strong>{t('SimpleDashboardPage.runway.agentRunway')}</strong>
+            <p>{t('SimpleDashboardPage.runway.selectProjectStartDesc')}</p>
           </div>
         </div>
         <button
           onClick={() => setRunwayOpen(!runwayOpen)}
-          className="px-3 py-1 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-[0_0_15px_var(--accent-color-line)] hover:shadow-[0_0_25px_var(--accent-color-soft)] transition-all duration-300 cursor-pointer"
+          className="simple-securecoder-panel__runway"
         >
-          <span className="material-symbols-outlined text-[12px]">{runwayOpen ? 'close' : 'bolt'}</span>
+          <span className="material-symbols-outlined">{runwayOpen ? 'close' : 'bolt'}</span>
           {runwayOpen ? t('SimpleDashboardPage.runway.closeRunway') : t('SimpleDashboardPage.runway.runwayWizard')}
         </button>
-      </div>
+        <div className="simple-securecoder-panel__readiness" aria-label="SecureCoder status">
+          <span><i className={configEnabled ? 'is-ready' : ''} />{t('SimpleDashboardPage.runway.enableIntegration')}</span>
+          <span><i className="is-ready" />{configScannerBackend.toUpperCase()}</span>
+          <span>{configRuleSet.toUpperCase()}</span>
+        </div>
+      </section>
 
       {runwayOpen ? (
-        <div className="p-6 bg-[rgba(0,0,0,0.15)] space-y-4">
+        <div className="simple-securecoder-runway p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.06)] pb-3">
             <span className="text-[11px] font-bold text-[#a1a1aa] uppercase tracking-wider">{t('SimpleDashboardPage.runway.agentRunway')}</span>
             <div className="flex items-center gap-3">
@@ -1144,7 +1207,7 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
               return (
                 <div
                   key={i}
-	                  className={`h-1.5 flex-1 rounded-full transition-all duration-500 relative overflow-hidden ${
+	                  className={`h-1.5 flex-1 rounded-full transition-[background-color,opacity] duration-200 relative overflow-hidden ${
 	                    isCompleted
 	                      ? 'bg-[var(--accent-color)]'
 	                      : isActive && runwayRunInProgress
@@ -1211,7 +1274,7 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
                 <button
                   onClick={handleRunwayAutoRun}
                   disabled={!runwayProject || runwayRunInProgress}
-                  className="w-full px-4 py-2.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[12px] font-bold uppercase tracking-wider disabled:opacity-30 transition-all duration-300 flex items-center justify-center gap-2 shadow-[0_0_15px_var(--accent-color-line)] hover:shadow-[0_0_25px_var(--accent-color-soft)]"
+                  className="w-full px-4 py-2.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[12px] font-bold uppercase tracking-wider disabled:opacity-30 transition-[background-color,transform] duration-150 flex items-center justify-center gap-2 active:scale-[0.97]"
                 >
                   {runwayLoading ? (
                     <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
@@ -1226,27 +1289,39 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
 
           {/* STEP 7: Completed Success */}
           {runwayStep === 7 && (
-            <div className="space-y-3 pt-2 text-center py-4">
-              <span className="material-symbols-outlined text-[36px] text-[#22c55e]">check_circle</span>
-              <h4 className="text-[12px] font-bold text-white uppercase tracking-wider">{t('SimpleDashboardPage.runway.remediationComplete')}</h4>
-              <p className="text-[11px] text-[#71717a] leading-relaxed max-w-xs mx-auto">
-                {t('SimpleDashboardPage.runway.remediationCompleteDesc')}
-              </p>
-              <div className="flex flex-col gap-2 max-w-xs mx-auto mt-2">
+            <div className="space-y-4 pt-2 py-4">
+              <div className="simple-runway-result">
+                <div className="simple-runway-result__message">
+                  <span className="material-symbols-outlined" aria-hidden="true">task_alt</span>
+                  <div>
+                    <h4>{t('SimpleDashboardPage.runway.reportReady')}</h4>
+                    <p>{t('SimpleDashboardPage.runway.reportReadyDesc')}</p>
+                  </div>
+                </div>
+                <div className="simple-runway-result__actions">
+                  {onNavigateToReports && (
+                    <button type="button" className="simple-runway-result__open" onClick={() => onNavigateToReports(runwaySessionId ?? undefined)}>
+                      <span className="material-symbols-outlined" aria-hidden="true">description</span>
+                      {t('SimpleDashboardPage.runway.openFullReport')}
+                    </button>
+                  )}
+                  <button type="button" className="simple-runway-result__download" onClick={() => void handleDownloadMarkdown()}>
+                    <span className="material-symbols-outlined" aria-hidden="true">download</span>
+                    {t('SimpleDashboardPage.runway.downloadCICDSummary')}
+                  </button>
+                </div>
+              </div>
+
+              <AgentHandoffPanel sessionId={runwaySessionId} compact />
+
+              <div className="flex flex-col gap-2 max-w-xs mx-auto">
                 <button
                   onClick={handleExportToProject}
                   disabled={runwayExporting}
-                  className="px-4 py-1.5 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] rounded text-[11px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-4 py-1.5 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.07)] text-[#c4c4cc] rounded text-[11px] font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <span className="material-symbols-outlined text-[13px]">ios_share</span>
                   {runwayExporting ? t('SimpleDashboardPage.runway.syncing') : t('SimpleDashboardPage.runway.exportToProject')}
-                </button>
-                <button
-                  onClick={handleDownloadMarkdown}
-                  className="px-4 py-1.5 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.08)] text-[#f4f4f5] rounded text-[11px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[13px]">download</span>
-                  {t('SimpleDashboardPage.runway.downloadMdReport')}
                 </button>
                 <button
                   onClick={handleResetRunway}
@@ -1259,17 +1334,26 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
           )}
         </div>
       ) : (
-        <div className="divide-y divide-[rgba(255,255,255,0.04)]">
+        <div className="simple-securecoder-menu" data-active-view={expandedCat || 'overview'}>
+          {activeViewMeta && (
+            <div className="simple-securecoder-subview__bar">
+              <button type="button" onClick={() => setExpandedCat(null)} aria-label="Back to SecureCoder overview">
+                <span className="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+              </button>
+              <span className="material-symbols-outlined simple-securecoder-subview__icon" aria-hidden="true">{activeViewMeta.icon}</span>
+              <div><strong>{activeViewMeta.title}</strong><span>{activeViewMeta.detail}</span></div>
+            </div>
+          )}
           {/* Quick Target Scan */}
-          <div>
-            <button onClick={() => setExpandedCat(expandedCat === 'scan' ? null : 'scan')} className="w-full flex items-center gap-3 px-6 py-3 hover:bg-[rgba(255,255,255,0.02)] transition-colors group">
+          <div className="simple-securecoder-menu__section" data-view="scan">
+            <button onClick={() => setExpandedCat(expandedCat === 'scan' ? null : 'scan')} className="simple-securecoder-menu__trigger w-full flex items-center gap-3 px-6 py-3 group" aria-expanded={expandedCat === 'scan'}>
               <span className={`material-symbols-outlined text-[16px] transition-colors ${expandedCat === 'scan' ? 'text-[var(--accent-color)]' : 'text-[#3f3f46] group-hover:text-[var(--accent-color)]'}`}>document_scanner</span>
-              <span className="text-[11px] font-semibold tracking-wider text-[#a1a1aa] uppercase flex-1 text-left">{t('SimpleDashboardPage.runway.quickTargetScan')}</span>
-              <span className={`material-symbols-outlined text-[14px] text-[#3f3f46] transition-transform duration-200 ${expandedCat === 'scan' ? 'rotate-180 text-[var(--accent-color)]' : ''}`}>expand_more</span>
+              <span className="simple-securecoder-menu__label"><strong>{t('SimpleDashboardPage.runway.quickTargetScan')}</strong><small>{t('SimpleDashboardPage.runway.file')} / {t('SimpleDashboardPage.runway.directory')}</small></span>
+              <span className="material-symbols-outlined">chevron_right</span>
             </button>
-            <AnimatePresence>
+            <AnimatePresence initial={false}>
               {expandedCat === 'scan' && (
-                <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
+                <motion.div initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduceMotion ? 0 : 0.1 }} className="simple-securecoder-menu__content overflow-hidden">
                   <div className="px-6 pb-4 pt-2">
                     <div className="flex gap-4 mb-2.5">
                       <label className="flex items-center gap-1.5 text-[10px] text-[#a1a1aa] cursor-pointer">
@@ -1336,15 +1420,15 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
           </div>
 
           {/* Dependency Scan */}
-          <div>
-            <button onClick={() => setExpandedCat(expandedCat === 'deps' ? null : 'deps')} className="w-full flex items-center gap-3 px-6 py-3 hover:bg-[rgba(255,255,255,0.02)] transition-colors group">
+          <div className="simple-securecoder-menu__section" data-view="deps">
+            <button onClick={() => setExpandedCat(expandedCat === 'deps' ? null : 'deps')} className="simple-securecoder-menu__trigger w-full flex items-center gap-3 px-6 py-3 group" aria-expanded={expandedCat === 'deps'}>
               <span className={`material-symbols-outlined text-[16px] transition-colors ${expandedCat === 'deps' ? 'text-[var(--accent-color)]' : 'text-[#3f3f46] group-hover:text-[var(--accent-color)]'}`}>package_2</span>
-              <span className="text-[11px] font-semibold tracking-wider text-[#a1a1aa] uppercase flex-1 text-left">{t('SimpleDashboardPage.runway.dependencyScanner')}</span>
-              <span className={`material-symbols-outlined text-[14px] text-[#3f3f46] transition-transform duration-200 ${expandedCat === 'deps' ? 'rotate-180 text-[var(--accent-color)]' : ''}`}>expand_more</span>
+              <span className="simple-securecoder-menu__label"><strong>{t('SimpleDashboardPage.runway.dependencyScanner')}</strong><small>npm · PyPI · Go</small></span>
+              <span className="material-symbols-outlined">chevron_right</span>
             </button>
-            <AnimatePresence>
+            <AnimatePresence initial={false}>
               {expandedCat === 'deps' && (
-                <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
+                <motion.div initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduceMotion ? 0 : 0.1 }} className="simple-securecoder-menu__content overflow-hidden">
                   <div className="px-6 pb-4 pt-2">
                     <div className="flex gap-2">
                       <select value={depRegistry} onChange={e => setDepRegistry(e.target.value)} className="bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded px-2 text-[11px] text-white outline-none focus:border-[var(--accent-color)]">
@@ -1380,16 +1464,16 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
           </div>
 
           {/* Ignored Findings */}
-          <div>
-            <button onClick={() => setExpandedCat(expandedCat === 'ignore' ? null : 'ignore')} className="w-full flex items-center gap-3 px-6 py-3 hover:bg-[rgba(255,255,255,0.02)] transition-colors group">
+          <div className="simple-securecoder-menu__section" data-view="ignore">
+            <button onClick={() => setExpandedCat(expandedCat === 'ignore' ? null : 'ignore')} className="simple-securecoder-menu__trigger w-full flex items-center gap-3 px-6 py-3 group" aria-expanded={expandedCat === 'ignore'}>
               <span className={`material-symbols-outlined text-[16px] transition-colors ${expandedCat === 'ignore' ? 'text-[var(--accent-color)]' : 'text-[#3f3f46] group-hover:text-[var(--accent-color)]'}`}>visibility_off</span>
-              <span className="text-[11px] font-semibold tracking-wider text-[#a1a1aa] uppercase flex-1 text-left">{t('SimpleDashboardPage.runway.ignoredFindings')}</span>
+              <span className="simple-securecoder-menu__label"><strong>{t('SimpleDashboardPage.runway.ignoredFindings')}</strong><small>{ignoredFindings.length}</small></span>
               <span className="text-[10px] text-[#3f3f46] mr-1">{ignoredFindings.length}</span>
-              <span className={`material-symbols-outlined text-[14px] text-[#3f3f46] transition-transform duration-200 ${expandedCat === 'ignore' ? 'rotate-180 text-[var(--accent-color)]' : ''}`}>expand_more</span>
+              <span className="material-symbols-outlined">chevron_right</span>
             </button>
-            <AnimatePresence>
+            <AnimatePresence initial={false}>
               {expandedCat === 'ignore' && (
-                <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
+                <motion.div initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduceMotion ? 0 : 0.1 }} className="simple-securecoder-menu__content overflow-hidden">
                   <div className="px-6 pb-4 pt-2 space-y-3">
                     <div className="flex gap-2">
                       <button
@@ -1448,15 +1532,15 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
           </div>
 
           {/* Config / Settings */}
-          <div>
-            <button onClick={() => setExpandedCat(expandedCat === 'config' ? null : 'config')} className="w-full flex items-center gap-3 px-6 py-3 hover:bg-[rgba(255,255,255,0.02)] transition-colors group">
+          <div className="simple-securecoder-menu__section" data-view="config">
+            <button onClick={() => setExpandedCat(expandedCat === 'config' ? null : 'config')} className="simple-securecoder-menu__trigger w-full flex items-center gap-3 px-6 py-3 group" aria-expanded={expandedCat === 'config'}>
               <span className={`material-symbols-outlined text-[16px] transition-colors ${expandedCat === 'config' ? 'text-[var(--accent-color)]' : 'text-[#3f3f46] group-hover:text-[var(--accent-color)]'}`}>settings</span>
-              <span className="text-[11px] font-semibold tracking-wider text-[#a1a1aa] uppercase flex-1 text-left">{t('SimpleDashboardPage.runway.configurationSettings')}</span>
-              <span className={`material-symbols-outlined text-[14px] text-[#3f3f46] transition-transform duration-200 ${expandedCat === 'config' ? 'rotate-180 text-[var(--accent-color)]' : ''}`}>expand_more</span>
+              <span className="simple-securecoder-menu__label"><strong>{t('SimpleDashboardPage.runway.configurationSettings')}</strong><small>{configScannerBackend.toUpperCase()} · {configRuleSet.toUpperCase()}</small></span>
+              <span className="material-symbols-outlined">chevron_right</span>
             </button>
-            <AnimatePresence>
+            <AnimatePresence initial={false}>
               {expandedCat === 'config' && (
-                <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
+                <motion.div initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduceMotion ? 0 : 0.1 }} className="simple-securecoder-menu__content overflow-hidden">
                   <div className="px-6 pb-4 pt-2 space-y-4">
                     {configLoading ? (
                       <div className="text-[10px] text-[#71717a]">{t('SimpleDashboardPage.runway.loadingConfig')}</div>
@@ -1853,20 +1937,10 @@ const SecureCoderPanel: React.FC<{ activeProducts: any[] }> = ({ activeProducts 
           </div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 };
 
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.05
-    }
-  }
-} as const;
 
 const itemVariants = {
   hidden: { opacity: 0, y: 15 },
@@ -1883,11 +1957,11 @@ const itemVariants = {
 
 const sevDot = (sev: string) => {
   switch (sev?.toLowerCase()) {
-    case 'critical': return '#ef4444';
-    case 'high': return '#f97316';
-    case 'medium': return '#eab308';
-    case 'low': return '#52525b';
-    default: return '#3f3f46';
+    case 'critical': return '#d96873';
+    case 'high': return '#d88a5b';
+    case 'medium': return '#c7a84f';
+    case 'low': return '#777c85';
+    default: return '#777c85';
   }
 };
 
@@ -1905,8 +1979,8 @@ const FindingRow: React.FC<{
   onToggleSelect?: (e: React.MouseEvent | React.ChangeEvent) => void;
   isTriaging?: boolean;
 }> = ({ f, isExpanded, onToggle, productMap, setProductFilter, setPage, handleTriage, onNavigateToChat, onRefresh, isSelected, onToggleSelect, isTriaging }) => {
-  const { t } = useTranslation('pages');
-  const [hovered, setHovered] = useState(false);
+  const { t, i18n } = useTranslation('pages');
+  const reduceMotion = useReducedMotion();
   const [agentPrompt, setAgentPrompt] = useState(f.agent_prompt ?? '');
   const [verificationSummary, setVerificationSummary] = useState(f.verification_summary ?? '');
   const [agentPromptLoading, setAgentPromptLoading] = useState(false);
@@ -1953,6 +2027,19 @@ const FindingRow: React.FC<{
     if (s === 'false_positive') return 'text-[#71717a] bg-[rgba(255,255,255,0.02)] border-[rgba(255,255,255,0.04)]';
     return 'text-[#f59e0b] bg-[rgba(245,158,11,0.06)] border-[rgba(245,158,11,0.12)]';
   };
+
+  const normalizedSeverity = (f.severity || 'low').toLowerCase();
+  const severityLabel = normalizedSeverity === 'critical'
+    ? t('severityCritical')
+    : normalizedSeverity === 'high'
+      ? t('severityHigh')
+      : normalizedSeverity === 'medium'
+        ? t('severityMedium')
+        : normalizedSeverity === 'low'
+          ? t('severityLow')
+          : f.severity;
+  const project = f.product_id ? productMap.get(f.product_id) : undefined;
+  const findingPath = f.file_path || f.file;
 
   const generateAgentPrompt = async (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -2005,14 +2092,19 @@ const FindingRow: React.FC<{
   };
   
   return (
-    <div className="border-b border-[rgba(255,255,255,0.03)] last:border-b-0">
-      <div 
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-[rgba(255,255,255,0.015)] border-l-2 transition-all duration-300 group"
-        style={{ 
-          borderLeftColor: isExpanded || hovered ? sevDot(f.severity) : 'transparent',
-          boxShadow: isExpanded ? `inset 4px 0 12px ${sevDot(f.severity)}08` : 'none'
+    <article className={`simple-finding ${isExpanded ? 'simple-finding--expanded' : ''}`}>
+      <div
+        className="simple-finding-row"
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        onClick={onToggle}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onToggle();
+          }
         }}
       >
         {onToggleSelect && (
@@ -2021,65 +2113,47 @@ const FindingRow: React.FC<{
             checked={isSelected || false}
             onChange={onToggleSelect}
             onClick={e => e.stopPropagation()}
-            className="accent-[var(--accent-color)] cursor-pointer select-checkbox file-checkbox w-3.5 h-3.5 rounded bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.08)]"
+            aria-label={i18n.language?.startsWith('ru') ? `Выбрать ${f.title}` : `Select ${f.title}`}
+            className="simple-finding-row__checkbox accent-[var(--accent-color)] cursor-pointer select-checkbox file-checkbox"
           />
         )}
-        <button 
-          onClick={onToggle}
-          className="flex-1 text-left flex items-start gap-3 min-w-0"
-        >
-          <span 
-            className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 transition-all duration-300 group-hover:scale-125" 
-            style={{ 
-              backgroundColor: sevDot(f.severity),
-              boxShadow: `0 0 6px ${sevDot(f.severity)}b0`
-            }} 
-          />
-        <div className="flex-1 min-w-0">
-          <div className={`text-[12px] font-medium leading-snug transition-colors duration-200 ${isExpanded ? 'text-white font-semibold' : 'text-[#d4d4d8] group-hover:text-white'}`}>
-            {f.title}
-          </div>
-          <div className="flex items-center gap-2 mt-1 min-w-0">
-            {f.file_path && (
-              <span className="min-w-0 truncate text-[10px] text-[#52525b] font-mono group-hover:text-[#71717a] transition-colors">
-                {f.file_path}{f.line_number ? `:${f.line_number}` : ''}
-              </span>
-            )}
-            {f.product_id && productMap.has(f.product_id) && (
-              <button 
-                onClick={e => { e.stopPropagation(); setProductFilter(f.product_id!); setPage(0); }}
-                className="shrink-0 whitespace-nowrap text-[9px] text-[#71717a] border border-[rgba(255,255,255,0.04)] rounded px-1.5 py-0.5 hover:text-[#a1a1aa] hover:border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.01)] transition-colors font-mono uppercase tracking-wider"
-                title={`Filter by ${productMap.get(f.product_id!)?.name}`}
-              >
-                {productMap.get(f.product_id!)?.name}
-              </button>
-            )}
-            {f.stack && (
-              <span className="shrink-0 whitespace-nowrap text-[9px] text-[#52525b] border border-[rgba(255,255,255,0.04)] rounded px-1.5 py-0.5 font-mono uppercase tracking-wider bg-[rgba(255,255,255,0.01)]">
-                {f.stack}
-              </span>
-            )}
-            {lifecycleStatus !== 'open' && (
-              <span className={`shrink-0 whitespace-nowrap text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wider border ${statusClass(lifecycleStatus)}`}>
-                {statusLabel(lifecycleStatus)}
-              </span>
-            )}
-            {f.ai_triage_status && (
-              <span className={`shrink-0 whitespace-nowrap text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wider border transition-all ${
-                f.ai_triage_status === 'true_positive' 
-                  ? 'text-[#ef4444] bg-[rgba(239,68,68,0.08)] border-[rgba(239,68,68,0.2)] shadow-[0_0_8px_rgba(239,68,68,0.15)] font-bold' 
-                  : f.ai_triage_status === 'false_positive' 
-                    ? 'text-[#22c55e] bg-[rgba(34,197,94,0.08)] border-[rgba(34,197,94,0.2)] shadow-[0_0_8px_rgba(34,197,94,0.15)] font-bold' 
-                    : 'text-[#eab308] bg-[rgba(234,179,8,0.08)] border-[rgba(234,179,8,0.2)] shadow-[0_0_8px_rgba(234,179,8,0.15)] font-bold'
-              }`}>
-                AI: {f.ai_triage_status.replace('_', ' ')}
-              </span>
-            )}
-          </div>
+        <div className={`simple-finding-row__severity simple-finding-row__severity--${normalizedSeverity}`}>
+          <span style={{ backgroundColor: sevDot(normalizedSeverity) }} aria-hidden="true" />
+          <strong>{severityLabel}</strong>
         </div>
-        <span className={`material-symbols-outlined text-[14px] text-[#3f3f46] group-hover:text-[#71717a] transition-transform duration-300 mt-0.5 ${isExpanded ? 'rotate-180 text-[var(--accent-color)]' : ''}`}>
-          expand_more
-        </span>
+
+        <button onClick={(event) => { event.stopPropagation(); onToggle(); }} className="simple-finding-row__title" aria-expanded={isExpanded}>
+          <strong>{f.title}</strong>
+          {f.ai_triage_status && <small>AI: {f.ai_triage_status.replace('_', ' ')}</small>}
+        </button>
+
+        <div className="simple-finding-row__product">
+          {project ? (
+            <button onClick={(event) => { event.stopPropagation(); setProductFilter(project.id); setPage(0); }} title={`${t('groupProject')}: ${project.name}`}>{project.name}</button>
+          ) : (
+            <span>{t('allProjects')}</span>
+          )}
+          {f.stack && <small>{f.stack}</small>}
+        </div>
+
+        <button onClick={(event) => { event.stopPropagation(); onToggle(); }} className="simple-finding-row__path" aria-expanded={isExpanded}>
+          <span>{findingPath || (i18n.language?.startsWith('ru') ? 'Путь не указан' : 'No file path')}</span>
+          {f.line_number && <small>{i18n.language?.startsWith('ru') ? 'строка' : 'line'} {f.line_number}</small>}
+        </button>
+
+        <div className="simple-finding-row__status">
+          <span className={`border ${statusClass(lifecycleStatus)}`}>{statusLabel(lifecycleStatus)}</span>
+        </div>
+
+        <button
+          onClick={(event) => { event.stopPropagation(); onToggle(); }}
+          className="simple-finding-row__disclosure"
+          aria-label={isExpanded
+            ? (i18n.language?.startsWith('ru') ? 'Свернуть находку' : 'Collapse finding')
+            : (i18n.language?.startsWith('ru') ? 'Развернуть находку' : 'Expand finding')}
+          aria-expanded={isExpanded}
+        >
+          <span className="material-symbols-outlined" aria-hidden="true">expand_more</span>
         </button>
       </div>
       
@@ -2090,11 +2164,11 @@ const FindingRow: React.FC<{
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 350, damping: 32 }}
-            className="overflow-hidden border-l border-[rgba(255,255,255,0.04)] ml-5"
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+            className="simple-finding-details overflow-hidden"
           >
-            <div className="px-4 pb-4 pt-1.5 space-y-3 bg-[rgba(0,0,0,0.15)] border-y border-[rgba(255,255,255,0.02)]">
-              <div className="flex items-center gap-2 flex-wrap">
+            <div className="simple-finding-details__body px-4 pb-4 pt-1.5 space-y-3">
+              <div className="simple-finding-details__meta flex items-center gap-2 flex-wrap">
                 <span className="text-[9px] px-2 py-0.5 rounded font-mono font-bold uppercase border" 
                   style={{ 
                     color: sevDot(f.severity), 
@@ -2104,17 +2178,17 @@ const FindingRow: React.FC<{
                 >
                   {f.severity}
                 </span>
-                {f.file_path && <span className="text-[10px] text-[#52525b] font-mono truncate">{f.file_path}{f.line_number ? `:${f.line_number}` : ''}</span>}
+                {f.file_path && <span className="text-[10px] font-mono truncate">{f.file_path}{f.line_number ? `:${f.line_number}` : ''}</span>}
               </div>
               
               {f.description && (
-                <p className="text-[12px] text-[#a1a1aa] leading-relaxed select-text">
+                <p className="simple-finding-details__description text-[12px] leading-relaxed select-text">
                   {f.description}
                 </p>
               )}
               
               {(f.fix_suggestion || f.suggestion) && (
-                <div className="text-[12px] text-[#a1a1aa] leading-relaxed border-l border-[rgba(255,255,255,0.08)] pl-3 my-2 select-text font-mono bg-[rgba(255,255,255,0.005)] p-2 rounded-r-md">
+                <div className="simple-finding-details__guidance text-[12px] leading-relaxed pl-3 my-2 select-text font-mono p-3 rounded-r-md">
                   <span className="text-[9px] text-[#52525b] uppercase tracking-wider block mb-1 font-bold">Remediation Guidance</span>
                   {f.fix_suggestion || f.suggestion}
                 </div>
@@ -2139,7 +2213,7 @@ const FindingRow: React.FC<{
                 </div>
               )}
 
-              <div className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.015)] p-2.5 space-y-2">
+              <div className="simple-finding-handoff rounded-lg p-3 space-y-2.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="material-symbols-outlined text-[13px] text-[var(--accent-color)]">smart_toy</span>
@@ -2194,7 +2268,7 @@ const FindingRow: React.FC<{
                 )}
               </div>
               
-              <div className="flex items-center gap-1.5 pt-1.5 flex-wrap">
+              <div className="simple-finding-actions flex items-center gap-1.5 pt-1.5 flex-wrap">
                 <button 
                   onClick={e => { 
                     e.stopPropagation(); 
@@ -2270,15 +2344,16 @@ const FindingRow: React.FC<{
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </article>
   );
 };
 
-export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavigateToChat }) => {
+export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavigateToChat, onNavigateToReports }) => {
   const { t, i18n } = useTranslation('pages');
-  const { findings, loading: findingsLoading, refresh: refreshFindings } = useFindings() as any;
-  const { metrics, loading: metricsLoading, refresh: refreshMetrics } = useMetrics();
-  const { products } = useProducts();
+  const reduceMotion = useReducedMotion();
+  const { findings, loading: findingsLoading, error: findingsError, refresh: refreshFindings } = useFindings() as any;
+  const { metrics, loading: metricsLoading, error: metricsError, refresh: refreshMetrics } = useMetrics();
+  const { products, loading: productsLoading, error: productsError } = useProducts();
 
   const [globalScanning, setGlobalScanning] = useState(false);
   const [globalScanPath, setGlobalScanPath] = useState('/host');
@@ -2356,6 +2431,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummaryProjectId, setAiSummaryProjectId] = useState<number | null>(null);
   const [aiSummaryLang, setAiSummaryLang] = useState<'en' | 'ru'>('ru');
+  const [isAiSummaryExpanded, setIsAiSummaryExpanded] = useState(false);
   const [toolStatus, setToolStatus] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -2458,21 +2534,72 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
 
   const [isProjectsPanelOpen, setIsProjectsPanelOpen] = useState(() => {
     try {
-      return localStorage.getItem('projects_panel_open') !== 'false';
+      return localStorage.getItem('projects_panel_open') === 'true';
     } catch {
-      return true;
+      return false;
     }
   });
+  const projectsTriggerRef = useRef<HTMLButtonElement>(null);
+  const projectsDrawerRef = useRef<HTMLElement>(null);
+  const [isSecureCoderOpen, setIsSecureCoderOpen] = useState(false);
+  const secureCoderTriggerRef = useRef<HTMLButtonElement>(null);
+  const secureCoderDrawerRef = useRef<HTMLElement>(null);
+
+  const closeProjectsPanel = useCallback(() => {
+    setIsProjectsPanelOpen(false);
+    try {
+      localStorage.setItem('projects_panel_open', 'false');
+    } catch {
+      // The drawer remains functional when storage is unavailable.
+    }
+    window.requestAnimationFrame(() => projectsTriggerRef.current?.focus());
+  }, []);
 
   const handleToggleProjectsPanel = useCallback(() => {
     setIsProjectsPanelOpen((prev) => {
       const next = !prev;
       try {
         localStorage.setItem('projects_panel_open', String(next));
-      } catch {}
+      } catch {
+        // The drawer remains functional when storage is unavailable.
+      }
       return next;
     });
   }, []);
+
+  const closeSecureCoder = useCallback(() => {
+    setIsSecureCoderOpen(false);
+    window.requestAnimationFrame(() => secureCoderTriggerRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!isProjectsPanelOpen && !isSecureCoderOpen) return;
+    const activeDrawer = isSecureCoderOpen ? secureCoderDrawerRef.current : projectsDrawerRef.current;
+    const closeActiveDrawer = isSecureCoderOpen ? closeSecureCoder : closeProjectsPanel;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeActiveDrawer();
+        return;
+      }
+      if (event.key !== 'Tab' || !activeDrawer) return;
+      const focusable = Array.from(activeDrawer.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+      ));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.requestAnimationFrame(() => activeDrawer?.focus());
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [closeProjectsPanel, closeSecureCoder, isProjectsPanelOpen, isSecureCoderOpen]);
 
   // Build product map for quick lookup
   const productMap = useMemo(() => {
@@ -2489,7 +2616,27 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
     return products.filter(p => ids.has(p.id));
   }, [findings, products]);
 
-  const loading = findingsLoading || metricsLoading;
+  // Load the latest persisted AI summary so it survives page refreshes.
+  useEffect(() => {
+    const targetId = productFilter ?? [...activeProducts].sort((a, b) => {
+      const aCount = findings?.filter((f: Finding) => f.product_id === a.id).length || 0;
+      const bCount = findings?.filter((f: Finding) => f.product_id === b.id).length || 0;
+      return bCount - aCount;
+    })[0]?.id ?? null;
+    if (!targetId) return;
+    let cancelled = false;
+    securityService.getAISummary(targetId, aiSummaryLang, false)
+      .then(stored => {
+        if (cancelled || !stored) return;
+        setAiSummary(stored);
+        setAiSummaryProjectId(targetId);
+      })
+      .catch(() => { /* No persisted summary yet. */ });
+    return () => { cancelled = true; };
+  }, [productFilter, activeProducts, findings, aiSummaryLang]);
+
+  const loading = findingsLoading || metricsLoading || productsLoading;
+  const pageError = findingsError || metricsError || productsError;
 
   const closedStatuses = ['resolved', 'closed', 'false_positive', 'risk_accepted'];
 
@@ -2510,15 +2657,10 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
   }, [findings, productFilter]);
 
   const score = useMemo(() => {
-    if (productFilter === null && metrics?.security_score !== undefined) {
-      // Global score: use backend value for consistency with ADVANCED mode
-      return metrics.security_score;
-    }
-    // Per-product score: calculate client-side (no backend per-product score)
     const penalty = sevCounts.critical * 10 + sevCounts.high * 4 + sevCounts.medium * 1;
     const s = 100 - penalty;
     return s < 0 ? 0 : s;
-  }, [sevCounts, productFilter, metrics]);
+  }, [sevCounts]);
 
 
   const projectStats = useMemo(() => {
@@ -2667,28 +2809,184 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
 
   const sevDot = (sev: string) => {
     switch (sev?.toLowerCase()) {
-      case 'critical': return '#ef4444'; case 'high': return '#f97316'; case 'medium': return '#eab308'; case 'low': return '#3f3f46'; default: return '#3f3f46';
+      case 'critical': return '#d96873'; case 'high': return '#d88a5b'; case 'medium': return '#c7a84f'; case 'low': return '#777c85'; default: return '#777c85';
     }
   };
 
   if (loading) {
-    return (<div className="flex h-full items-center justify-center bg-v2-bg"><div className="flex items-center gap-3"><div className="w-4 h-4 border-2 border-[#27272a] border-t-[var(--accent-color)] rounded-full animate-spin" /><span className="text-[13px] text-[#71717a] font-mono tracking-wider uppercase">Loading...</span></div></div>);
+    return (
+      <div className="simple-dashboard simple-dashboard--loading" aria-busy="true" aria-label="Loading security overview">
+        <div className="simple-loading-shell">
+          <div className="simple-skeleton simple-skeleton--overview" />
+          <div className="simple-skeleton simple-skeleton--toolbar" />
+          <div className="simple-skeleton simple-skeleton--list" />
+        </div>
+      </div>
+    );
   }
 
   const showProjectScore = productFilter !== null;
+  const revealTransition = reduceMotion
+    ? { duration: 0 }
+    : { duration: 0.18, ease: [0.23, 1, 0.32, 1] as [number, number, number, number] };
+  const summaryProjectId = productFilter ?? [...activeProducts].sort((a, b) => {
+    const aCount = findings?.filter((f: Finding) => f.product_id === a.id).length || 0;
+    const bCount = findings?.filter((f: Finding) => f.product_id === b.id).length || 0;
+    return bCount - aCount;
+  })[0]?.id ?? null;
+  const summaryProject = summaryProjectId ? productMap.get(summaryProjectId) : undefined;
+  const remediationPercent = projectStats.total > 0
+    ? Math.round((projectStats.resolved / projectStats.total) * 100)
+    : 0;
+  const scannerCount = Object.values(toolStatus).filter(Boolean).length;
+  const scannerTotal = Math.max(Object.keys(toolStatus).length, 4);
+  const hasCurrentSummary = Boolean(aiSummary && aiSummaryProjectId === summaryProjectId && !aiSummaryLoading);
+
+  const generateAiSummary = async () => {
+    if (!summaryProjectId || aiSummaryLoading) return;
+    setAiSummary('');
+    setAiSummaryLoading(true);
+    setAiSummaryProjectId(summaryProjectId);
+    setIsAiSummaryExpanded(true);
+    try {
+      const summary = await securityService.getAISummary(summaryProjectId, aiSummaryLang, true);
+      setAiSummary(summary || (i18n.language?.startsWith('ru') ? 'Сводка не содержит данных.' : 'The summary returned no data.'));
+    } catch {
+      setAiSummary(i18n.language?.startsWith('ru')
+        ? 'Не удалось сгенерировать сводку. Проверьте конфигурацию API.'
+        : 'Failed to generate the summary. Check the API configuration.');
+    } finally {
+      setAiSummaryLoading(false);
+    }
+  };
 
   return (
-    <div className="flex h-full overflow-hidden">
-      <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.06) transparent' }}>
-        <motion.div 
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="px-8 py-6"
-        >
-          <div className="flex flex-col gap-6">
+    <div className="simple-dashboard flex h-full overflow-hidden">
+      <div className="simple-dashboard__scroll flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.06) transparent' }}>
+        <div className="simple-dashboard__content px-4 py-4 md:px-6 md:py-5 xl:px-8">
+          <div className="simple-dashboard__grid flex flex-col gap-4">
+            {pageError && (
+              <div className="simple-inline-error" role="alert">
+                <span className="material-symbols-outlined" aria-hidden="true">cloud_off</span>
+                <div className="min-w-0 flex-1">
+                  <strong>{i18n.language?.startsWith('ru') ? 'Не удалось обновить данные' : 'Data could not be refreshed'}</strong>
+                  <span>{pageError}</span>
+                </div>
+                <button onClick={() => { refreshFindings?.(); refreshMetrics?.(); }}>
+                  {i18n.language?.startsWith('ru') ? 'Повторить' : 'Retry'}
+                </button>
+              </div>
+            )}
+
+            <motion.section variants={itemVariants} className="simple-posture-strip" aria-label={t('securityScore')}>
+              <div className="simple-posture-strip__repository">
+                <span className="material-symbols-outlined" aria-hidden="true">shield_lock</span>
+                <div>
+                  <span>{i18n.language?.startsWith('ru') ? 'Репозиторий' : 'Repository'}</span>
+                  <strong>{summaryProject?.name || t('allProjects')}</strong>
+                </div>
+              </div>
+              <div className="simple-posture-strip__score">
+                <span>{t('securityScore')}</span>
+                <strong>{score}<small>/100</small></strong>
+                <em className={`simple-risk-label simple-risk-label--${score < 30 ? 'critical' : score < 60 ? 'high' : score < 80 ? 'medium' : 'secure'}`}>
+                  {score < 30 ? t('criticalRisk') : score < 60 ? t('highRisk') : score < 80 ? t('mediumRisk') : t('secureStatus')}
+                </em>
+              </div>
+              <div className="simple-posture-strip__severities" aria-label={i18n.language?.startsWith('ru') ? 'Распределение по критичности' : 'Severity distribution'}>
+                {([
+                  { key: 'critical', label: i18n.language?.startsWith('ru') ? 'Критические' : 'Critical', count: sevCounts.critical },
+                  { key: 'high', label: i18n.language?.startsWith('ru') ? 'Высокие' : 'High', count: sevCounts.high },
+                  { key: 'medium', label: i18n.language?.startsWith('ru') ? 'Средние' : 'Medium', count: sevCounts.medium },
+                  { key: 'low', label: i18n.language?.startsWith('ru') ? 'Низкие' : 'Low', count: sevCounts.low },
+                ] as const).map(item => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => { setActiveFilter(item.key); setPage(0); }}
+                    className={`simple-posture-severity simple-posture-severity--${item.key}`}
+                  >
+                    <span>{item.label}</span>
+                    <strong>{item.count}</strong>
+                  </button>
+                ))}
+              </div>
+              <div className="simple-posture-strip__remediation">
+                <div>
+                  <span>{t('remediationProgress')}</span>
+                  <strong>{remediationPercent}%</strong>
+                </div>
+                <div className="simple-remediation-track" aria-hidden="true">
+                  <span style={{ width: `${remediationPercent}%` }} />
+                </div>
+                <small>{projectStats.resolved} / {projectStats.total} {i18n.language?.startsWith('ru') ? 'исправлено' : 'resolved'}</small>
+              </div>
+              <div className="simple-posture-strip__total">
+                <span>{i18n.language?.startsWith('ru') ? 'Всего находок' : 'Total findings'}</span>
+                <strong>{projectStats.total}</strong>
+                <small>{sevCounts.critical + sevCounts.high} {i18n.language?.startsWith('ru') ? 'требуют внимания' : 'need attention'}</small>
+              </div>
+            </motion.section>
+
+            <motion.section
+              variants={itemVariants}
+              className={`simple-ai-command ${isAiSummaryExpanded ? 'simple-ai-command--expanded' : ''}`}
+              aria-label={t('aiSecuritySummary')}
+            >
+              <div className="simple-ai-command__heading">
+                <span className="material-symbols-outlined" aria-hidden="true">psychology</span>
+                <strong>{t('aiSecuritySummary')}</strong>
+              </div>
+              <div className="simple-ai-command__status" aria-label={i18n.language?.startsWith('ru') ? 'Готовность данных' : 'Data readiness'}>
+                <span><i />{i18n.language?.startsWith('ru') ? 'Репозиторий готов' : 'Repository ready'}</span>
+                <span><i />{i18n.language?.startsWith('ru') ? `Сканеры ${scannerCount}/${scannerTotal}` : `Scanners ${scannerCount}/${scannerTotal}`}</span>
+                <span><i />{i18n.language?.startsWith('ru') ? 'Данные актуальны' : 'Data current'}</span>
+              </div>
+              <p className="simple-ai-command__copy">
+                {aiSummary && aiSummaryProjectId === summaryProjectId
+                  ? (i18n.language?.startsWith('ru') ? 'Сводка сохранена и готова к просмотру.' : 'The saved summary is ready to review.')
+                  : (i18n.language?.startsWith('ru')
+                    ? 'Получите краткий разбор риска и порядок исправления с помощью SecureCoder.'
+                    : 'Generate a concise risk review and remediation order with SecureCoder.')}
+              </p>
+              <div className="simple-ai-command__actions">
+                <select value={aiSummaryLang} onChange={event => setAiSummaryLang(event.target.value as 'en' | 'ru')} aria-label={i18n.language?.startsWith('ru') ? 'Язык сводки' : 'Summary language'}>
+                  <option value="ru">RU</option>
+                  <option value="en">EN</option>
+                </select>
+                {hasCurrentSummary && (
+                  <button type="button" className="simple-ai-command__primary" onClick={() => setIsAiSummaryExpanded(value => !value)} aria-expanded={isAiSummaryExpanded}>
+                    <span className="material-symbols-outlined" aria-hidden="true">{isAiSummaryExpanded ? 'expand_less' : 'description'}</span>
+                    {isAiSummaryExpanded ? (i18n.language?.startsWith('ru') ? 'Свернуть' : 'Collapse') : (i18n.language?.startsWith('ru') ? 'Открыть сводку' : 'Open summary')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={hasCurrentSummary ? 'simple-ai-command__secondary simple-ai-command__regenerate' : 'simple-ai-command__primary'}
+                  onClick={generateAiSummary}
+                  disabled={!summaryProjectId || aiSummaryLoading}
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">{hasCurrentSummary ? 'refresh' : 'auto_awesome'}</span>
+                  {aiSummaryLoading
+                    ? (i18n.language?.startsWith('ru') ? 'Анализируем' : 'Analyzing')
+                    : (hasCurrentSummary ? (i18n.language?.startsWith('ru') ? 'Обновить' : 'Regenerate') : (i18n.language?.startsWith('ru') ? 'Сгенерировать сводку' : 'Generate summary'))}
+                </button>
+              </div>
+              <AnimatePresence initial={false}>
+                {isAiSummaryExpanded && aiSummaryProjectId === summaryProjectId && (aiSummaryLoading || aiSummary) && (
+                  <motion.div className="simple-ai-command__content" initial={reduceMotion ? false : { opacity: 0, transform: 'translateY(-6px)' }} animate={{ opacity: 1, transform: 'translateY(0)' }} exit={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(-6px)' }} transition={revealTransition}>
+                    {aiSummaryLoading ? (
+                      <div className="simple-ai-command__loading" aria-live="polite"><span /><span /><span />{i18n.language?.startsWith('ru') ? 'Анализируем репозиторий' : 'Analyzing repository'}</div>
+                    ) : (
+                      <div className="simple-ai-command__markdown"><Markdown>{aiSummary}</Markdown></div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.section>
+
             {/* ── TOP BENTO ROW ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+            <div className="hidden grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
               
               {/* Score Card */}
               {showProjectScore && (
@@ -2973,7 +3271,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                                   setAiSummaryLoading(true);
                                   setAiSummaryProjectId(summaryProjectId);
                                   try {
-                                    const summary = await securityService.getAISummary(summaryProjectId, aiSummaryLang);
+                                    const summary = await securityService.getAISummary(summaryProjectId, aiSummaryLang, true);
                                     setAiSummary(summary || 'No response');
                                   } catch (err) {
                                     setAiSummary('Failed to generate summary. Check API key configuration.');
@@ -2998,7 +3296,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
 
             {/* Urgency Banner */}
             {sevCounts.critical > 0 && (
-              <motion.div variants={itemVariants} className="flex items-center gap-4 px-5 py-3 rounded-xl border border-[rgba(239,68,68,0.15)] bg-gradient-to-r from-[rgba(239,68,68,0.06)] to-[rgba(239,68,68,0.01)] shadow-sm">
+              <motion.div variants={itemVariants} className="hidden flex items-center gap-4 px-5 py-3 rounded-xl border border-[rgba(239,68,68,0.15)] bg-gradient-to-r from-[rgba(239,68,68,0.06)] to-[rgba(239,68,68,0.01)] shadow-sm">
                 <span className="material-symbols-outlined text-[#ef4444] text-[20px] animate-pulse">warning</span>
                 <div className="flex-1">
                   <span className="text-[13px] text-[#f4f4f5] font-semibold tracking-wide">{sevCounts.critical} {sevCounts.critical === 1 ? t('criticalIssueRequires') : t('criticalIssuesRequire')} {t('immediateAttention')}</span>
@@ -3012,18 +3310,18 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
             )}
 
             {/* ── MAIN CONTENT SPLIT ── */}
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+            <div className="simple-workspace-grid grid grid-cols-1 gap-4 items-start">
               
               {/* LEFT: Findings & Toolbar */}
-              <div className="xl:col-span-2 space-y-4">
+              <div className="simple-findings-column space-y-3 min-w-0">
                 {/* ── Floating Bulk Action Bar ── */}
                 {selectedFindings.size > 0 && (
                   <motion.div
-                    initial={{ opacity: 0, y: -12, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -12, scale: 0.98 }}
-                    transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                    className="flex items-center justify-between gap-4 px-5 py-3 rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#111113] shadow-xl relative overflow-hidden"
+                    initial={reduceMotion ? false : { opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+                    className="simple-bulk-bar flex items-center justify-between gap-4 px-5 py-3 rounded-xl relative overflow-hidden"
                   >
 
                     {/* Left: selection info */}
@@ -3067,7 +3365,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                             setConfigAutostartFixes(auto);
                             await handleSaveConfig({ autostartFixes: auto });
                           }}
-                          className="appearance-none pl-3.5 pr-8 py-1.5 rounded-lg text-[11px] font-mono font-semibold uppercase tracking-wider outline-none cursor-pointer transition-all duration-300 bg-[rgba(255,255,255,0.015)] border border-[rgba(255,255,255,0.04)] text-[#a1a1aa] hover:text-white hover:border-[var(--accent-color-line)] focus:border-[var(--accent-color)] focus:bg-[rgba(0,0,0,0.2)] focus:shadow-[0_0_10px_var(--accent-color-soft)]"
+                          className="appearance-none pl-3.5 pr-8 py-1.5 rounded-lg text-[11px] font-mono font-semibold uppercase tracking-wider outline-none cursor-pointer transition-[color,background-color,border-color] duration-150 bg-[var(--simple-surface-2)] border border-[var(--simple-line)] text-[var(--simple-fg-soft)] hover:text-[var(--simple-fg)] hover:border-[var(--simple-surface-3)] focus:border-[var(--simple-accent-line)]"
                           style={{
                             backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
                             backgroundRepeat: 'no-repeat',
@@ -3083,7 +3381,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                       {/* Fix Selected – primary accent filled with translate hover */}
                       <button
                         onClick={handleBulkFix}
-                        className="flex items-center gap-1.5 pl-3.5 pr-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-all duration-300 cursor-pointer bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-[var(--accent-color-on-text)] shadow-[0_0_12px_var(--accent-color-line)] hover:shadow-[0_0_22px_var(--accent-color-soft)] hover:-translate-y-[1px] active:translate-y-0"
+                        className="flex items-center gap-1.5 pl-3.5 pr-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-[background-color,transform] duration-150 cursor-pointer bg-[var(--simple-accent)] hover:bg-[var(--simple-accent-hover)] text-[var(--accent-color-on-text)] active:scale-[0.97]"
                       >
                         <span className="material-symbols-outlined text-[14px]">{bulkFixCopied ? 'check' : 'auto_fix_high'}</span>
                         {bulkFixCopied ? 'Copied!' : 'Fix Selected'}
@@ -3092,7 +3390,7 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                       {/* Ignore Selected – secondary ghost outline with translate hover */}
                       <button
                         onClick={() => setBulkIgnoreModalOpen(true)}
-                        className="flex items-center gap-1.5 pl-3.5 pr-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-all duration-300 cursor-pointer bg-[rgba(255,255,255,0.015)] border border-[rgba(255,255,255,0.04)] text-[#a1a1aa] hover:text-white hover:bg-[var(--accent-color-soft)] hover:border-[var(--accent-color-line)] hover:-translate-y-[1px] active:translate-y-0 hover:shadow-[0_0_12px_var(--accent-color-soft)]"
+                        className="flex items-center gap-1.5 pl-3.5 pr-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-[color,background-color,border-color,transform] duration-150 cursor-pointer bg-[var(--simple-surface-2)] border border-[var(--simple-line)] text-[var(--simple-fg-soft)] hover:text-[var(--simple-fg)] hover:bg-[var(--simple-surface-3)] active:scale-[0.97]"
                       >
                         <span className="material-symbols-outlined text-[14px]">do_not_disturb_on</span>
                         Ignore Selected
@@ -3102,7 +3400,23 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                 )}
 
                 {/* ── Toolbar ── */}
-                <motion.div variants={itemVariants} className="space-y-2 bg-[rgba(255,255,255,0.01)] border border-[rgba(255,255,255,0.06)] p-3 rounded-xl shadow-sm">
+                <motion.div variants={itemVariants} className="simple-command-surface space-y-2 p-3 rounded-xl">
+                  <div className="simple-command-header">
+                    <div>
+                      <h2>{i18n.language?.startsWith('ru') ? 'Очередь уязвимостей' : 'Vulnerability queue'}</h2>
+                      <span>{filteredFindings.length} {i18n.language?.startsWith('ru') ? 'находок в текущем представлении' : 'findings in the current view'}</span>
+                    </div>
+                    <div className="simple-command-header__actions">
+                      <button ref={secureCoderTriggerRef} type="button" onClick={() => { setIsProjectsPanelOpen(false); setIsSecureCoderOpen(true); }} aria-haspopup="dialog" aria-expanded={isSecureCoderOpen} className="simple-command-header__primary">
+                        <span className="material-symbols-outlined" aria-hidden="true">security</span>
+                        <span><strong>SecureCoder</strong><small>{i18n.language?.startsWith('ru') ? 'Основной ИИ-инструмент исправления' : 'Primary AI remediation tool'}</small></span>
+                      </button>
+                      <button ref={projectsTriggerRef} type="button" onClick={() => { setIsSecureCoderOpen(false); handleToggleProjectsPanel(); }} aria-haspopup="dialog" aria-expanded={isProjectsPanelOpen}>
+                        <span className="material-symbols-outlined" aria-hidden="true">folder_scan</span>
+                        {i18n.language?.startsWith('ru') ? 'Сканирование проектов' : 'Project scanning'}
+                      </button>
+                    </div>
+                  </div>
                   {/* Row 1: Filters & Search */}
                   <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-3 flex-wrap">
@@ -3322,17 +3636,28 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                 </motion.div>
 
                 {/* ── Findings ── */}
+                {groupBy === 'none' && filteredFindings.length > 0 && (
+                  <div className="simple-findings-table-header" aria-hidden="true">
+                    <span />
+                    <span>{i18n.language?.startsWith('ru') ? 'Критичность' : 'Severity'}</span>
+                    <span>{i18n.language?.startsWith('ru') ? 'Название находки' : 'Finding'}</span>
+                    <span>{i18n.language?.startsWith('ru') ? 'Репозиторий / технология' : 'Repository / stack'}</span>
+                    <span>{i18n.language?.startsWith('ru') ? 'Файл / путь' : 'File / path'}</span>
+                    <span>{i18n.language?.startsWith('ru') ? 'Статус' : 'Status'}</span>
+                    <span />
+                  </div>
+                )}
                 {filteredFindings.length === 0 ? (
-                  <motion.div variants={itemVariants} className="py-12 text-center text-[12px] text-[#71717a] bg-[rgba(255,255,255,0.01)] rounded-xl border border-[rgba(255,255,255,0.04)] font-mono uppercase tracking-wider">
+                  <motion.div variants={itemVariants} className="simple-empty-state py-12 text-center text-[12px] text-[#71717a] font-mono uppercase tracking-wider">
                     <span className="material-symbols-outlined text-[36px] text-[#3f3f46] mb-2 block">search_off</span>
                     {searchQuery ? t('SimpleDashboardPage.noIssuesForQuery', { query: searchQuery }) : t('SimpleDashboardPage.noIssues')}
                   </motion.div>
                 ) : groupBy !== 'none' && groups ? (
-                  <motion.div variants={itemVariants} className="space-y-3">
+                  <motion.div variants={itemVariants} className="simple-findings-groups space-y-3">
                     {groups.map(([key, items]) => {
                       const isCollapsed = collapsedGroups.has(key);
                       return (
-                        <div key={key} className="border border-[rgba(255,255,255,0.06)] rounded-xl overflow-hidden bg-[rgba(255,255,255,0.01)] shadow-sm">
+                        <div key={key} className="simple-findings-group overflow-hidden">
                           <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[rgba(255,255,255,0.02)] border-b border-[rgba(255,255,255,0.02)]">
                             <input
                               type="checkbox"
@@ -3413,8 +3738,8 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                     })}
                   </motion.div>
                 ) : (
-                  <motion.div variants={itemVariants} className="space-y-3">
-                    <div className="border border-[rgba(255,255,255,0.06)] rounded-xl overflow-hidden divide-y divide-[rgba(255,255,255,0.04)] bg-[rgba(255,255,255,0.01)] shadow-sm">
+                  <motion.div variants={itemVariants} className="simple-findings-list space-y-3">
+                    <div className="simple-findings-list__rows">
                       {pagedFindings.map(f => (
                         <FindingRow
                           key={f.id}
@@ -3476,48 +3801,67 @@ export const SimpleDashboardPage: React.FC<SimpleDashboardPageProps> = ({ onNavi
                 )}
               </div>
 
-              {/* RIGHT: AI IDE Prompts (sticky) */}
-              <div className="xl:col-span-1 sticky top-6 space-y-6">
-                <SecureCoderPanel activeProducts={activeProducts} />
-              </div>
             </div>
           </div>
-        </motion.div>
+        </div>
       </div>
-      {/* Projects Panel */}
-      <div className="relative flex shrink-0 h-full">
-        {/* Toggle Button for Projects Panel */}
-        <button
-          onClick={handleToggleProjectsPanel}
-          className={`absolute -left-6 top-[calc(50%-120px)] -translate-y-1/2 z-40 flex items-center justify-center w-6 h-20 rounded-l-lg transition-all duration-300 ${
-            isProjectsPanelOpen
-              ? 'bg-surface-bright border border-r-0 border-[rgba(255,255,255,0.06)] text-[var(--accent-color)] hover:bg-surface'
-              : 'bg-surface border border-r-0 border-[rgba(255,255,255,0.06)] text-[#71717a] hover:text-[var(--accent-color)] hover:bg-surface-bright'
-          }`}
-          title={isProjectsPanelOpen ? t('SimpleDashboardPage.hideProjects') : t('SimpleDashboardPage.showProjects')}
-        >
-          <span
-            className="material-symbols-outlined text-[14px] transition-transform duration-300"
-            style={{ transform: isProjectsPanelOpen ? 'rotate(0deg)' : 'rotate(180deg)' }}
-          >
-            chevron_right
-          </span>
-        </button>
-
-        <AnimatePresence initial={false}>
-          {isProjectsPanelOpen && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 340, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-              className="w-[340px] shrink-0 border-l border-[rgba(255,255,255,0.06)] flex flex-col overflow-hidden bg-surface"
+      <AnimatePresence initial={false}>
+        {isSecureCoderOpen && (
+          <div className="simple-drawer-shell simple-securecoder-shell">
+            <button
+              type="button"
+              aria-label={i18n.language?.startsWith('ru') ? 'Закрыть SecureCoder' : 'Close SecureCoder'}
+              className="simple-drawer-backdrop"
+              onClick={closeSecureCoder}
+            />
+            <aside
+              ref={secureCoderDrawerRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="SecureCoder"
+              tabIndex={-1}
+              className="simple-drawer simple-securecoder-drawer bg-v2-bg"
             >
-              <ScanPanel onScanComplete={() => { refreshFindings?.(); refreshMetrics?.(); }} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+              <div className="simple-drawer__content">
+                <SecureCoderPanel
+                  activeProducts={activeProducts}
+                  onClose={closeSecureCoder}
+                  onNavigateToReports={onNavigateToReports}
+                />
+              </div>
+            </aside>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence initial={false}>
+        {isProjectsPanelOpen && (
+          <div className="simple-drawer-shell simple-projects-shell">
+            <button
+              type="button"
+              aria-label={i18n.language?.startsWith('ru') ? 'Закрыть сканирование проектов' : 'Close project scanning'}
+              className="simple-drawer-backdrop"
+              onClick={closeProjectsPanel}
+            />
+            <aside
+              ref={projectsDrawerRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={i18n.language?.startsWith('ru') ? 'Сканирование проектов' : 'Project scanning'}
+              tabIndex={-1}
+              className="simple-drawer simple-projects-drawer bg-surface"
+            >
+              <div className="simple-drawer__bar">
+                <div><span className="material-symbols-outlined" aria-hidden="true">folder_scan</span><strong>{i18n.language?.startsWith('ru') ? 'Сканирование проектов' : 'Project scanning'}</strong></div>
+                <button type="button" onClick={closeProjectsPanel} aria-label={i18n.language?.startsWith('ru') ? 'Закрыть сканирование проектов' : 'Close project scanning'}>
+                  <span className="material-symbols-outlined" aria-hidden="true">close</span>
+                </button>
+              </div>
+              <div className="simple-drawer__content"><ScanPanel onScanComplete={() => { refreshFindings?.(); refreshMetrics?.(); }} /></div>
+            </aside>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Bulk Ignore Triage Justification Modal */}
       <AnimatePresence>

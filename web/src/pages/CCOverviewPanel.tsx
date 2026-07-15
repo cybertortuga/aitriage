@@ -17,6 +17,11 @@ export const CCOverviewPanel: React.FC = () => {
   const { findings, loading: findingsLoading, refresh: refreshFindings } = useFindings() as any;
   const { products, loading: productsLoading } = useProducts();
   const { setIsOpen, setContext } = useCopilotStore();
+  // Server-loaded prompt templates (same as the CI/CD SecureCoder framework).
+  // Must stay above every conditional return: calling a hook after the
+  // `loading` early-return below changes the hook count between renders and
+  // crashes with React error #310.
+  const { templates } = usePrompts();
 
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
   const [showBrowser, setShowBrowser] = useState(false);
@@ -269,8 +274,7 @@ export const CCOverviewPanel: React.FC = () => {
   const gradeBorder =
     computedScore < 50 ? 'border-error' : computedScore < 70 ? 'border-warning' : 'border-success';
 
-  // Build prompt using server-loaded template (same as CI/CD SecureCoder framework)
-  const { templates } = usePrompts();
+  // Build prompt using the server-loaded template fetched above.
   const activePrompt = selectedFinding
     ? (() => {
         const fixTemplate = templates.find((t) => t.id === 'fix');

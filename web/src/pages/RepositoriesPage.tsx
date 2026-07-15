@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFindings } from '../hooks/useFindings';
 import { useProducts } from '../hooks/useProducts';
 import type { Finding, Product } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 import Markdown from 'react-markdown';
+import { securityService } from '../services/securityService';
 
 interface ProjectStats {
   product: Product;
@@ -65,42 +66,36 @@ export const RepositoriesPage: React.FC = () => {
     critical: projectStats.reduce((s, p) => s + p.critical, 0),
   }), [projectStats]);
 
+  // Load previously generated summaries so they survive tab switches/refreshes.
+  // Uses the persisted /api/ai-summary path (ai_summaries table), same as the
+  // dashboard — no LLM call, and generate=false returns "" when none stored.
+  useEffect(() => {
+    if (!products) return;
+    let cancelled = false;
+    products.forEach((p: Product) => {
+      securityService.getAISummary(p.id, summaryLang, false)
+        .then(stored => {
+          if (cancelled || !stored) return;
+          setSummaries(prev => ({ ...prev, [p.id]: stored }));
+        })
+        .catch(() => { /* none stored yet */ });
+    });
+    return () => { cancelled = true; };
+  }, [products, summaryLang]);
+
   const generateSummary = (projectId: number) => {
     const stats = projectStats.find(s => s.product.id === projectId);
     if (!stats || stats.total === 0) return;
 
     setLoadingSummary(prev => ({ ...prev, [projectId]: true }));
 
-    const projectFindings = findings?.filter((f: Finding) => f.product_id === projectId) || [];
-    const findingsText = projectFindings.slice(0, 30).map((f: Finding) =>
-      `- [${f.severity?.toUpperCase()}] ${f.title} | ${f.file_path || 'N/A'}${f.line_number ? ':' + f.line_number : ''} | ${f.stack || 'core'} | ${f.status || 'open'}`
-    ).join('\n');
-
-    const prompt = `You are AITriage Security Analyst. Generate a concise repository security summary.
-
-Repository: ${stats.product.name}
-Total issues: ${stats.total}
-Critical: ${stats.critical} | High: ${stats.high} | Medium: ${stats.medium} | Low: ${stats.low}
-
-Findings:
-${findingsText}
-
-Provide exactly 4 sections in your response (do not use Markdown headers like # or ##, just bold text for labels):
-1. A brief 1-sentence overview of what this project likely is based on its name, files, and vulnerabilities.
-2. **Security Status:** [Emoji 🔴/🟡/🟢] [Brief status explanation].
-3. **Main Priority:** [Top issue to fix immediately and why].
-4. **Quick Win:** [Easiest thing to improve right now].
-
-Be specific: cite file names, vulnerabilities. Be concise but thorough. ${summaryLang === 'ru' ? 'Respond completely in Russian (Русский язык), translating the labels to Russian (e.g. **Статус безопасности:**, **Главный приоритет:**, **Быстрое улучшение:**).' : 'Respond in English.'}`;
-
-    fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] }),
-    })
-      .then(r => r.json())
-      .then(data => {
-        setSummaries(prev => ({ ...prev, [projectId]: data.ok ? (data.content || '') : `Error: ${data.error}` }));
+    // Reuse the persisted summary pipeline: the server builds evidence from the
+    // DB, runs the SecureCoder prompt, and stores the result in ai_summaries so
+    // it is not lost on refresh (previously this used a stateless /api/chat call
+    // whose output was only kept in React state).
+    securityService.getAISummary(projectId, summaryLang, true)
+      .then(summary => {
+        setSummaries(prev => ({ ...prev, [projectId]: summary || 'No response' }));
       })
       .catch(() => {
         setSummaries(prev => ({ ...prev, [projectId]: 'Failed to generate summary.' }));

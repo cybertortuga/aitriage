@@ -79,6 +79,7 @@ type AgentState struct {
 	ReportMarkdown  string // Full report (includes FP rationale) → artifact
 	SummaryMarkdown string // Actionable summary (TP + NR only) → GHA Step Summary
 	AIFixSpec       string
+	AgentHandoff    *AgentHandoff // Canonical typed CI/Web handoff built with SummaryMarkdown
 }
 
 // EnrichedFinding is a unified representation of any finding with its source snippet attached.

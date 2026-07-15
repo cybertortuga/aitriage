@@ -141,10 +141,13 @@ export const securityService = {
     return data.metrics;
   },
 
-  getAISummary: async (productId?: number | null, lang?: 'en' | 'ru'): Promise<string> => {
+  // getAISummary returns the persisted summary by default (survives refresh).
+  // Pass generate=true to run the LLM pipeline and store a fresh summary.
+  getAISummary: async (productId?: number | null, lang?: 'en' | 'ru', generate = false): Promise<string> => {
     const params: Record<string, string | number> = {};
     if (productId) params.product_id = productId;
     if (lang) params.lang = lang;
+    if (generate) params.generate = 'true';
     const { data } = await api.get('/ai-summary', { params });
     return data.summary || '';
   },
