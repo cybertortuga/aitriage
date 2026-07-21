@@ -71,8 +71,6 @@ Flags:
 	},
 }
 
-
-
 func init() {
 	webCmd.Flags().IntVar(&webPort, "port", 8080, "Port to listen on")
 	webCmd.Flags().StringVar(&webHostPrefix, "host-prefix", "", "Prefix added to scan paths (empty = paths used as-is)")
