@@ -28,7 +28,8 @@ It works with:
 - **Codex** using your Codex subscription;
 - **Claude Code** using your Claude subscription;
 - **GitHub Actions** using the same SecureCoder analysis pipeline in CI/CD;
-- a regular CLI scan without AI.
+- **CLI** as a deterministic scan without AI or full AI triage with your provider key;
+- **Web UI** for local, visual project scanning and report review.
 
 AITriage does not silently fix code. It first shows the result. Source changes begin only after the user explicitly asks to fix selected findings.
 
