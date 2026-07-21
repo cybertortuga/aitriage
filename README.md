@@ -2,7 +2,7 @@
   <img src="web/public/favicon.svg" width="88" height="88" alt="AITriage logo">
   <h1>AITriage</h1>
   <p><strong>Security scan → SecureCoder AI triage → human approval → verified fixes</strong></p>
-  <p>Use Codex or Claude Code subscriptions locally. Run the same analysis pipeline in CI/CD.</p>
+  <p>Use it from an AI coding agent, a browser, CI/CD, or a terminal.</p>
 
   <p>
     <a href="https://github.com/cybertortuga/aitriage/releases"><img src="https://img.shields.io/github/v/release/cybertortuga/aitriage?style=for-the-badge&color=2563eb" alt="Latest release"></a>
@@ -12,88 +12,61 @@
   </p>
 
   <p>
-    <a href="#the-easiest-way-let-your-ai-ide-set-it-up"><strong>AI IDE setup</strong></a> ·
-    <a href="#quick-start"><strong>Quick start</strong></a> ·
-    <a href="#where-are-the-results"><strong>Reports</strong></a> ·
-    <a href="#cicd"><strong>CI/CD</strong></a>
+    <a href="#ai-ide"><strong>AI IDE</strong></a> ·
+    <a href="#web-ui"><strong>Web UI</strong></a> ·
+    <a href="#cicd"><strong>CI/CD</strong></a> ·
+    <a href="#cli"><strong>CLI</strong></a>
   </p>
 </div>
 
 ---
 
-AITriage checks a codebase for security problems, asks an AI coding agent to verify every finding, and prepares safe fix instructions.
+AITriage scans source code, runs every finding through the bundled SecureCoder prompts, separates confirmed vulnerabilities from false positives, and prepares fix instructions. It never treats a failed security check as permission to change source code.
 
-It works with:
+## Before you start
 
-- **Codex** using your Codex subscription;
-- **Claude Code** using your Claude subscription;
-- **GitHub Actions** using the same SecureCoder analysis pipeline in CI/CD;
-- **CLI** as a deterministic scan without AI or full AI triage with your provider key;
-- **Web UI** for local, visual project scanning and report review.
-
-AITriage does not silently fix code. It first shows the result. Source changes begin only after the user explicitly asks to fix selected findings.
-
-## The easiest way: let your AI IDE set it up
-
-Open the project root in Codex or Claude Code and paste this exact request:
+AITriage is installed **once on the computer**. It is not copied into every project and must never be cloned inside the project being checked.
 
 ```text
-Set up AITriage for this project using the official instructions:
-https://github.com/cybertortuga/aitriage
-
-AITriage is a system tool, not a dependency of my project. Never clone or copy
-the AITriage repository inside the project currently open in this AI IDE.
-Install the released CLI separately with Homebrew or `go install`, then connect
-that CLI to the current project. If source code must be cloned for development,
-put it outside this project, for example as a sibling directory:
-
 GitHub/
-├── aitriage/          # the AITriage source repository
-└── my-vibe-project/   # the project being checked
-
-Preserve my existing settings and source files. Only add the project-local MCP
-configuration, managed AI instructions, `/aitriage-reports/` gitignore entry,
-and generated reports required by the official installer. Do not start a scan
-or modify source code yet. Verify the connection and tell me when I must open a
-new task/session.
+├── aitriage/          # optional: source checkout for AITriage development
+└── my-project/        # the project being checked
 ```
 
-After setup, open a **new** task/session in the same project and paste:
-
-```text
-Check this project with AITriage. Do not fix anything yet. Explain the result
-in plain language and show me where the report was saved.
-```
-
-That is enough. The installer adds the exact MCP workflow contract for the AI IDE; the user does not need to know internal tool names.
-
-AITriage itself is installed outside the checked project. The installer writes only the small project-local integration files needed by Codex or Claude Code; it never vendors the AITriage source tree into the project.
-
-## Quick start
-
-### 1. Install AITriage
-
-macOS or Linux with Homebrew:
+Most users do not need the `aitriage/` source directory at all. Install the released CLI:
 
 ```bash
 brew install cybertortuga/aitriage/aitriage
 ```
 
-Or with Go 1.25.5+:
+Or, with Go 1.25.5+:
 
 ```bash
 go install github.com/cybertortuga/aitriage/cmd/aitriage@latest
 ```
 
-Check the installation:
+Verify it once:
 
 ```bash
 aitriage version
 ```
 
-### 2. Connect your AI IDE once
+Choose one interface:
 
-Open a terminal in the root of your project.
+| Interface | Best for | AI credentials |
+| :--- | :--- | :--- |
+| [AI IDE](#ai-ide) | Checking and fixing code from Codex or Claude Code | Existing Codex or Claude subscription |
+| [Web UI](#web-ui) | Visual scanning and report review in a browser | Provider API key for AI features |
+| [CI/CD](#cicd) | Automatic checks for pushes and pull requests | Provider key in GitHub Secrets |
+| [CLI](#cli) | Scripts, terminal use, and local automation | None for `scan`; provider key for `agent` |
+
+## AI IDE
+
+Use this mode when you want Codex or Claude Code to run the complete AITriage pipeline with the model included in your existing subscription. No separate LLM API key is required.
+
+### Set up manually
+
+Open a terminal in the root of the project you want to check.
 
 For Codex:
 
@@ -107,109 +80,116 @@ For Claude Code:
 aitriage install-claude-code .
 ```
 
-Then open a **new** Codex task or Claude Code session in that project. The connection is project-local: AITriage can inspect the root and any folder inside it, but cannot access paths outside it.
+The installer adds only the project-local MCP configuration and managed agent instructions. It preserves unrelated MCP servers and existing instruction text. Open a **new** Codex task or Claude Code session after installation.
 
-### 3. Ask for a security check
-
-Write this in Codex or Claude Code:
+Then ask:
 
 ```text
-Check this repository with AITriage. Do not fix anything yet. Show me confirmed problems, uncertain findings, and false positives separately.
+Check this project with AITriage. Do not fix anything yet. Explain the result
+in plain language and show me where the report was saved.
 ```
 
-AITriage will:
-
-1. scan the project with deterministic security rules;
-2. send findings through the built-in SecureCoder prompts;
-3. use the AI model from your Codex or Claude subscription;
-4. verify and classify the findings;
-5. create a readable report and a fix specification;
-6. stop and wait for your decision.
-
-### 4. Decide what to fix
-
-To fix specific findings:
+To approve selected fixes later:
 
 ```text
-Fix confirmed findings CS-AUTH-001 and CS-AUTHZ-001 from the latest AITriage report. Run the required tests and verify the fixes with AITriage.
+Fix confirmed AITriage findings CS-AUTH-001 and CS-AUTHZ-001. Do not change
+false positives or uncertain findings. Run the required tests and verify the
+fixes with AITriage.
 ```
 
-To fix every confirmed True Positive:
+### Set up through your AI IDE
+
+Open your project in Codex or Claude Code and paste:
 
 ```text
-Fix all confirmed True Positives from the latest AITriage report. Do not fix uncertain findings or false positives. Run the required tests and verify the result with AITriage.
+Set up AITriage for the project currently open in this AI IDE using the official
+instructions: https://github.com/cybertortuga/aitriage
+
+AITriage is a system tool, not a project dependency. Never clone or copy its
+repository inside my project. Install the released CLI separately if needed,
+then run the installer for this AI IDE against the current project. Preserve
+all existing settings and source files. Do not scan or modify source code yet.
+Verify the project-local MCP connection and tell me when to open a new session.
 ```
 
-No finding is approved for fixing until you explicitly say so.
+In the new session, use the normal audit request shown above. The managed agent instructions contain the internal MCP tool sequence; users do not need to call those tools manually.
 
-## Where are the results?
+### AI IDE files
 
-Everything produced by a local AI-assisted run is stored in:
+Depending on the client, the installer may update:
 
-```text
-aitriage-reports/
-└── run-.../
-    ├── summary.md           # start here: short result for a human
-    ├── report.md            # full security report
-    ├── fixspec.md           # exact instructions for approved fixes
-    ├── triage-findings.json # machine-readable AI verdicts
-    ├── aitriage.sarif       # result for security tools
-    ├── scan.json            # raw scan input
-    ├── manifest.json        # run state and integrity metadata
-    └── audit.log            # run events
-```
+- `.codex/config.toml` and `AGENTS.md` for Codex;
+- the project-local Claude MCP configuration and `CLAUDE.md` for Claude Code;
+- `.gitignore` with `/aitriage-reports/`.
 
-`aitriage-reports/` is ignored during later scans so generated reports cannot create an analysis loop. Add this line to the project `.gitignore`:
-
-```gitignore
-/aitriage-reports/
-```
-
-## Check only one folder
-
-If your repository contains several projects, install AITriage once at the repository root and name the folder in your request:
-
-```text
-Check services/payments with AITriage. Do not fix anything yet.
-```
-
-You do not need a separate MCP configuration for every subfolder.
-
-## Scan without AI
-
-For a fast raw scan:
+Update the integration by running the install command again. Remove only AITriage-managed configuration with:
 
 ```bash
-aitriage scan .
+aitriage install-codex . --uninstall
+aitriage install-claude-code . --uninstall
 ```
 
-This does not require an API key, Codex, or Claude. It is useful for a quick check, but it is **not** the final AI-triaged verdict.
+## Web UI
 
-Useful variants:
+Use this mode when you want to select projects, start scans, and read reports in a browser. Web AI features use a provider API key; the Web UI cannot use a Codex or Claude subscription.
+
+### Start manually with the installed CLI
+
+No source checkout is required:
 
 ```bash
-aitriage scan ./service
-aitriage scan . --staged
-aitriage scan . --diff origin/main
-aitriage scan . --format sarif -o aitriage.sarif
+aitriage web --port 8080
 ```
 
-## Run AI triage from the CLI
+Open `http://localhost:8080`.
 
-Use this when you want full SecureCoder triage without Codex or Claude Code. It requires an API key for your selected model provider:
+To enable AI features, provide a supported key before startup:
 
 ```bash
 export GEMINI_API_KEY="your-key"
-aitriage agent .
+aitriage web --port 8080
 ```
 
-Other supported providers use `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GROQ_API_KEY`. The AI IDE workflow does not need these keys because it uses the active Codex or Claude subscription.
+Supported provider variables include `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `GROQ_API_KEY`.
+
+### Start manually with Docker
+
+The published container includes Semgrep, Trivy, Gitleaks, and Bandit. Run this command from the project you want to inspect:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v "$PWD:/host:ro" \
+  -v aitriage-data:/app/data \
+  -e DB_PATH=/app/data/aitriage.db \
+  ghcr.io/cybertortuga/aitriage:latest \
+  web --port 8080 --host-prefix /host
+```
+
+Open `http://localhost:8080` and select the mounted project at `/host`. Pass a provider key with an additional `-e GEMINI_API_KEY` or equivalent only when AI features are needed.
+
+### Start through your AI IDE
+
+Paste this into Codex or Claude Code:
+
+```text
+Start the AITriage Web UI for the project currently open in this AI IDE.
+Official instructions: https://github.com/cybertortuga/aitriage#web-ui
+
+Do not clone AITriage inside my project. Use the installed CLI; install the
+released CLI first if it is missing. Start the Web UI locally on port 8080,
+do not expose it to the network, and do not store API keys in project files.
+Tell me the local URL and how to stop the server.
+```
+
+The current Web UI has no enforced login. Keep it on a trusted local machine or isolated network; do not expose it directly to the Internet.
 
 ## CI/CD
 
-The canonical setup keeps a small workflow in each application repository and calls one centrally maintained reusable workflow. CI uses the same scan, SecureCoder prompts, triage artifacts, and final policy gate as the local AI-assisted flow.
+Use this mode to run AITriage automatically on pushes, pull requests, and manual GitHub Actions runs. The canonical organization setup keeps scan logic and SecureCoder prompts in one centrally maintained reusable workflow.
 
-Create `.github/workflows/aitriage.yml`:
+### Configure manually
+
+Create `.github/workflows/aitriage.yml` in the application repository:
 
 ```yaml
 name: AITriage Security
@@ -264,62 +244,143 @@ jobs:
       llm_api_key: ${{ inputs.llm-secret == 'GLM_CI_KEY' && secrets.GLM_CI_KEY || inputs.llm-secret == 'XIAOMI_API_KEY' && secrets.XIAOMI_API_KEY || secrets.GEMINI_API_KEY }}
 ```
 
-Replace `your-org/security-workflows` with your reusable-workflow repository and add the selected provider key to GitHub Actions secrets.
+Then:
 
-## Update or remove the AI IDE connection
+1. replace `your-org/security-workflows` with the approved reusable-workflow repository;
+2. add the selected provider key to organization or repository GitHub Secrets;
+3. allow the application repository to call the reusable workflow;
+4. run `workflow_dispatch` once and verify the report artifacts and SARIF upload;
+5. make the post-AI AITriage result a required branch-protection check.
 
-Run the same install command again to update it:
+Standalone workflow examples are available in [`examples/github-actions/`](examples/github-actions/).
 
-```bash
-aitriage install-codex .
-aitriage install-claude-code .
+### Configure through your AI IDE
+
+Paste this into Codex or Claude Code:
+
+```text
+Configure AITriage CI/CD for this repository using the canonical reusable
+workflow documented at https://github.com/cybertortuga/aitriage#cicd
+
+Preserve existing workflows. Create or update only
+`.github/workflows/aitriage.yml`. Use our approved reusable security-workflow
+repository and existing GitHub Secret names; never put an API key in YAML or
+source code. Validate the workflow syntax and show me the exact diff. Do not
+commit, push, or run the workflow until I approve the changes.
 ```
 
-Remove only AITriage-managed settings:
+The AI IDE may need you to provide the organization’s reusable-workflow repository and allowed secret name. Those values must not be guessed.
+
+## CLI
+
+Use this mode for direct terminal commands, scripts, and local automation.
+
+### Run manually without AI
 
 ```bash
-aitriage install-codex . --uninstall
-aitriage install-claude-code . --uninstall
+aitriage scan .
 ```
 
-Uninstall preserves unrelated MCP servers and your own instruction text.
+No API key is required. This is a deterministic pre-scan, not a final AI-triaged verdict.
 
-## Safety guarantees
+Useful variants:
 
-- AITriage uses its bundled SecureCoder prompts; the AI IDE must not invent a replacement analysis flow.
-- The MCP server is confined to the configured project root and its real subdirectories.
+```bash
+aitriage scan ./service
+aitriage scan . --staged
+aitriage scan . --diff origin/main
+aitriage scan . --format sarif -o aitriage.sarif
+```
+
+### Run manually with AI
+
+Set a provider key and run the full SecureCoder pipeline:
+
+```bash
+export GEMINI_API_KEY="your-key"
+aitriage agent .
+```
+
+For non-interactive automation with explicit artifacts:
+
+```bash
+mkdir -p aitriage-reports
+aitriage agent . --no-chat \
+  --triage-out aitriage-reports/triage-findings.json \
+  --summary-out aitriage-reports/summary.md \
+  --report-out aitriage-reports/report.md \
+  --fixspec-out aitriage-reports/fixspec.md \
+  --fail-on critical
+```
+
+### Run through your AI IDE
+
+For a raw scan without connecting MCP:
+
+```text
+Run `aitriage scan .` in this project. Do not change source code. Explain the
+raw findings and clearly state that they have not been AI-triaged.
+```
+
+For full CLI triage with an existing provider key:
+
+```text
+Run the full AITriage CLI agent for this project using the provider credentials
+already present in my environment. Do not ask me to paste a secret into chat
+and do not write secrets to project files. Save the canonical outputs under
+`aitriage-reports/`, make no source changes, and explain the final gate.
+If no supported provider key is available, stop and tell me which environment
+variable is required.
+```
+
+If you want to use the Codex or Claude subscription instead of a provider API key, use the [AI IDE](#ai-ide) integration, not `aitriage agent`.
+
+## Reports
+
+AI IDE runs store all state and artifacts under the repository root:
+
+```text
+aitriage-reports/
+└── run-.../
+    ├── summary.md           # short result; start here
+    ├── report.md            # full security report
+    ├── fixspec.md           # proposed remediation instructions
+    ├── triage-findings.json # machine-readable AI verdicts
+    ├── aitriage.sarif       # standard security-tool output
+    ├── scan.json            # deterministic scan input
+    ├── manifest.json        # run state and integrity metadata
+    └── audit.log            # run events
+```
+
+Add `/aitriage-reports/` to `.gitignore`. AITriage excludes this directory from later scans and model context so generated reports cannot create an analysis loop.
+
+## Safety
+
+- AITriage uses its bundled SecureCoder prompts; the host AI must not invent a replacement triage flow.
+- AI IDE tools are confined to the configured repository root and its real subdirectories.
 - Path traversal and symlink escapes outside the project are rejected.
 - Source changes require an explicit user request.
-- False Positives and uncertain findings are not fixed automatically.
-- Reports and run state are kept under `aitriage-reports/` and excluded from analysis.
-
-## Web UI
-
-From a cloned AITriage repository, run:
-
-```bash
-make up
-```
-
-Open `http://localhost:8080`. The current Web UI has no enforced login and is intended for a trusted local machine or isolated network. Do not expose it directly to the Internet.
+- False positives and uncertain findings are not fixed automatically.
+- A raw `aitriage scan` result is never presented as completed AI triage.
 
 ## Troubleshooting
 
 | Problem | What to do |
 | :--- | :--- |
-| Codex or Claude cannot see AITriage | Run the matching install command from the project root, then open a new task/session |
+| Codex or Claude cannot see AITriage | Run the matching installer from the project root, then open a new task/session |
 | Claude shows MCP approval as pending | Open the project in Claude Code and approve the `aitriage` MCP server |
 | A subfolder is rejected | Confirm it is a real folder inside the root used during installation |
-| The AI runs only `aitriage scan` | Ask it to use the AITriage MCP workflow; raw scan is not full triage |
-| The run takes several minutes | SecureCoder performs several analysis stages; wait unless the task reports an error |
-| Full AI triage fails | Keep the failure visible; do not treat raw scan output as the final verdict |
+| The agent runs only `aitriage scan` | Ask it to use the AITriage MCP workflow; raw scan is not full triage |
+| Web AI features are unavailable | Set a supported provider API key before starting `aitriage web` |
+| Full triage fails | Keep the failure visible; do not substitute raw scan output as the verdict |
 
-## More documentation
+## Project documentation
 
 - [Configuration example](.aitriage.yaml.example)
 - [Security rules](rules/README.md)
 - [GitHub Actions examples](examples/github-actions/)
 - [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
 
 ## License
 
