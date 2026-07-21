@@ -38,43 +38,23 @@ AITriage does not silently fix code. It first shows the result. Source changes b
 Open the project root in Codex or Claude Code and paste this exact request:
 
 ```text
-Set up AITriage in the repository currently open in this AI IDE.
-Official repository: https://github.com/cybertortuga/aitriage
+Set up AITriage for this project using the official instructions:
+https://github.com/cybertortuga/aitriage
 
-Do the setup yourself:
-1. Read the current AITriage README from the official repository.
-2. Check whether `aitriage` is installed. If it is missing, install the latest
-   official release with Homebrew. If Homebrew is unavailable, use `go install`
-   as documented in the README. Do not download binaries from any other source.
-3. Detect which client you are running in:
-   - Codex: run `aitriage install-codex .`
-   - Claude Code: run `aitriage install-claude-code .`
-4. Preserve all existing project instructions, MCP servers, and `.gitignore`
-   entries. Add `/aitriage-reports/` to `.gitignore` only if it is missing.
-5. Verify that the project-local AITriage MCP configuration was created.
-6. Do not run a raw scan and do not change source code.
-7. Tell me exactly what you changed and whether I must open a new task/session
-   before the MCP server becomes available. Never claim the setup works unless
-   the configuration check passed.
+Install AITriage if needed, then connect it to this AI IDE for the current
+project. Preserve my existing settings and files. Do not scan or modify the
+project yet. Verify the installation and tell me when I need to open a new
+task/session.
 ```
 
 After setup, open a **new** task/session in the same project and paste:
 
 ```text
-Run a complete AITriage security audit of this repository through the AITriage
-MCP workflow. Start with `aitriage_run_start` using path `.` and intent `audit`.
-
-For every deferred SecureCoder request returned by AITriage:
-1. Answer the supplied prompt with your current subscription model.
-2. Submit that answer with `aitriage_run_submit`, using the same `run_id` and
-   `request_id` returned by AITriage.
-3. Continue until AITriage reports that triage is complete.
-
-Do not substitute `aitriage scan` or your own security review for this workflow.
-Do not modify source code. When complete, show me the final verdict, confirmed
-findings, uncertain findings, false positives, and paths to `summary.md`,
-`report.md`, and `fixspec.md` under `aitriage-reports/`.
+Check this project with AITriage. Do not fix anything yet. Explain the result
+in plain language and show me where the report was saved.
 ```
+
+That is enough. The installer adds the exact MCP workflow contract for the AI IDE; the user does not need to know internal tool names.
 
 ## Quick start
 
@@ -201,6 +181,17 @@ aitriage scan . --diff origin/main
 aitriage scan . --format sarif -o aitriage.sarif
 ```
 
+## Run AI triage from the CLI
+
+Use this when you want full SecureCoder triage without Codex or Claude Code. It requires an API key for your selected model provider:
+
+```bash
+export GEMINI_API_KEY="your-key"
+aitriage agent .
+```
+
+Other supported providers use `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GROQ_API_KEY`. The AI IDE workflow does not need these keys because it uses the active Codex or Claude subscription.
+
 ## CI/CD
 
 The canonical setup keeps a small workflow in each application repository and calls one centrally maintained reusable workflow. CI uses the same scan, SecureCoder prompts, triage artifacts, and final policy gate as the local AI-assisted flow.
@@ -291,7 +282,7 @@ Uninstall preserves unrelated MCP servers and your own instruction text.
 
 ## Web UI
 
-For local evaluation:
+From a cloned AITriage repository, run:
 
 ```bash
 make up
