@@ -128,7 +128,9 @@ func TestFingerprintStableAndByteExact(t *testing.T) {
 	c := New("run-1", "state-fp", newMemStore())
 	m := msgs("stage-1")
 
-	if c.fingerprint(m) != c.fingerprint(m) {
+	first := c.fingerprint(m)
+	second := c.fingerprint(append([]llm.Message(nil), m...))
+	if first != second {
 		t.Fatal("fingerprint not stable across calls")
 	}
 	// Different content -> different fingerprint.

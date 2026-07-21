@@ -535,13 +535,6 @@ func isVendoredPath(path string) bool {
 	return false
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func (e *Engine) evaluateEntropyPattern(f *core.FileInfo) []core.CheckResult {
 	var results []core.CheckResult
 

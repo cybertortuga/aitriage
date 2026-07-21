@@ -21,7 +21,9 @@ func TestGenerateSummaryExcludesFalsePositives(t *testing.T) {
 		},
 	}
 
-	generateSummary(state)
+	if err := generateSummary(state); err != nil {
+		t.Fatal(err)
+	}
 
 	summary := state.SummaryMarkdown
 	if summary == "" {
@@ -68,7 +70,9 @@ func TestGenerateSummaryNoFindings(t *testing.T) {
 		FindingDispositions: nil,
 	}
 
-	generateSummary(state)
+	if err := generateSummary(state); err != nil {
+		t.Fatal(err)
+	}
 
 	summary := state.SummaryMarkdown
 	if summary == "" {
@@ -91,7 +95,9 @@ func TestGenerateSummaryAllFalsePositives(t *testing.T) {
 		},
 	}
 
-	generateSummary(state)
+	if err := generateSummary(state); err != nil {
+		t.Fatal(err)
+	}
 
 	summary := state.SummaryMarkdown
 	if !strings.Contains(summary, "No actionable security findings") {
@@ -125,7 +131,9 @@ func TestGenerateSummaryPipesInMessagesAreEscaped(t *testing.T) {
 		},
 	}
 
-	generateSummary(state)
+	if err := generateSummary(state); err != nil {
+		t.Fatal(err)
+	}
 
 	// The AI prompt restores pipes for readability, but the message is stored escaped internally.
 	// Verify the finding appears in the summary (AI prompt or AI data block).
@@ -148,7 +156,9 @@ func TestGenerateSummaryHasThreeBlocks(t *testing.T) {
 		},
 	}
 
-	generateSummary(state)
+	if err := generateSummary(state); err != nil {
+		t.Fatal(err)
+	}
 
 	summary := state.SummaryMarkdown
 
@@ -206,7 +216,9 @@ func TestGenerateSummaryReportsProviderUsageWithoutInventingCost(t *testing.T) {
 		},
 	}
 
-	generateSummary(state)
+	if err := generateSummary(state); err != nil {
+		t.Fatal(err)
+	}
 
 	summary := state.SummaryMarkdown
 	if !strings.Contains(summary, "88735 total · 32777 prompt · 32189 completion · 23769 reasoning/other · cache telemetry: provider_did_not_report") {
@@ -230,7 +242,9 @@ func TestGenerateSummaryReportsVerdictCacheStats(t *testing.T) {
 		},
 	}
 
-	generateSummary(state)
+	if err := generateSummary(state); err != nil {
+		t.Fatal(err)
+	}
 
 	summary := state.SummaryMarkdown
 	want := "AITriage verdict cache: 7 hits · 3 misses · 3 stored · 1 sensitive skipped · 2 stale FP invalidated · saved=true"
@@ -254,7 +268,9 @@ func TestGenerateSummaryReportsArtifactCacheStats(t *testing.T) {
 		},
 	}
 
-	generateSummary(state)
+	if err := generateSummary(state); err != nil {
+		t.Fatal(err)
+	}
 
 	summary := state.SummaryMarkdown
 	want := "AITriage artifact cache: exact hit · restored poc=true report=true fixspec=true · stored=0 · sensitive skipped=1 · corrupt ignored=true · miss_reason=n/a · saved=false · uncached verdicts=0 · eligibility skipped=false · integrity failed=false"

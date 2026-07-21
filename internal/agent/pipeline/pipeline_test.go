@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -94,10 +95,10 @@ func TestBuildStateTargetFilter(t *testing.T) {
 
 // TestRunStateNilGuards proves defensive input validation.
 func TestRunStateNilGuards(t *testing.T) {
-	if _, err := RunState(nil, nil, nil); err == nil {
+	if _, err := RunState(context.Background(), nil, nil); err == nil {
 		t.Fatal("expected error for nil state")
 	}
-	if _, err := RunState(nil, &graph.AgentState{}, nil); err == nil {
+	if _, err := RunState(context.Background(), &graph.AgentState{}, nil); err == nil {
 		t.Fatal("expected error for nil client")
 	}
 }
