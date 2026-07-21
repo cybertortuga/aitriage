@@ -28,6 +28,8 @@
 *_rsa
 *_rsa.pub
 secrets.*
+!internal/engine/secrets.go
+!internal/engine/secrets_test.go
 credentials.json
 gha-creds-*.json
 
