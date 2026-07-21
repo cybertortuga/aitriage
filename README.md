@@ -5,16 +5,16 @@
   <p>Use it from an AI coding agent, a browser, CI/CD, or a terminal.</p>
 
   <p>
-    <a href="https://github.com/cybertortuga/aitriage/releases"><img src="https://img.shields.io/github/v/release/cybertortuga/aitriage?style=for-the-badge&color=2563eb" alt="Latest release"></a>
-    <a href="https://github.com/cybertortuga/aitriage/actions"><img src="https://img.shields.io/github/actions/workflow/status/cybertortuga/aitriage/ci.yml?branch=main&style=for-the-badge&label=build" alt="Build status"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/cybertortuga/aitriage?style=for-the-badge" alt="MIT license"></a>
-    <a href="https://github.com/cybertortuga/aitriage/pkgs/container/aitriage"><img src="https://img.shields.io/badge/GHCR-container-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="GHCR container"></a>
+    <a href="https://github.com/cybertortuga/aitriage/releases"><img src="https://img.shields.io/github/v/release/cybertortuga/aitriage?style=flat-square&color=2563eb" alt="Latest release"></a>
+    <a href="https://github.com/cybertortuga/aitriage/actions"><img src="https://img.shields.io/github/actions/workflow/status/cybertortuga/aitriage/ci.yml?branch=main&style=flat-square&label=build" alt="Build status"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/cybertortuga/aitriage?style=flat-square" alt="MIT license"></a>
+    <a href="https://github.com/cybertortuga/aitriage/pkgs/container/aitriage"><img src="https://img.shields.io/badge/GHCR-container-2496ED?style=flat-square&logo=docker&logoColor=white" alt="GHCR container"></a>
   </p>
 
   <p>
-    <a href="#ai-ide"><strong>AI IDE</strong></a> ·
-    <a href="#web-ui"><strong>Web UI</strong></a> ·
-    <a href="#cicd"><strong>CI/CD</strong></a> ·
+    <a href="#ai-ide"><strong>AI IDE</strong></a>&nbsp;&nbsp;&nbsp;
+    <a href="#web-ui"><strong>Web UI</strong></a>&nbsp;&nbsp;&nbsp;
+    <a href="#cicd"><strong>CI/CD</strong></a>&nbsp;&nbsp;&nbsp;
     <a href="#cli"><strong>CLI</strong></a>
   </p>
 </div>
@@ -23,7 +23,7 @@
 
 AITriage scans source code, runs every finding through the bundled SecureCoder prompts, separates confirmed vulnerabilities from false positives, and prepares fix instructions. It never treats a failed security check as permission to change source code.
 
-## Before you start
+## Install once
 
 AITriage is installed **once on the computer**. It is not copied into every project and must never be cloned inside the project being checked.
 
@@ -60,9 +60,17 @@ Choose one interface:
 | [CI/CD](#cicd) | Automatic checks for pushes and pull requests | Provider key in GitHub Secrets |
 | [CLI](#cli) | Scripts, terminal use, and local automation | None for `scan`; provider key for `agent` |
 
+> [!TIP]
+> Already using Codex or Claude Code? Start with [AI IDE](#ai-ide). It uses your existing subscription and does not require another LLM API key.
+
+---
+
 ## AI IDE
 
 Use this mode when you want Codex or Claude Code to run the complete AITriage pipeline with the model included in your existing subscription. No separate LLM API key is required.
+
+> [!IMPORTANT]
+> An audit stops before source changes. The agent may fix only the confirmed finding IDs that you explicitly approve.
 
 ### Set up manually
 
@@ -129,11 +137,19 @@ aitriage install-codex . --uninstall
 aitriage install-claude-code . --uninstall
 ```
 
+---
+
 ## Web UI
 
 Use this mode when you want to select projects, start scans, and read reports in a browser. Web AI features use a provider API key; the Web UI cannot use a Codex or Claude subscription.
 
-### Start manually with the installed CLI
+<p align="center">
+  <img src="artifacts/aitriage-screenshots-20260708/19-vulnerability-detail-agent-prompt.png" alt="AITriage Web UI showing findings, evidence, and the AI agent handoff" width="100%">
+  <br>
+  <sub>Findings, evidence, agent handoff, and verification in one view. Shown in the Russian locale.</sub>
+</p>
+
+### Start manually
 
 No source checkout is required:
 
@@ -152,7 +168,10 @@ aitriage web --port 8080
 
 Supported provider variables include `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `GROQ_API_KEY`.
 
-### Start manually with Docker
+<details>
+<summary><strong>Docker: run with Semgrep, Trivy, Gitleaks, and Bandit included</strong></summary>
+
+<br>
 
 The published container includes Semgrep, Trivy, Gitleaks, and Bandit. Run this command from the project you want to inspect:
 
@@ -166,6 +185,8 @@ docker run --rm -p 8080:8080 \
 ```
 
 Open `http://localhost:8080` and select the mounted project at `/host`. Pass a provider key with an additional `-e GEMINI_API_KEY` or equivalent only when AI features are needed.
+
+</details>
 
 ### Start through your AI IDE
 
@@ -183,13 +204,20 @@ Tell me the local URL and how to stop the server.
 
 The current Web UI has no enforced login. Keep it on a trusted local machine or isolated network; do not expose it directly to the Internet.
 
+---
+
 ## CI/CD
 
 Use this mode to run AITriage automatically on pushes, pull requests, and manual GitHub Actions runs. The canonical organization setup keeps scan logic and SecureCoder prompts in one centrally maintained reusable workflow.
 
 ### Configure manually
 
-Create `.github/workflows/aitriage.yml` in the application repository:
+Create `.github/workflows/aitriage.yml` in the application repository, then replace the workflow repository and secret names with values approved by your organization.
+
+<details>
+<summary><strong>Canonical reusable workflow</strong></summary>
+
+<br>
 
 ```yaml
 name: AITriage Security
@@ -244,6 +272,8 @@ jobs:
       llm_api_key: ${{ inputs.llm-secret == 'GLM_CI_KEY' && secrets.GLM_CI_KEY || inputs.llm-secret == 'XIAOMI_API_KEY' && secrets.XIAOMI_API_KEY || secrets.GEMINI_API_KEY }}
 ```
 
+</details>
+
 Then:
 
 1. replace `your-org/security-workflows` with the approved reusable-workflow repository;
@@ -270,6 +300,8 @@ commit, push, or run the workflow until I approve the changes.
 ```
 
 The AI IDE may need you to provide the organization’s reusable-workflow repository and allowed secret name. Those values must not be guessed.
+
+---
 
 ## CLI
 
@@ -301,7 +333,10 @@ export GEMINI_API_KEY="your-key"
 aitriage agent .
 ```
 
-For non-interactive automation with explicit artifacts:
+<details>
+<summary><strong>Non-interactive run with explicit artifacts</strong></summary>
+
+<br>
 
 ```bash
 mkdir -p aitriage-reports
@@ -312,6 +347,8 @@ aitriage agent . --no-chat \
   --fixspec-out aitriage-reports/fixspec.md \
   --fail-on critical
 ```
+
+</details>
 
 ### Run through your AI IDE
 
@@ -334,6 +371,8 @@ variable is required.
 ```
 
 If you want to use the Codex or Claude subscription instead of a provider API key, use the [AI IDE](#ai-ide) integration, not `aitriage agent`.
+
+---
 
 ## Reports
 
