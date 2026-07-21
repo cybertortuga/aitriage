@@ -17,7 +17,7 @@ type scanInput struct {
 func registerScanTool(srv *mcp.Server, guard *PathGuard) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "aitriage_scan",
-		Description: "Run a full deterministic security scan on a project directory. Uses AST analysis, Shannon Entropy for secrets, and Entropy Code detection. No LLM required. Returns structured JSON report.",
+		Description: "RAW deterministic pre-scan only (AST, Shannon Entropy for secrets, Entropy Code detection). No LLM, NO triage, NOT a final security verdict — untriaged findings include false positives. For a real security review use aitriage_run_start, which runs the full AI-triage pipeline and gate. Returns a structured JSON report.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input scanInput) (*mcp.CallToolResult, scanner.ScanReport, error) {
 		var empty scanner.ScanReport
 		path, err := guard.Resolve(input.Path)

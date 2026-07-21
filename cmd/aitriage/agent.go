@@ -8,9 +8,8 @@ import (
 
 	"github.com/cybertortuga/aitriage/internal/agent/graph"
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
+	"github.com/cybertortuga/aitriage/internal/agent/pipeline"
 	"github.com/cybertortuga/aitriage/internal/config"
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/engine/orchestrator"
 	"github.com/cybertortuga/aitriage/internal/healthpolicy"
 	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
 	"github.com/spf13/cobra"
@@ -117,15 +116,34 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "🔍 AITriage Agent starting...\n\n")
 
+	// Shared runner: the CLI and the local MCP host-agent workflow build the
+	// same AgentState, run the same graph.Run, and compute the same gate.
+	opts := pipeline.Options{
+		ProjectPath: projectPath,
+		Scan: pipeline.ScanOptions{
+			ProbeHost:    agentProbe,
+			RunExternal:  true,
+			FullPortScan: agentFullScan,
+		},
+		Policy: policy,
+		LLM: pipeline.LLMIdentity{
+			Provider:        llmCfg.Provider,
+			Model:           llmCfg.Model,
+			BaseURL:         llmCfg.BaseURL,
+			DisableThinking: llmCfg.DisableThinking,
+			BatchSize:       llmCfg.BatchSize,
+		},
+		Target: pipeline.Target{
+			RuleID: agentRuleID,
+			File:   agentTargetFile,
+			Line:   agentTargetLine,
+		},
+	}
+
 	// STEP 1: PARALLEL SCANNING
 	fmt.Fprintf(os.Stderr, "📡 Step 1/3: Scanning (parallel)...\n")
 
-	richResult := orchestrator.RunAllScanners(ctx, orchestrator.Options{
-		ProjectPath:  projectPath,
-		ProbeHost:    agentProbe,
-		RunExternal:  true,
-		FullPortScan: agentFullScan,
-	})
+	richResult := pipeline.Scan(ctx, opts)
 
 	fmt.Fprintf(os.Stderr, "   ✓ AITriage: %d findings\n", len(richResult.Report.Results))
 	fmt.Fprintf(os.Stderr, "   ✓ External: %d findings\n", len(richResult.External))
@@ -137,59 +155,16 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "   Health Check (pre-AI, core-only): %s (%d/100)\n\n", richResult.Report.SecurityGrade, richResult.Report.SecurityScore)
 
-	// Filter results if target flags are provided
-	if agentRuleID != "" {
-		var filteredResults []core.CheckResult
-		for _, r := range richResult.Report.Results {
-			if r.ID == agentRuleID {
-				if agentTargetFile != "" && r.File != agentTargetFile {
-					continue
-				}
-				if agentTargetLine > 0 && r.Line != agentTargetLine {
-					continue
-				}
-				filteredResults = append(filteredResults, r)
-			}
-		}
-		richResult.Report.Results = filteredResults
-
-		// Clear other findings as we are focusing on one specific issue
-		richResult.External = nil
-		richResult.NFR = nil
-		richResult.Deploy = nil
-		richResult.Network = nil
-
+	if opts.Target.Enabled() {
 		fmt.Fprintf(os.Stderr, "🎯 Targeted Mode: Focusing on finding %s in %s:%d\n\n", agentRuleID, agentTargetFile, agentTargetLine)
 	}
 
 	// STEP 2: LLM ANALYSIS (Map-Reduce Graph)
 	fmt.Fprintf(os.Stderr, "🤖 Step 2/3: LLM Analysis (Map-Reduce)...\n")
 
-	state := &graph.AgentState{
-		ProjectPath: projectPath,
-		DeepScan:    true,
-		BatchSize:   llmCfg.BatchSize,
-		// Resolved LLM identity (never the API key): cache keys must reflect
-		// the provider/model that actually produced the verdicts, including
-		// flag/yaml/API-key-derived configuration that env vars would miss.
-		LLMProvider:        llmCfg.Provider,
-		LLMModel:           llmCfg.Model,
-		LLMBaseURL:         llmCfg.BaseURL,
-		LLMDisableThinking: llmCfg.DisableThinking,
-		CoreFindings:       richResult.Report.Results,
-		ExternalFindings:   richResult.External,
-		NFRFindings:        richResult.NFR,
-		DeployFindings:     richResult.Deploy,
-		NetworkFindings:    richResult.Network,
-		SecurityScore:      richResult.Report.SecurityScore,
-		SecurityGrade:      richResult.Report.SecurityGrade,
-		Policy:             policy,
-		Diagram:            richResult.Diagram,
-		CriticalFiles:      richResult.CriticalFiles,
-		HistoryLeaks:       richResult.HistoryLeaks,
-	}
+	state := pipeline.BuildState(opts, richResult)
 
-	if err := graph.Run(ctx, state, client); err != nil {
+	if _, err := pipeline.RunState(ctx, state, client); err != nil {
 		return fmt.Errorf("LLM analysis failed: %w", err)
 	}
 

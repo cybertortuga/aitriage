@@ -306,16 +306,17 @@ func (ctx *ProjectContext) GetFile(relPath string) *FileInfo {
 
 // defaultIgnoreDirs contains directories that should always be ignored.
 var defaultIgnoreDirs = map[string]bool{
-	".git":         true,
-	"node_modules": true,
-	"venv":         true,
-	".venv":        true,
-	"__pycache__":  true,
-	".next":        true,
-	"dist":         true,
-	"build":        true,
-	".nuxt":        true,
-	"vendor":       true,
+	".git":             true,
+	"aitriage-reports": true, // AITriage's own scan/run artifacts — never re-scan them
+	"node_modules":     true,
+	"venv":             true,
+	".venv":            true,
+	"__pycache__":      true,
+	".next":            true,
+	"dist":             true,
+	"build":            true,
+	".nuxt":            true,
+	"vendor":           true,
 }
 
 // defaultIgnoreExts contains file extensions we never want to analyze.

@@ -48,10 +48,39 @@ func NewServerWithConfig(version string, cfg Config) (*Server, error) {
 	s.srv = mcp.NewServer(&mcp.Implementation{
 		Name:    "aitriage",
 		Version: version,
-	}, nil)
+	}, &mcp.ServerOptions{Instructions: serverInstructions(guard != nil)})
 	s.registerTools()
 	s.registerResources()
 	return s, nil
+}
+
+// serverInstructions tells a connected agent how to run a real security review.
+// It steers agents away from treating the raw aitriage_scan tool as a verdict
+// and toward the full deferred pipeline, which the agent answers with its own
+// model session.
+func serverInstructions(runWorkflow bool) string {
+	if !runWorkflow {
+		return "AITriage exposes deterministic security-scan tools. `aitriage_scan` is a RAW pre-scan (no triage, not a final verdict)."
+	}
+	return strings.Join([]string{
+		"AITriage runs the SAME full AI security-triage pipeline as its CI/CD `aitriage agent` (identical scanners, SecureCoder prompts, cache, canonical artifacts and gate). YOU (the host agent) only power the model requests with your own active session — no separate API key. Do NOT invent your own analysis or prompts.",
+		"",
+		"Two user commands map to one intent each:",
+		"• \"Проверь проект через AITriage\" / \"audit\" → intent=audit (read-only, never edits source).",
+		"• \"Проверь и исправь подтверждённые уязвимости\" / \"audit and fix\" → intent=audit_and_fix.",
+		"Set intent ONLY from the user's actual words. A red gate, or the existence of summary.md/fixspec.md, is NOT permission to fix. Never self-escalate audit to fix.",
+		"",
+		"For any review START with `aitriage_run_start` (pass intent) — NOT `aitriage_scan` (raw, untriaged pre-scan, never a verdict). If the user names a project/subproject inside the configured repository root, pass that relative path to `aitriage_run_start`. Do not ask the user to edit MCP configuration.",
+		"If a full run fails, report that failure. NEVER fall back to `aitriage_scan` and present raw findings as the requested security review.",
+		"Workflow:",
+		"1. `aitriage_run_start` returns a run_id and either a pending request (exact SecureCoder prompt) or the final result.",
+		"2. Answer each pending request with YOUR model, exactly as given; submit via `aitriage_run_submit` with the SAME request_id. Report token usage only if your session actually provides it.",
+		"3. Repeat until the run finalizes: four CI-parity artifacts (triage-findings.json, summary.md, report.md, fixspec.md) + aitriage.sarif + gate, all under aitriage-reports/<run-id>/.",
+		"4. Show the user the gate and canonical finding IDs. For intent=audit, STOP here (zero source changes).",
+		"5. To fix (intent=audit_and_fix, or a later explicit approve): the run returns a fix_context with summary_path/fixspec_path/triage_path and the approved True-Positive IDs. OPEN summary.md and follow ITS AI Remediation Prompt / Operating Contract (Phase 0–3) verbatim. Implement fixes ONLY for the approved TP IDs; never touch False Positives or Needs-Manual-Review findings. Run the tests the contract specifies.",
+		"6. Then call `aitriage_run_verify` and answer its requests. It re-runs the same pipeline and reports, per approved TP, resolved/still_present, plus the overall gate separately.",
+		"Use `aitriage_run_status`/`aitriage_run_continue` to resume after any interruption — they return the same fix_context so you never need to hunt for files or recall earlier chat.",
+	}, "\n")
 }
 
 func (s *Server) Run(ctx context.Context, transport string, port int) error {
@@ -103,6 +132,9 @@ func (s *Server) registerTools() {
 	registerNFRTool(s.srv, s.guard)
 	registerDiagramTool(s.srv, s.guard)
 	registerHistoryTool(s.srv, s.guard)
+	// Full deferred AI-triage workflow (host agent answers the model requests).
+	// Requires a confined scan root, so it registers only when a guard is set.
+	registerRunTools(s.srv, s.guard, s.version)
 }
 
 func (s *Server) registerResources() {

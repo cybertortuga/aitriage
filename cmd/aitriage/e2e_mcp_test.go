@@ -169,3 +169,91 @@ func assertClientLaunchCommand(t *testing.T, proj, bin string) {
 		t.Fatalf("claude-code launch command missing safe profile: %s", out)
 	}
 }
+
+// TestE2E_RunStartOverProcessMCP spawns the safe-profile server exactly as the
+// client configs launch it and drives aitriage_run_start over real stdio MCP,
+// proving the full deferred host-agent workflow is reachable through the process
+// boundary and returns a run with a first deferred SecureCoder request.
+func TestE2E_RunStartOverProcessMCP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds a binary; skipped in -short")
+	}
+	bin := buildBinary(t)
+
+	root := t.TempDir()
+	proj := filepath.Join(root, "synthetic", "fastapi-terrible")
+	sibling := filepath.Join(root, "synthetic", "nextjs-terrible")
+	if err := os.MkdirAll(proj, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(sibling, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(proj, "app.py"), []byte("FASTAPI_ONLY_MARKER = 'AKIAIOSFODNN7EXAMPLE'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sibling, "app.js"), []byte("const NEXTJS_ONLY_MARKER = 'AKIAIOSFODNN7EXAMPLE';\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	transport := &mcp.CommandTransport{
+		Command: exec.Command(bin, "serve", "--profile", "safe", "--scan-root", root),
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "e2e", Version: "0"}, nil)
+	cs, err := client.Connect(ctx, transport, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer func() { _ = cs.Close(); time.Sleep(10 * time.Millisecond) }()
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "aitriage_run_start",
+		Arguments: map[string]any{"path": filepath.Join("synthetic", "fastapi-terrible"), "host_client": "codex"},
+	})
+	if err != nil {
+		t.Fatalf("run_start: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("run_start tool error: %+v", res.Content)
+	}
+	var prog struct {
+		RunID   string `json:"run_id"`
+		Pending *struct {
+			RequestID string `json:"request_id"`
+			Messages  []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		} `json:"pending_request"`
+	}
+	if res.StructuredContent != nil {
+		b, _ := json.Marshal(res.StructuredContent)
+		_ = json.Unmarshal(b, &prog)
+	}
+	if prog.RunID == "" {
+		for _, c := range res.Content {
+			if tc, ok := c.(*mcp.TextContent); ok {
+				_ = json.Unmarshal([]byte(tc.Text), &prog)
+			}
+		}
+	}
+	if prog.RunID == "" || prog.Pending == nil || prog.Pending.RequestID == "" {
+		t.Fatalf("expected run_id + first deferred request, got %+v", prog)
+	}
+	var prompt string
+	for _, msg := range prog.Pending.Messages {
+		prompt += msg.Content
+	}
+	if !strings.Contains(prompt, "FASTAPI_ONLY_MARKER") {
+		t.Fatal("selected nested project content is missing from process MCP request")
+	}
+	if strings.Contains(prompt, "NEXTJS_ONLY_MARKER") {
+		t.Fatal("sibling project leaked into process MCP request")
+	}
+	if _, err := os.Stat(filepath.Join(root, "aitriage-reports", prog.RunID)); err != nil {
+		t.Fatalf("run bundle must live under root aitriage-reports: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(proj, "aitriage-reports")); !os.IsNotExist(err) {
+		t.Fatalf("selected project must not receive duplicate reports directory (err=%v)", err)
+	}
+}

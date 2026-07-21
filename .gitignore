@@ -51,6 +51,8 @@ aitriage.yml
 # Internal working documentation, plans, and notes live under .notes/ and are
 # intentionally untracked. Public project docs stay at the repository root.
 /AITRIAGE_DISTRIBUTION_AND_AGENT_ROADMAP.md
+/AITRIAGE_HOST_AGENT_PIPELINE_PLAN.md
+/AITRIAGE_ONE_ACTION_REMEDIATION_PLAN.md
 /.notes/
 /local/
 /artifacts/
@@ -210,3 +212,6 @@ Desktop.ini
 .cursor/
 .windsurf/
 *.code-workspace
+
+# AITriage scan/run artifacts (host-agent runs + raw scan history)
+/aitriage-reports/

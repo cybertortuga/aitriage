@@ -22,7 +22,12 @@ import (
 // the project directory, launched over stdio, with no remote endpoint and no
 // AITriage-owned LLM token.
 
-const mcpServerName = "aitriage"
+const (
+	mcpServerName        = "aitriage"
+	agentContractBegin   = "<!-- AITRIAGE:BEGIN -->"
+	agentContractEnd     = "<!-- AITRIAGE:END -->"
+	agentContractHeading = "# AITriage Security Contract"
+)
 
 var (
 	clientUninstall bool
@@ -132,6 +137,64 @@ func writeFilePreservingMode(path string, data []byte, defaultMode os.FileMode) 
 	return os.WriteFile(path, data, mode)
 }
 
+// syncAgentContract installs or removes AITriage's managed instruction block
+// without overwriting any project-owned instructions. A pre-existing unmanaged
+// AITriage contract (for example, one created by `aitriage init`) is accepted as
+// authoritative and is never duplicated or removed by the client installer.
+func syncAgentContract(root, filename, contract string, uninstall bool) (bool, error) {
+	path := filepath.Join(root, filename)
+	existing, err := readFileOrEmpty(path)
+	if err != nil {
+		return false, err
+	}
+	start := strings.Index(existing, agentContractBegin)
+	end := strings.Index(existing, agentContractEnd)
+
+	if uninstall {
+		if start < 0 || end < start {
+			return false, nil
+		}
+		end += len(agentContractEnd)
+		prefix := strings.TrimRight(existing[:start], "\n")
+		suffix := strings.TrimLeft(existing[end:], "\n")
+		updated := prefix
+		if updated != "" && suffix != "" {
+			updated += "\n\n"
+		}
+		updated += suffix
+		if updated != "" {
+			updated = ensureTrailingNewline(updated)
+			return true, writeFilePreservingMode(path, []byte(updated), 0o644)
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+		return true, nil
+	}
+
+	managed := agentContractBegin + "\n" + strings.TrimSpace(contract) + "\n" + agentContractEnd
+	if start >= 0 {
+		if end < start {
+			return false, fmt.Errorf("%s contains an incomplete AITriage managed block", path)
+		}
+		end += len(agentContractEnd)
+		updated := existing[:start] + managed + existing[end:]
+		updated = ensureTrailingNewline(updated)
+		if updated == existing {
+			return false, nil
+		}
+		return true, writeFilePreservingMode(path, []byte(updated), 0o644)
+	}
+	if strings.Contains(existing, agentContractHeading) {
+		return false, nil
+	}
+	updated := managed + "\n"
+	if strings.TrimSpace(existing) != "" {
+		updated = strings.TrimRight(existing, "\n") + "\n\n" + updated
+	}
+	return true, writeFilePreservingMode(path, []byte(updated), 0o644)
+}
+
 // ── Codex (TOML) ────────────────────────────────────────────────────────────
 
 // codexConfigPath returns the project-scoped Codex config for projectRoot.
@@ -158,14 +221,21 @@ func runInstallCodex(cmd *cobra.Command, args []string) error {
 
 	if clientUninstall {
 		updated := tomlRemoveServer(existing, mcpServerName)
-		if updated == existing {
-			fmt.Printf("AITriage was not present in %s — nothing to remove.\n", configPath)
-			return nil
+		configChanged := updated != existing
+		if configChanged {
+			if err := writeFilePreservingMode(configPath, []byte(updated), 0o600); err != nil {
+				return err
+			}
 		}
-		if err := writeFilePreservingMode(configPath, []byte(updated), 0o600); err != nil {
+		contractChanged, err := syncAgentContract(root, "AGENTS.md", agentsMdContent, true)
+		if err != nil {
 			return err
 		}
-		fmt.Printf("✅ Removed AITriage from Codex config: %s\n", configPath)
+		if !configChanged && !contractChanged {
+			fmt.Printf("AITriage was not present in %s or AGENTS.md — nothing to remove.\n", root)
+			return nil
+		}
+		fmt.Printf("✅ Removed AITriage from Codex config and managed AGENTS.md instructions: %s\n", root)
 		return nil
 	}
 
@@ -179,9 +249,13 @@ func runInstallCodex(cmd *cobra.Command, args []string) error {
 	if err := writeFilePreservingMode(configPath, []byte(updated), 0o600); err != nil {
 		return err
 	}
+	if _, err := syncAgentContract(root, "AGENTS.md", agentsMdContent, false); err != nil {
+		return fmt.Errorf("install Codex agent instructions: %w", err)
+	}
 
 	fmt.Printf("✅ AITriage wired into Codex (safe profile) at:\n   %s\n", configPath)
 	fmt.Printf("   scan root: %s\n", root)
+	fmt.Printf("   agent contract: %s\n", filepath.Join(root, "AGENTS.md"))
 	fmt.Println("   Codex loads this config only for TRUSTED projects — trust this project in Codex,")
 	fmt.Println("   then ask it to run an AITriage scan to verify.")
 	return nil
@@ -295,6 +369,9 @@ func installClaudeCodeViaCLI(claudeBin, root string) error {
 		if err != nil {
 			return fmt.Errorf("claude mcp remove failed: %w\n%s", err, out)
 		}
+		if _, err := syncAgentContract(root, "CLAUDE.md", claudeMdContent, true); err != nil {
+			return err
+		}
 		fmt.Printf("✅ Removed AITriage from Claude Code (local scope) for:\n   %s\n", root)
 		return nil
 	}
@@ -311,6 +388,9 @@ func installClaudeCodeViaCLI(claudeBin, root string) error {
 	out, err := runClaudeMCP(claudeBin, root, addArgs...)
 	if err != nil {
 		return fmt.Errorf("claude mcp add failed: %w\n%s", err, out)
+	}
+	if _, err := syncAgentContract(root, "CLAUDE.md", claudeMdContent, false); err != nil {
+		return fmt.Errorf("install Claude Code agent instructions: %w", err)
 	}
 
 	fmt.Printf("✅ AITriage wired into Claude Code (safe profile, local scope):\n   %s\n", root)
@@ -334,14 +414,20 @@ func installClaudeCodeViaMcpJSON(root string) error {
 		if err != nil {
 			return err
 		}
-		if !changed {
-			fmt.Printf("AITriage was not present in %s — nothing to remove.\n", mcpPath)
-			return nil
+		if changed {
+			if err := writeFilePreservingMode(mcpPath, updated, 0o644); err != nil {
+				return err
+			}
 		}
-		if err := writeFilePreservingMode(mcpPath, updated, 0o644); err != nil {
+		contractChanged, err := syncAgentContract(root, "CLAUDE.md", claudeMdContent, true)
+		if err != nil {
 			return err
 		}
-		fmt.Printf("✅ Removed AITriage from %s\n", mcpPath)
+		if !changed && !contractChanged {
+			fmt.Printf("AITriage was not present in %s or CLAUDE.md — nothing to remove.\n", root)
+			return nil
+		}
+		fmt.Printf("✅ Removed AITriage from %s and managed CLAUDE.md instructions\n", mcpPath)
 		return nil
 	}
 
@@ -360,6 +446,9 @@ func installClaudeCodeViaMcpJSON(root string) error {
 	}
 	if err := writeFilePreservingMode(mcpPath, updated, 0o644); err != nil {
 		return err
+	}
+	if _, err := syncAgentContract(root, "CLAUDE.md", claudeMdContent, false); err != nil {
+		return fmt.Errorf("install Claude Code agent instructions: %w", err)
 	}
 
 	fmt.Printf("⚠️  Wrote AITriage to %s, but it is NOT yet active.\n", mcpPath)

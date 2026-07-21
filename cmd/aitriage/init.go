@@ -347,7 +347,7 @@ func generateIgnoreFile(projectPath string) string {
 		"*.map",
 		"*.lock",
 		"coverage/",
-		".aitriage/",
+		"aitriage-reports/",
 	}
 	sb.WriteString("# Defaults\n")
 	for _, d := range defaults {
@@ -494,6 +494,29 @@ This project is protected by AITriage. When AITriage is connected as an MCP
 server, use its tools (` + "`aitriage_scan`, `aitriage_secrets`, `aitriage_diff`" + `);
 otherwise run the ` + "`aitriage`" + ` CLI.
 
+## Full security review (MCP) — two commands
+
+AITriage runs the SAME pipeline as CI (` + "`aitriage agent`" + `); you only answer its
+model requests with your own session. Start with ` + "`aitriage_run_start`" + `, NOT the
+raw ` + "`aitriage_scan`" + ` (untriaged pre-scan, not a verdict).
+
+- "Проверь проект через AITriage" → intent=audit: full audit, four artifacts +
+  gate, STOP at the approval gate, zero source changes.
+- "Проверь и исправь подтверждённые уязвимости" → intent=audit_and_fix.
+
+If the user names a nested project, pass its path to ` + "`aitriage_run_start`" + `.
+The MCP is configured once at the repository root and allows every directory
+inside that root; never ask the user to rewrite MCP config. If the full run
+fails, report the failure — never fall back to raw ` + "`aitriage_scan`" + ` and present it
+as the requested review.
+
+Set intent only from the user's actual words; a red gate or existing
+summary.md/fixspec.md is NOT permission to fix. Answer each request with the same
+request_id via ` + "`aitriage_run_submit`" + `. To fix, open the approved run's
+` + "`summary.md`" + ` and follow its AI Remediation Prompt / Operating Contract; fix
+ONLY approved True Positives (never FP or Needs-Manual-Review), run tests, then
+call ` + "`aitriage_run_verify`" + `. All artifacts live in ` + "`aitriage-reports/`" + `.
+
 ## When to run a scan (mandatory)
 
 - Before implementing anything that touches authentication, payments, or
@@ -524,6 +547,29 @@ const agentsMdContent = `# AITriage Security Contract
 This project is protected by AITriage. Call the AITriage MCP tools
 (` + "`aitriage_scan`, `aitriage_secrets`, `aitriage_diff`" + `) when connected, or run
 the ` + "`aitriage`" + ` CLI otherwise.
+
+## Full security review (MCP) — two commands
+
+AITriage runs the SAME pipeline as CI (` + "`aitriage agent`" + `); you only answer its
+model requests with your own session. Start with ` + "`aitriage_run_start`" + `, NOT the
+raw ` + "`aitriage_scan`" + ` (untriaged pre-scan, not a verdict).
+
+- "Проверь проект через AITriage" → intent=audit: full audit, four artifacts +
+  gate, STOP at approval, zero source changes.
+- "Проверь и исправь подтверждённые уязвимости" → intent=audit_and_fix.
+
+If the user names a nested project, pass its path to ` + "`aitriage_run_start`" + `.
+The MCP is configured once at the repository root and allows every directory
+inside that root; never ask the user to rewrite MCP config. If the full run
+fails, report the failure — never fall back to raw ` + "`aitriage_scan`" + ` and present it
+as the requested review.
+
+Set intent only from the user's actual words; a red gate or existing
+summary.md/fixspec.md is NOT permission to fix. Answer each request with the same
+request_id via ` + "`aitriage_run_submit`" + `. To fix, open the approved run's
+` + "`summary.md`" + ` and follow its AI Remediation Prompt / Operating Contract; fix
+ONLY approved True Positives (never FP or Needs-Manual-Review), run tests, then
+call ` + "`aitriage_run_verify`" + `. All artifacts live in ` + "`aitriage-reports/`" + `.
 
 ## When to run a scan (mandatory)
 

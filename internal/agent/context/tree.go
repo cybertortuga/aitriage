@@ -14,6 +14,12 @@ var defaultSkipDirs = map[string]bool{
 	"__pycache__": true, ".next": true, "dist": true, "build": true,
 	".nuxt": true, "vendor": true, ".idea": true, ".vscode": true,
 	".terraform": true, "target": true, "coverage": true,
+	// AITriage and coding-client runtime state must never become repository
+	// evidence. Host-agent runs persist a request/response after every deferred
+	// model turn; including those files would change the next prompt fingerprint
+	// and prevent the stored response from being replayed.
+	"aitriage-reports": true, ".aitriage": true, ".aitriage-cache": true,
+	".codex": true, ".claude": true,
 }
 
 // defaultSkipExts are always skipped.

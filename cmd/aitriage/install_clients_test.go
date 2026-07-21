@@ -106,6 +106,68 @@ func TestCodexConfigPathIsProjectLocal(t *testing.T) {
 	}
 }
 
+func TestManagedAgentContractPreservesProjectInstructions(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "AGENTS.md")
+	original := "# Project Instructions\n\nKeep this text.\n"
+	if err := os.WriteFile(path, []byte(original), 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := syncAgentContract(root, "AGENTS.md", agentsMdContent, false)
+	if err != nil || !changed {
+		t.Fatalf("install managed contract: changed=%v err=%v", changed, err)
+	}
+	once := readConfig(t, path)
+	if !strings.Contains(once, original) || strings.Count(once, agentContractBegin) != 1 {
+		t.Fatalf("project instructions were lost or contract missing:\n%s", once)
+	}
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o640 {
+		t.Fatalf("AGENTS.md mode changed: info=%v err=%v", info, err)
+	}
+
+	changed, err = syncAgentContract(root, "AGENTS.md", agentsMdContent, false)
+	if err != nil || changed {
+		t.Fatalf("second install must be idempotent: changed=%v err=%v", changed, err)
+	}
+	if twice := readConfig(t, path); twice != once {
+		t.Fatal("second install changed AGENTS.md")
+	}
+
+	changed, err = syncAgentContract(root, "AGENTS.md", agentsMdContent, true)
+	if err != nil || !changed {
+		t.Fatalf("remove managed contract: changed=%v err=%v", changed, err)
+	}
+	if got := readConfig(t, path); got != original {
+		t.Fatalf("uninstall did not restore project instructions:\n%s", got)
+	}
+}
+
+func TestCodexInstallAddsAgentContract(t *testing.T) {
+	prev := clientUninstall
+	clientUninstall = false
+	t.Cleanup(func() { clientUninstall = prev })
+
+	root := t.TempDir()
+	if err := runInstallCodex(nil, []string{root}); err != nil {
+		t.Fatal(err)
+	}
+	agents := readConfig(t, filepath.Join(root, "AGENTS.md"))
+	for _, want := range []string{agentContractBegin, "aitriage_run_start", "never fall back to raw", agentContractEnd} {
+		if !strings.Contains(agents, want) {
+			t.Fatalf("managed AGENTS.md missing %q:\n%s", want, agents)
+		}
+	}
+
+	clientUninstall = true
+	if err := runInstallCodex(nil, []string{root}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("installer-created AGENTS.md should be removed on uninstall (err=%v)", err)
+	}
+}
+
 // TestCodexInstallTwoProjectsNoLeak proves each project gets its own
 // project-scoped config with its own scan-root, and installing for a second
 // project neither overwrites the first nor leaks its scan-root.

@@ -27,14 +27,14 @@ type DiffEntry struct {
 	Change   string `json:"change"` // "added" | "fixed"
 }
 
-// historyDirPath returns the .aitriage/history directory path inside the project
-// WITHOUT creating it. Use this on read paths so that merely inspecting history
-// never mutates the project (keeps read-only tools genuinely read-only).
+// historyDirPath returns the aitriage-reports/history directory path inside the
+// project WITHOUT creating it. Use this on read paths so that merely inspecting
+// history never mutates the project (keeps read-only tools genuinely read-only).
 func historyDirPath(projectPath string) string {
-	return filepath.Join(projectPath, ".aitriage", "history")
+	return filepath.Join(projectPath, "aitriage-reports", "history")
 }
 
-// historyDir returns (and creates if needed) the .aitriage/history directory inside the project.
+// historyDir returns (and creates if needed) the aitriage-reports/history directory inside the project.
 func historyDir(projectPath string) (string, error) {
 	dir := historyDirPath(projectPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
