@@ -59,7 +59,7 @@ func (r *EngagementRepository) List(ctx context.Context, productID int64) ([]mod
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var engagements []models.Engagement
 	for rows.Next() {
@@ -81,7 +81,7 @@ func (r *EngagementRepository) ListAll(ctx context.Context) ([]models.Engagement
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var engagements []models.Engagement
 	for rows.Next() {

@@ -87,7 +87,7 @@ func (r *RunwayRepository) ListByProductID(ctx context.Context, productID int64)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var sessions []models.RunwaySession
 	for rows.Next() {
@@ -110,7 +110,7 @@ func (r *RunwayRepository) ListAll(ctx context.Context) ([]models.RunwaySession,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var sessions []models.RunwaySession
 	for rows.Next() {

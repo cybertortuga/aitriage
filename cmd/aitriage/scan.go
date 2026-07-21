@@ -318,7 +318,7 @@ var scanCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("failed to create output file: %w", err)
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			outWriter = f
 
 			// If we're writing structured format to a file, we should still display the gorgeous UI
@@ -354,7 +354,7 @@ var scanCmd = &cobra.Command{
 			if err != nil {
 				_, _ = os.Stderr.WriteString("Failed to generate HTML report: " + err.Error() + "\n")
 			} else {
-				_, _ = os.Stderr.WriteString(fmt.Sprintf("Report generated: %s\n", outName))
+				_, _ = fmt.Fprintf(os.Stderr, "Report generated: %s\n", outName)
 			}
 		default:
 			// If they didn't specify a file, or if they specified a file but asked for terminal format
@@ -422,22 +422,22 @@ func refreshScanHealthCheck(report *scanner.ScanReport, policy healthcheck.Polic
 }
 
 func printPolicyFailure(w io.Writer, verdict healthcheck.Verdict) {
-	fmt.Fprintf(w, "\nFAIL: %s\n", verdict.Summary)
+	_, _ = fmt.Fprintf(w, "\nFAIL: %s\n", verdict.Summary)
 	for _, reason := range verdict.BlockingReasons {
-		fmt.Fprintf(w, "- %s", reason.Code)
+		_, _ = fmt.Fprintf(w, "- %s", reason.Code)
 		if reason.Severity != "" {
-			fmt.Fprintf(w, " severity=%s", reason.Severity)
+			_, _ = fmt.Fprintf(w, " severity=%s", reason.Severity)
 		}
 		if reason.Source != "" {
-			fmt.Fprintf(w, " source=%s", reason.Source)
+			_, _ = fmt.Fprintf(w, " source=%s", reason.Source)
 		}
 		if reason.Class != "" {
-			fmt.Fprintf(w, " class=%s", reason.Class)
+			_, _ = fmt.Fprintf(w, " class=%s", reason.Class)
 		}
 		if reason.Threshold != 0 || reason.Count != 0 {
-			fmt.Fprintf(w, " count=%d threshold=%d", reason.Count, reason.Threshold)
+			_, _ = fmt.Fprintf(w, " count=%d threshold=%d", reason.Count, reason.Threshold)
 		}
-		fmt.Fprintf(w, " - %s\n", reason.Message)
+		_, _ = fmt.Fprintf(w, " - %s\n", reason.Message)
 	}
 }
 
@@ -484,20 +484,20 @@ func writeGitHubActionsSummary(report scanner.ScanReport) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	_, _ = f.WriteString("## AITriage Security Scan Summary\n\n")
-	fmt.Fprintf(f, "**Security Gate:** %s\n\n", strings.ToUpper(report.HealthCheck.Verdict.Status))
-	fmt.Fprintf(f, "**Policy:** `%s` (`fail_on=%s`)\n\n", report.HealthCheck.Policy.Profile, report.HealthCheck.Policy.FailOn)
-	fmt.Fprintf(f, "**Health Check:** %d/100 (%s)\n\n", report.SecurityScore, report.SecurityGrade)
+	_, _ = fmt.Fprintf(f, "**Security Gate:** %s\n\n", strings.ToUpper(report.HealthCheck.Verdict.Status))
+	_, _ = fmt.Fprintf(f, "**Policy:** `%s` (`fail_on=%s`)\n\n", report.HealthCheck.Policy.Profile, report.HealthCheck.Policy.FailOn)
+	_, _ = fmt.Fprintf(f, "**Health Check:** %d/100 (%s)\n\n", report.SecurityScore, report.SecurityGrade)
 	hb := report.HealthCheck.Breakdown
-	fmt.Fprintf(f, "_%d active findings · %d ignored (false positives) · %d deduplicated · penalty %d · bonus %d_\n\n", hb.ActiveFindings, hb.IgnoredFindings, hb.DedupedFindings, hb.Penalty, hb.Bonus)
+	_, _ = fmt.Fprintf(f, "_%d active findings · %d ignored (false positives) · %d deduplicated · penalty %d · bonus %d_\n\n", hb.ActiveFindings, hb.IgnoredFindings, hb.DedupedFindings, hb.Penalty, hb.Bonus)
 	if len(report.HealthCheck.Verdict.BlockingReasons) > 0 {
 		_, _ = f.WriteString("### Blocking Reasons\n\n")
 		for _, reason := range report.HealthCheck.Verdict.BlockingReasons {
-			fmt.Fprintf(f, "- `%s`: %s", reason.Code, reason.Message)
+			_, _ = fmt.Fprintf(f, "- `%s`: %s", reason.Code, reason.Message)
 			if reason.Count != 0 || reason.Threshold != 0 {
-				fmt.Fprintf(f, " (count %d, threshold %d)", reason.Count, reason.Threshold)
+				_, _ = fmt.Fprintf(f, " (count %d, threshold %d)", reason.Count, reason.Threshold)
 			}
 			_, _ = f.WriteString("\n")
 		}
@@ -538,7 +538,7 @@ func writeGitHubActionsSummary(report scanner.ScanReport) {
 			msg = strings.ReplaceAll(msg, "\n", " ")
 			msg = strings.ReplaceAll(msg, "\r", "")
 
-			fmt.Fprintf(f, "| %s | %s | %s | %d | %s |\n", r.Severity, r.ID, relPath, r.Line, msg)
+			_, _ = fmt.Fprintf(f, "| %s | %s | %s | %d | %s |\n", r.Severity, r.ID, relPath, r.Line, msg)
 		}
 		_, _ = f.WriteString("\n")
 	}
@@ -554,7 +554,7 @@ func writeGitHubActionsSummary(report scanner.ScanReport) {
 
 			name := strings.ReplaceAll(r.Name, "|", "\\|")
 
-			fmt.Fprintf(f, "| %s | %s | %s | %s |\n", r.Severity, r.ID, name, msg)
+			_, _ = fmt.Fprintf(f, "| %s | %s | %s | %s |\n", r.Severity, r.ID, name, msg)
 		}
 		_, _ = f.WriteString("\n")
 	}

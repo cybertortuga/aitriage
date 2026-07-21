@@ -35,6 +35,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up QEMU (for linux/arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -60,19 +63,75 @@ jobs:
             type=semver,pattern=v{{major}}
             type=ref,event=tag
 
+      - name: Resolve embedded AITriage version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=dev-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go for process E2E
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build publish candidate
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: aitriage:publish-candidate
+          build-args: |
+            AITRIAGE_VERSION=${{ steps.version.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify scanner bundle
+        run: |
+          docker run --rm --entrypoint sh aitriage:publish-candidate -c '
+            set -eu
+            aitriage version
+            semgrep --version
+            /opt/pipx/venvs/semgrep/bin/python -c "import importlib.metadata as m; assert m.version(\"mcp\") == \"1.28.1\""
+            trivy --version
+            gitleaks version
+            bandit --version
+          '
+
+      - name: Run full scanner process E2E
+        env:
+          AITRIAGE_IMAGE: aitriage:publish-candidate
+        run: go test ./cmd/aitriage -run '^TestE2E_ContainerRunFullScannerBundle$' -count=1 -v
+
+      - name: Scan publish candidate for fixable vulnerabilities
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.72.0 image \
+            --quiet --severity HIGH,CRITICAL --ignore-unfixed \
+            --scanners vuln --exit-code 1 aitriage:publish-candidate
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          # linux/amd64 only: GitHub-hosted runners are amd64, and the image
-          # builds Go with CGO_ENABLED=1 (tree-sitter). arm64 would require
-          # slow QEMU emulation; add platforms here if arm64 runners are needed.
-          platforms: linux/amd64
+          # Multi-arch: amd64 (CI/native) + arm64 (Apple Silicon). Source-built
+          # scanner binaries are cross-compiled for each target architecture.
+          # A single manifest lets `docker pull` resolve the correct image.
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            AITRIAGE_VERSION=${{ github.ref_name }}-${{ github.sha }}
+            AITRIAGE_VERSION=${{ steps.version.outputs.value }}
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max

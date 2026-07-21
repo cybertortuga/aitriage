@@ -27,16 +27,18 @@ type AuditEntry struct {
 
 // AuditStore manages the persistence of triage decisions
 type AuditStore struct {
-	mu       sync.RWMutex
-	filePath string
-	Entries  map[string]AuditEntry `json:"entries"`
+	mu         sync.RWMutex
+	filePath   string
+	legacyPath string
+	Entries    map[string]AuditEntry `json:"entries"`
 }
 
 // NewAuditStore initializes a store, optionally loading from disk
 func NewAuditStore(workspaceRoot string) *AuditStore {
 	store := &AuditStore{
-		filePath: filepath.Join(workspaceRoot, ".aitriage-audit.json"),
-		Entries:  make(map[string]AuditEntry),
+		filePath:   filepath.Join(workspaceRoot, "aitriage-reports", "history", "audit.json"),
+		legacyPath: filepath.Join(workspaceRoot, ".aitriage-audit.json"),
+		Entries:    make(map[string]AuditEntry),
 	}
 	_ = store.Load() // Best-effort: missing file is not an error
 	return store
@@ -50,12 +52,25 @@ func (s *AuditStore) Load() error {
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			// Read the old root-level state once for backwards compatibility,
+			// but all future writes go to aitriage-reports/history/audit.json.
+			data, err = os.ReadFile(s.legacyPath)
+			if os.IsNotExist(err) {
+				return nil
+			}
 		}
-		return err
+		if err != nil {
+			return err
+		}
 	}
 
-	return json.Unmarshal(data, &s)
+	if err := json.Unmarshal(data, s); err != nil {
+		return err
+	}
+	if s.Entries == nil {
+		s.Entries = make(map[string]AuditEntry)
+	}
+	return nil
 }
 
 // Save writes the audit state to disk
@@ -68,7 +83,36 @@ func (s *AuditStore) Save() error {
 		return err
 	}
 
-	return os.WriteFile(s.filePath, data, 0644)
+	dir := filepath.Dir(s.filePath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return err
+	}
+
+	tmp, err := os.CreateTemp(dir, ".audit-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, s.filePath)
 }
 
 // GetKey creates a deterministic key for a finding

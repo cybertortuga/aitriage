@@ -27,7 +27,12 @@ func RunTrivy(ctx context.Context, path, scanType string) ([]UnifiedFinding, err
 	if scanType == "" {
 		scanType = "fs"
 	}
-	result, err := RunTool(ctx, "trivy", scanType, "--format", "json", "--quiet", path)
+	args := []string{scanType, "--format", "json", "--quiet"}
+	for _, excluded := range generatedArtifactPaths(path) {
+		args = append(args, "--skip-dirs", excluded)
+	}
+	args = append(args, path)
+	result, err := RunTool(ctx, "trivy", args...)
 	if err != nil {
 		return nil, fmt.Errorf("trivy execution failed: %w", err)
 	}
@@ -37,6 +42,9 @@ func RunTrivy(ctx context.Context, path, scanType string) ([]UnifiedFinding, err
 	}
 	var findings []UnifiedFinding
 	for _, res := range output.Results {
+		if isGeneratedArtifactPath(res.Target) {
+			continue
+		}
 		for _, v := range res.Vulnerabilities {
 			findings = append(findings, UnifiedFinding{
 				Source:   "trivy",

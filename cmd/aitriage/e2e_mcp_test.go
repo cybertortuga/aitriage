@@ -154,7 +154,7 @@ func assertClientLaunchCommand(t *testing.T, proj, bin string) {
 	// Codex writes a project-local config.toml with command+args.
 	codexCfg := filepath.Join(proj, ".codex", "config.toml")
 	block := codexServerBlock(mcpServerName, bin, safeProfileArgs(proj))
-	if !strings.Contains(block, `"serve", "--profile", "safe", "--scan-root"`) {
+	if !strings.Contains(block, `"serve", "--runtime", "container", "--profile", "safe", "--scan-root"`) {
 		t.Fatalf("codex launch command missing safe profile: %s", block)
 	}
 	_ = codexCfg

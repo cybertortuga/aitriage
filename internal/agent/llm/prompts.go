@@ -23,6 +23,27 @@ type RichScanResult struct {
 	HistoryLeaks  []entropy.HistoryLeak
 	Diagram       string
 	ProjectPath   string
+	// ScannerExecutions records, per scanner, whether it actually ran (completed),
+	// was missing, failed, timed out, or was not applicable — so a full audit can
+	// never silently skip a mandatory scanner.
+	ScannerExecutions []external.ScannerExecution
+}
+
+// MissingRequiredScanners returns the required external scanners that did not
+// complete (missing/failed/timed_out). not_applicable is an allowed outcome and
+// is not reported as missing.
+func (r RichScanResult) MissingRequiredScanners() []string {
+	status := map[string]external.ScannerStatus{}
+	for _, e := range r.ScannerExecutions {
+		status[e.Scanner] = e.Status
+	}
+	var missing []string
+	for _, req := range external.RequiredScannerExecutions {
+		if status[req] != external.StatusCompleted && status[req] != external.StatusNotApplicable {
+			missing = append(missing, req)
+		}
+	}
+	return missing
 }
 
 // SystemPrompt is the base agent persona.

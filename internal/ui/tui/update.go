@@ -632,6 +632,7 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "tab":
 			// Toggle focus between table (left) and detail viewport (right)
+			//nolint:staticcheck // The two-view toggle reads more clearly as an explicit branch.
 			if m.ActiveView == ViewSAST {
 				m.SASTFocusDetail = !m.SASTFocusDetail
 			} else if m.ActiveView == ViewTriage {
@@ -1007,6 +1008,7 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "tab":
 				m.DashFocusPanel = (m.DashFocusPanel + 1) % 3
 			case "up", "k":
+				//nolint:staticcheck // This is a bounded two-panel navigation branch.
 				if m.DashFocusPanel == 1 { // MAP
 					if m.DashMapCursor > 0 {
 						m.DashMapCursor--
@@ -1017,6 +1019,7 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			case "down", "j":
+				//nolint:staticcheck // This is a bounded two-panel navigation branch.
 				if m.DashFocusPanel == 1 { // MAP
 					if m.DashMapCursor < len(m.DashCats)-1 {
 						m.DashMapCursor++
@@ -1027,6 +1030,7 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			case "enter":
+				//nolint:staticcheck // This is a bounded two-panel navigation branch.
 				if m.DashFocusPanel == 1 { // MAP
 					if m.DashMapCursor >= 0 && m.DashMapCursor < len(m.DashCats) {
 						cat := m.DashCats[m.DashMapCursor]
@@ -1157,6 +1161,7 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	} else if m.ActiveView == ViewChat {
+		//nolint:staticcheck // Explicit focus-mode cycling is easier to audit here.
 		if m.ChatFocusMode == 2 {
 			// Focus on input: route keyboard to TextInput
 			m.TextInput, cmd = m.TextInput.Update(msg)
@@ -1254,7 +1259,7 @@ type triageAnalysisMsg struct {
 func (m *DashboardModel) triageAnalyzeCmd(res core.CheckResult) tea.Cmd {
 	return func() tea.Msg {
 		if m.LLMClient == nil {
-			return triageAnalysisMsg{err: fmt.Errorf("no LLM client configured. Set GEMINI_API_KEY.")}
+			return triageAnalysisMsg{err: fmt.Errorf("no LLM client configured; set GEMINI_API_KEY")}
 		}
 
 		// Read source code context for grounding
@@ -1332,7 +1337,7 @@ type sastAnalysisMsg struct {
 func (m *DashboardModel) sastAnalyzeCmd(source, ruleID string) tea.Cmd {
 	return func() tea.Msg {
 		if m.LLMClient == nil {
-			return sastAnalysisMsg{err: fmt.Errorf("no LLM client configured. Set GEMINI_API_KEY.")}
+			return sastAnalysisMsg{err: fmt.Errorf("no LLM client configured; set GEMINI_API_KEY")}
 		}
 
 		// Build context from the finding

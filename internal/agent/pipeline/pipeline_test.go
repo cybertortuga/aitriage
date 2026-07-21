@@ -62,6 +62,8 @@ func TestBuildStateMatchesHistoricalConstruction(t *testing.T) {
 		NFRFindings:        rich.NFR,
 		DeployFindings:     rich.Deploy,
 		NetworkFindings:    rich.Network,
+		ScannerExecutions:  rich.ScannerExecutions,
+		ScannerCoverage:    "partial",
 		SecurityScore:      rich.Report.SecurityScore,
 		SecurityGrade:      rich.Report.SecurityGrade,
 		Policy:             opts.Policy,

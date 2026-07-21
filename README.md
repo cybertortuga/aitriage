@@ -1,441 +1,231 @@
 <div align="center">
   <img src="web/public/favicon.svg" width="88" height="88" alt="AITriage logo">
   <h1>AITriage</h1>
-  <p><strong>Security scan → SecureCoder AI triage → human approval → verified fixes</strong></p>
-  <p>Use it from an AI coding agent, a browser, CI/CD, or a terminal.</p>
+  <p><strong>Security scanners → SecureCoder AI triage → human decision → verified fixes</strong></p>
+  <p>One security workflow for AI coding agents, Web, CI/CD, and the terminal.</p>
 
   <p>
     <a href="https://github.com/cybertortuga/aitriage/releases"><img src="https://img.shields.io/github/v/release/cybertortuga/aitriage?style=flat-square&color=2563eb" alt="Latest release"></a>
-    <a href="https://github.com/cybertortuga/aitriage/actions"><img src="https://img.shields.io/github/actions/workflow/status/cybertortuga/aitriage/ci.yml?branch=main&style=flat-square&label=build" alt="Build status"></a>
+    <a href="https://github.com/cybertortuga/aitriage/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/cybertortuga/aitriage/ci.yml?branch=main&style=flat-square&label=tests" alt="Test status"></a>
+    <a href="https://github.com/cybertortuga/aitriage/pkgs/container/aitriage"><img src="https://img.shields.io/badge/scanners-Docker-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker scanner bundle"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/cybertortuga/aitriage?style=flat-square" alt="MIT license"></a>
-    <a href="https://github.com/cybertortuga/aitriage/pkgs/container/aitriage"><img src="https://img.shields.io/badge/GHCR-container-2496ED?style=flat-square&logo=docker&logoColor=white" alt="GHCR container"></a>
   </p>
 
   <p>
-    <a href="#full-installation"><strong>Installation</strong></a>&nbsp;&nbsp;&nbsp;
-    <a href="#ai-ide"><strong>AI IDE</strong></a>&nbsp;&nbsp;&nbsp;
-    <a href="#web-ui"><strong>Web UI</strong></a>&nbsp;&nbsp;&nbsp;
-    <a href="#cicd"><strong>CI/CD</strong></a>&nbsp;&nbsp;&nbsp;
-    <a href="#cli"><strong>CLI</strong></a>
+    <a href="#1-install-once"><strong>Install</strong></a> ·
+    <a href="#2-ai-ide-codex-or-claude-code"><strong>AI IDE</strong></a> ·
+    <a href="#3-web-ui"><strong>Web</strong></a> ·
+    <a href="#4-cicd"><strong>CI/CD</strong></a> ·
+    <a href="#5-cli"><strong>CLI</strong></a> ·
+    <a href="#reports"><strong>Reports</strong></a>
   </p>
 </div>
 
 ---
 
-AITriage scans source code, runs every finding through the bundled SecureCoder prompts, separates confirmed vulnerabilities from false positives, and prepares fix instructions. It never treats a failed security check as permission to change source code.
+AITriage runs deterministic checks plus Semgrep, Trivy, Gitleaks, and Bandit. Its SecureCoder workflow then validates the findings, separates confirmed vulnerabilities from uncertain results and false positives, and prepares remediation instructions. Source code changes require a user decision.
 
-## Full installation
+## 1. Install once
 
-AITriage is installed **once on the computer**. After that, the same installation powers AI IDE, Web UI, and CLI usage. It is not copied into every project and must never be cloned inside the project being checked.
+AITriage is a system tool, not a dependency of the application being checked. Install it once on the computer; do not clone or copy AITriage into every project.
 
-```text
-GitHub/
-├── aitriage/          # optional: source checkout for AITriage development
-└── my-project/        # the project being checked
-```
+### Set up through your AI IDE
 
-Most users do not need the `aitriage/` source directory at all.
-
-### Install through your AI IDE
-
-Paste this into Codex or Claude Code from any working directory:
+Open Codex or Claude Code and paste this request:
 
 ```text
-Install the official AITriage release once on this computer.
-Official repository: https://github.com/cybertortuga/aitriage
+Install the official released AITriage CLI on this computer and prepare its
+complete scanner bundle. Official project: https://github.com/cybertortuga/aitriage
 
-AITriage must be installed as a system command. Never clone or copy its source
-repository inside my current project.
+Do not clone AITriage into my current repository and do not change its source.
+If `aitriage` is missing, install the latest official release with
+`curl -fsSL https://github.com/cybertortuga/aitriage/releases/latest/download/install.sh | sh`.
+This installer verifies the release checksum and prepares the complete scanner
+bundle. Do not download a binary from any other source.
 
-1. Check whether `aitriage` is already available. If it is, print
-   `aitriage version` and do not reinstall it.
-2. If it is missing and Homebrew is available, run
-   `brew install cybertortuga/aitriage/aitriage`.
-3. If Homebrew is unavailable but Go 1.25.5+ is installed, run
-   `go install github.com/cybertortuga/aitriage/cmd/aitriage@latest`.
-4. If neither method is available, stop and explain what must be installed.
-5. Verify `aitriage version` and `aitriage --help`.
-6. Report the installed version and executable path. Do not connect a project,
-   start Web, run a scan, or modify source code during this installation step.
+Then run `aitriage version` and `aitriage setup --status --json`.
+If setup returns `action_required`, show me its message, official Docker URL,
+and retry command, then stop. Never install Docker from another source.
+If setup returns `ok`, run `aitriage setup --status --json` and tell me the
+AITriage version, executable path, container image, and status of every bundled
+scanner. Do not connect a project or run an audit yet.
 ```
 
-### Install manually
+The result is one host CLI plus one verified Docker image. The source repository is unnecessary for normal use.
 
-With Homebrew:
+### Set up manually
+
+Requirements: macOS or Linux, and a running [Docker Desktop or Docker Engine](https://docs.docker.com/get-started/get-docker/).
 
 ```bash
-brew install cybertortuga/aitriage/aitriage
+curl -fsSL https://github.com/cybertortuga/aitriage/releases/latest/download/install.sh | sh
+aitriage setup --status
 ```
 
-Or with Go 1.25.5+:
+The installer downloads the matching official GitHub Release, verifies its
+SHA-256 checksum, installs the CLI, and runs `aitriage setup --full`. To inspect
+the script before running it:
+
+```bash
+curl -fsSLO https://github.com/cybertortuga/aitriage/releases/latest/download/install.sh
+less install.sh
+sh install.sh
+```
+
+Go 1.25.12 or newer remains a developer fallback:
 
 ```bash
 go install github.com/cybertortuga/aitriage/cmd/aitriage@latest
+aitriage setup --full
 ```
 
-Verify it once:
+If Docker is missing or stopped, setup exits without scanning and prints one official installation link plus the same command to retry. It does not silently install Docker or individual scanners.
 
-```bash
-aitriage version
-```
+### What is installed
 
-### What the installation contains
-
-The released executable is self-contained:
-
-- AITriage CLI commands;
-- built-in security rules and deterministic scanners;
-- the MCP server used by Codex and Claude Code;
-- the local Web UI and API server;
-- report generation and policy checks.
-
-External tools such as Semgrep, Trivy, Gitleaks, and Bandit are not embedded in the host executable. Use the published Docker image when you want those tools preinstalled. Provider credentials are never bundled.
-
-### Install the full scanner container through your AI IDE
-
-The container includes AITriage plus Semgrep, Trivy, Gitleaks, and Bandit. Paste this into Codex or Claude Code:
-
-```text
-Install the official AITriage container once on this computer.
-Container: ghcr.io/cybertortuga/aitriage:latest
-
-1. Run `docker --version` and confirm that the Docker engine is running.
-2. If Docker is unavailable, stop and tell me to install Docker Desktop or
-   Docker Engine from https://docs.docker.com/get-docker/. Do not install Docker
-   from an unofficial source.
-3. Run `docker pull ghcr.io/cybertortuga/aitriage:latest`.
-4. Verify the downloaded image with
-   `docker image inspect ghcr.io/cybertortuga/aitriage:latest`.
-5. Report the image ID and downloaded tag. Do not start a container, mount a
-   project, run a scan, or modify source code during this installation step.
-```
-
-### Install the full scanner container manually
-
-Install and start [Docker Desktop or Docker Engine](https://docs.docker.com/get-docker/), then download the published image:
-
-```bash
-docker pull ghcr.io/cybertortuga/aitriage:latest
-docker image inspect ghcr.io/cybertortuga/aitriage:latest
-```
-
-Docker stores the image in its local image cache. You do not clone the AITriage repository and no files are copied into the project being checked.
-
-> [!NOTE]
-> The current Codex and Claude Code project connectors use the native host CLI. The Docker image is the complete scanner bundle for Web UI, CLI, and CI/CD. Using the container as the AI IDE MCP runtime is not yet a one-command supported path.
-
-## Use AITriage
-
-Choose one interface:
-
-| Interface | Best for | AI credentials |
+| Part | Where | Purpose |
 | :--- | :--- | :--- |
-| [AI IDE](#ai-ide) | Checking and fixing code from Codex or Claude Code | Existing Codex or Claude subscription |
-| [Web UI](#web-ui) | Visual scanning and report review in a browser | Provider API key for AI features |
-| [CI/CD](#cicd) | Automatic checks for pushes and pull requests | Provider key in GitHub Secrets |
-| [CLI](#cli) | Scripts, terminal use, and local automation | None for `scan`; provider key for `agent` |
+| `aitriage` CLI | system executable path | setup, project connectors, CLI, Web, MCP launcher |
+| scanner image | local Docker image cache | AITriage, Semgrep, Trivy, Gitleaks, Bandit |
+| scanner cache | user cache directory | reusable scanner databases; never stored in source |
+| reports | `<project>/aitriage-reports/` | results and local run state for that project |
 
-> [!TIP]
-> Already using Codex or Claude Code? Start with [AI IDE](#ai-ide). It uses your existing subscription and does not require another LLM API key.
+`aitriage setup --full` is safe to repeat after an upgrade. Remove only the downloaded AITriage image with `aitriage setup --remove-runtime`.
 
----
+## Choose how to use it
 
-## AI IDE
+| Interface | Use it when | AI access |
+| :--- | :--- | :--- |
+| [AI IDE](#2-ai-ide-codex-or-claude-code) | Codex or Claude Code should audit and help fix the open project | existing Codex or Claude subscription |
+| [Web](#3-web-ui) | a person wants a local browser dashboard | provider API key for AI triage |
+| [CI/CD](#4-cicd) | pushes and pull requests need an automatic gate | provider key in CI secrets |
+| [CLI](#5-cli) | terminal or scripts | none for raw scan; provider key for full AI triage |
 
-Use this mode when you want Codex or Claude Code to run the complete AITriage pipeline with the model included in your existing subscription. No separate LLM API key is required.
+## 2. AI IDE: Codex or Claude Code
 
-Connecting a project is not another installation. It only writes the small project-local MCP configuration needed to confine AITriage to that repository.
+This mode uses the model included in the current Codex or Claude subscription. It does not need a separate LLM API key.
 
-> [!IMPORTANT]
-> An audit stops before source changes. The agent may fix only the confirmed finding IDs that you explicitly approve.
+### Connect the open project through your AI IDE
 
-### Connect through your AI IDE
-
-Open your project in Codex or Claude Code and paste:
+First finish the [one-time installation](#1-install-once). Then open the **root of the project to audit** and paste:
 
 ```text
-Configure AITriage MCP for the repository currently open in this AI IDE. Work
-from the repository root.
+Connect AITriage to the repository currently open in this AI IDE.
 
-Rules:
-- AITriage is a system CLI, not a dependency of this repository. Never clone or
-  copy https://github.com/cybertortuga/aitriage inside the current repository.
-- Preserve all source files, existing agent instructions, MCP servers, and
-  `.gitignore` entries.
-- Do not scan the repository and do not modify source code during setup.
+Run `aitriage setup --status --json` first. Stop if the complete scanner bundle
+is not ready. Detect this client and run exactly one command from the open
+repository root:
+- Codex: `aitriage install-codex .`
+- Claude Code: `aitriage install-claude-code .`
 
-Do the following:
-1. Check whether `aitriage` is available and print `aitriage version`.
-2. If it is missing, stop and tell me to complete the one-time installation at
-   https://github.com/cybertortuga/aitriage#full-installation.
-3. Detect the current AI IDE and run exactly one project connector:
-   - Codex: `aitriage install-codex .`
-   - Claude Code: `aitriage install-claude-code .`
-4. Verify the generated project-local MCP configuration and managed instruction
-   block. Ensure `/aitriage-reports/` appears once in `.gitignore`.
-5. Report the installed AITriage version, command executed, files changed, and
-   verification result. Do not claim the MCP server is connected if only its
-   configuration was written.
-6. Stop. Tell me to open a new task/session so the AI IDE loads the MCP server.
+Do not clone AITriage here. Preserve existing source, instructions, MCP servers,
+and `.gitignore` entries. Do not audit or edit source during setup. Verify the
+project-local MCP configuration, list the files changed, and tell me to open a
+new task or session so the client loads the server.
 ```
 
-After setup, open a new task/session in the same project and paste:
+Open a new task/session in the same project. From then on, ordinary requests are enough:
 
 ```text
-Check this project with AITriage through its MCP workflow. Do not use a raw
-`aitriage scan` as the final result. Do not fix anything yet. Complete the AI
-triage, explain the verdict in plain language, and show me where the reports
-were saved.
+Проверь этот проект через AITriage. Пока ничего не исправляй.
 ```
 
-To approve selected fixes later:
+AITriage—not the AI IDE—supplies the SecureCoder prompts, controls the workflow, and creates the final artifacts. The agent returns each model answer to AITriage until triage completes.
+
+When you decide to fix findings, say which ones or explicitly approve all confirmed findings:
 
 ```text
-Fix confirmed AITriage findings CS-AUTH-001 and CS-AUTHZ-001. Do not change
-false positives or uncertain findings. Run the required tests and verify the
-fixes with AITriage.
+Исправь подтверждённые AITriage уязвимости. Не трогай сомнительные находки и
+false positives. Запусти тесты и проверь исправления через AITriage.
 ```
 
 ### Connect manually
 
-Open a terminal in the root of the project you want to check.
-
-For Codex:
+Run one command from the project root:
 
 ```bash
 aitriage install-codex .
-```
-
-For Claude Code:
-
-```bash
+# or
 aitriage install-claude-code .
 ```
 
-The command name contains `install`, but it does not reinstall AITriage. It adds only the project-local MCP configuration and managed agent instructions. It preserves unrelated MCP servers and existing instruction text. Open a **new** Codex task or Claude Code session after connection, then use the audit request above.
+Both connectors use the verified container runtime by default, preserve unrelated client settings, add `/aitriage-reports/` to `.gitignore`, and confine tools to the opened root and its subdirectories. Open a new task/session after connecting.
 
-### AI IDE files
-
-Depending on the client, the project connector may update:
-
-- `.codex/config.toml` and `AGENTS.md` for Codex;
-- the project-local Claude MCP configuration and `CLAUDE.md` for Claude Code;
-- `.gitignore` with `/aitriage-reports/`.
-
-Update the integration by running the install command again. Remove only AITriage-managed configuration with:
+Update by running the same command again. Remove only the AITriage integration with:
 
 ```bash
 aitriage install-codex . --uninstall
 aitriage install-claude-code . --uninstall
 ```
 
----
+## 3. Web UI
 
-## Web UI
-
-Use this mode when you want to select projects, start scans, and read reports in a browser. Web AI features use a provider API key; the Web UI cannot use a Codex or Claude subscription.
-
-Web uses the same installed `aitriage` executable. Starting the server does not install another copy.
+Web provides a local dashboard for findings, evidence, reports, and run history. It uses the same verified scanner image.
 
 ### Start through your AI IDE
 
-Paste this into Codex or Claude Code:
-
 ```text
-Start the AITriage Web UI for the repository currently open in this AI IDE.
-
-Do not clone AITriage inside this repository. Check whether the system command
-`aitriage` is installed. If it is missing, stop and tell me to complete the
-one-time installation documented at
-https://github.com/cybertortuga/aitriage#full-installation.
-
-Run `aitriage web --port 8080` locally. Do not expose the server to the network
-and do not write API keys to files. If no supported provider key is already in
-the environment, start Web without AI features and tell me which environment
-variable enables them. Confirm that http://localhost:8080 responds, then show
-me the URL and the exact command needed to stop the server.
+Start AITriage Web for the repository currently open in this AI IDE.
+Run `aitriage setup --status --json` and stop if the scanner bundle is not ready.
+Then run `aitriage web --project . --port 8080`, wait until it responds, and
+give me the local URL and the command to stop it. Do not expose it to the
+network, write credentials to files, or change source code.
 ```
 
 ### Start manually
 
-No source checkout is required:
-
 ```bash
-aitriage web --port 8080
+aitriage web --project . --port 8080
 ```
 
-Open `http://localhost:8080`.
+Open [http://localhost:8080](http://localhost:8080). Stop with `Ctrl-C`.
 
-To enable AI features, provide a supported key before startup:
-
-```bash
-export GEMINI_API_KEY="your-key"
-aitriage web --port 8080
-```
-
-Supported provider variables include `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `GROQ_API_KEY`.
-
-<details>
-<summary><strong>Docker: run with Semgrep, Trivy, Gitleaks, and Bandit included</strong></summary>
-
-<br>
-
-The published container includes Semgrep, Trivy, Gitleaks, and Bandit. Run this command from the project you want to inspect:
+Web AI triage cannot use a Codex or Claude subscription. Set a supported provider key in the process environment when AI features are needed, for example:
 
 ```bash
-docker run --rm -p 8080:8080 \
-  -v "$PWD:/host:ro" \
-  -v aitriage-data:/app/data \
-  -e DB_PATH=/app/data/aitriage.db \
-  ghcr.io/cybertortuga/aitriage:latest \
-  web --port 8080 --host-prefix /host
+export GEMINI_API_KEY="..."
+aitriage web --project . --port 8080
 ```
 
-Open `http://localhost:8080` and select the mounted project at `/host`. Pass a provider key with an additional `-e GEMINI_API_KEY` or equivalent only when AI features are needed.
+The current Web server has no enforced login. It binds through the managed container to localhost; keep it local and do not expose it directly to the Internet.
 
-</details>
+## 4. CI/CD
 
-The current Web UI has no enforced login. Keep it on a trusted local machine or isolated network; do not expose it directly to the Internet.
-
----
-
-## CI/CD
-
-Use this mode to run AITriage automatically on pushes, pull requests, and manual GitHub Actions runs. The canonical organization setup keeps scan logic and SecureCoder prompts in one centrally maintained reusable workflow.
-
-CI/CD runs its own copy inside a GitHub Actions runner. The developer's local AITriage installation is not used by CI.
+CI uses the same AITriage pipeline and SecureCoder prompts, but its model is authenticated by a secret in the CI platform. A developer's local installation and subscription are not used.
 
 ### Configure through your AI IDE
 
-Paste this into Codex or Claude Code:
-
 ```text
-Configure AITriage CI/CD for this repository using the canonical reusable
-workflow documented at https://github.com/cybertortuga/aitriage#cicd.
-
-Preserve every existing workflow. Create or update only
-`.github/workflows/aitriage.yml`. First identify the approved reusable workflow
-repository and the allowed GitHub Secret name from existing repository or
-organization configuration. If either value cannot be confirmed, stop and ask
-me instead of guessing.
-
-Never put an API key in YAML or source code. Validate the completed workflow,
-show me the exact diff, and explain which GitHub Secret must exist. Do not
-commit, push, or run the workflow until I explicitly approve those actions.
+Add AITriage CI/CD to this repository using an official example from
+https://github.com/cybertortuga/aitriage/tree/main/examples/github-actions.
+Preserve existing workflows. Never put a provider key in YAML or source code;
+reference a GitHub Secret. Show me the workflow diff and required secret before
+committing or pushing. Do not invent an organization-specific reusable workflow
+URL: ask me if the approved URL is not already documented in this repository.
 ```
 
 ### Configure manually
 
-Create `.github/workflows/aitriage.yml` in the application repository, then replace the workflow repository and secret names with values approved by your organization.
+Choose the closest template in [`examples/github-actions/`](examples/github-actions/):
 
-<details>
-<summary><strong>Canonical reusable workflow</strong></summary>
+- [`aitriage-security.yml`](examples/github-actions/aitriage-security.yml) — standard security run;
+- [`aitriage-pr-gate.yml`](examples/github-actions/aitriage-pr-gate.yml) — pull-request gate;
+- [`aitriage-ai-advisor.yml`](examples/github-actions/aitriage-ai-advisor.yml) — AI advisory output;
+- [`aitriage-manual-html-report.yml`](examples/github-actions/aitriage-manual-html-report.yml) — manually triggered report.
 
-<br>
+Copy the selected file to `.github/workflows/`, add the referenced provider key in GitHub Secrets, and run `workflow_dispatch` once. Verify the uploaded reports, SARIF, and post-AI gate before making the check required.
 
-```yaml
-name: AITriage Security
+For organizations, the application workflow may call one centrally managed reusable workflow. Use the exact approved repository and secret names; AITriage documentation intentionally does not guess them.
 
-on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      llm-provider:
-        description: "LLM provider: gemini, openai"
-        required: false
-        default: gemini
-        type: choice
-        options:
-          - gemini
-          - openai
-      llm-model:
-        description: "Model override (leave empty for provider default)"
-        required: false
-        default: ""
-        type: string
-      llm-base-url:
-        description: "OpenAI-compatible base URL"
-        required: false
-        default: ""
-        type: string
-      llm-secret:
-        description: "Which organization secret to use"
-        required: false
-        default: GEMINI_API_KEY
-        type: choice
-        options:
-          - GEMINI_API_KEY
-          - GLM_CI_KEY
-          - XIAOMI_API_KEY
+## 5. CLI
 
-permissions:
-  contents: read
-  security-events: write
-
-jobs:
-  aitriage:
-    uses: your-org/security-workflows/.github/workflows/aitriage.yml@main
-    with:
-      llm-provider: ${{ inputs.llm-provider || 'gemini' }}
-      llm-model: ${{ inputs.llm-model || '' }}
-      llm-base-url: ${{ inputs.llm-base-url || '' }}
-    secrets:
-      llm_api_key: ${{ inputs.llm-secret == 'GLM_CI_KEY' && secrets.GLM_CI_KEY || inputs.llm-secret == 'XIAOMI_API_KEY' && secrets.XIAOMI_API_KEY || secrets.GEMINI_API_KEY }}
-```
-
-</details>
-
-Then:
-
-1. replace `your-org/security-workflows` with the approved reusable-workflow repository;
-2. add the selected provider key to organization or repository GitHub Secrets;
-3. allow the application repository to call the reusable workflow;
-4. run `workflow_dispatch` once and verify the report artifacts and SARIF upload;
-5. make the post-AI AITriage result a required branch-protection check.
-
-Standalone workflow examples are available in [`examples/github-actions/`](examples/github-actions/).
-
-The AI IDE may need you to provide the organization’s reusable-workflow repository and allowed secret name. Those values must not be guessed.
-
----
-
-## CLI
-
-Use this mode for direct terminal commands, scripts, and local automation.
-
-### Run through your AI IDE
-
-For a raw scan without AI triage:
-
-```text
-Run `aitriage scan .` in this repository. Do not modify source code. Explain
-the findings and clearly label them as raw, deterministic results that have not
-been verified by AI triage.
-```
-
-For full CLI triage with a provider key already available in the environment:
-
-```text
-Run the full AITriage CLI agent for this repository. Use only provider
-credentials already present in the environment. Never ask me to paste a secret
-into chat and never write credentials to files.
-
-Save `triage-findings.json`, `summary.md`, `report.md`, and `fixspec.md` under
-`aitriage-reports/`. Do not modify source code. Explain the final AI-triaged
-gate and link every generated artifact. If no supported provider key is
-available, stop and tell me the required environment variable.
-```
-
-### Run manually without AI
+### Raw deterministic scan
 
 ```bash
 aitriage scan .
 ```
 
-No API key is required. This is a deterministic pre-scan, not a final AI-triaged verdict.
+This fast pre-scan uses built-in deterministic checks only. It requires neither Docker nor an AI key, but it is **not** a completed SecureCoder verdict.
 
 Useful variants:
 
@@ -446,74 +236,61 @@ aitriage scan . --diff origin/main
 aitriage scan . --format sarif -o aitriage.sarif
 ```
 
-### Run manually with AI
+### Full AI audit
 
-Set a provider key and run the full SecureCoder pipeline:
-
-```bash
-export GEMINI_API_KEY="your-key"
-aitriage agent .
-```
-
-<details>
-<summary><strong>Non-interactive run with explicit artifacts</strong></summary>
-
-<br>
+Provide a supported provider key and run:
 
 ```bash
-mkdir -p aitriage-reports
-aitriage agent . --no-chat \
-  --triage-out aitriage-reports/triage-findings.json \
-  --summary-out aitriage-reports/summary.md \
-  --report-out aitriage-reports/report.md \
-  --fixspec-out aitriage-reports/fixspec.md \
-  --fail-on critical
+export GEMINI_API_KEY="..."
+aitriage agent . --no-chat
 ```
 
-</details>
+`agent` uses the full container scanner bundle by default and runs the same SecureCoder pipeline used by CI. Provider variables include `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `GROQ_API_KEY`.
 
-If you want to use the Codex or Claude subscription instead of a provider API key, use the [AI IDE](#ai-ide) integration, not `aitriage agent`.
-
----
+To use a Codex or Claude subscription instead of an API key, use the [AI IDE integration](#2-ai-ide-codex-or-claude-code).
 
 ## Reports
 
-AI IDE runs store all state and artifacts under the repository root:
+All project-owned output lives under one ignored directory:
 
 ```text
 aitriage-reports/
-└── run-.../
-    ├── summary.md           # short result; start here
-    ├── report.md            # full security report
-    ├── fixspec.md           # proposed remediation instructions
-    ├── triage-findings.json # machine-readable AI verdicts
-    ├── aitriage.sarif       # standard security-tool output
-    ├── scan.json            # deterministic scan input
-    ├── manifest.json        # run state and integrity metadata
-    └── audit.log            # run events
+├── run-.../
+│   ├── summary.md            # start here
+│   ├── report.md             # full SecureCoder report
+│   ├── fixspec.md            # remediation instructions
+│   ├── triage-findings.json  # all AI verdicts
+│   ├── aitriage.sarif        # standard scanner output
+│   ├── scan.json             # deterministic input to triage
+│   ├── manifest.json         # state, scanner coverage, integrity metadata
+│   └── audit.log             # run events
+├── history/                  # deterministic scan history
+└── web/                      # local Web state
 ```
 
-Add `/aitriage-reports/` to `.gitignore`. AITriage excludes this directory from later scans and model context so generated reports cannot create an analysis loop.
+Connectors add `/aitriage-reports/` to `.gitignore`. AITriage excludes this directory from every scanner and AI context so its own output cannot trigger another audit loop.
 
-## Safety
+## Safety contract
 
-- AITriage uses its bundled SecureCoder prompts; the host AI must not invent a replacement triage flow.
-- AI IDE tools are confined to the configured repository root and its real subdirectories.
-- Path traversal and symlink escapes outside the project are rejected.
-- Source changes require an explicit user request.
-- False positives and uncertain findings are not fixed automatically.
-- A raw `aitriage scan` result is never presented as completed AI triage.
+- A full run fails closed if Docker or any required scanner cannot run.
+- Every report records whether each scanner completed or was deterministically not applicable.
+- The source tree is mounted read-only inside the scanner container; only `aitriage-reports/` is writable there.
+- MCP tools are confined to the opened repository root and real subdirectories; traversal and symlink escapes are rejected.
+- AITriage supplies the canonical SecureCoder prompts. The host agent must not replace them with an ad-hoc review.
+- No source change is authorized by a scan. The user chooses whether and what to fix.
 
 ## Troubleshooting
 
-| Problem | What to do |
+| Problem | Action |
 | :--- | :--- |
-| Codex or Claude cannot see AITriage | Run the matching project connector from the repository root, then open a new task/session |
-| Claude shows MCP approval as pending | Open the project in Claude Code and approve the `aitriage` MCP server |
-| A subfolder is rejected | Confirm it is a real folder inside the repository root used during connection |
-| The agent runs only `aitriage scan` | Ask it to use the AITriage MCP workflow; raw scan is not full triage |
-| Web AI features are unavailable | Set a supported provider API key before starting `aitriage web` |
-| Full triage fails | Keep the failure visible; do not substitute raw scan output as the verdict |
+| Docker is absent or stopped | Follow the official URL printed by `aitriage setup --full`, start Docker, then repeat the same command |
+| Runtime is incomplete after an upgrade | Run `aitriage setup --repair`, then `aitriage setup --status` |
+| Codex or Claude cannot see AITriage | Re-run the matching connector from the repository root and open a new task/session |
+| Claude shows MCP approval pending | Open Claude Code in the project and approve the local `aitriage` server |
+| A real subdirectory is rejected | Reconnect from the intended repository root; paths outside it and symlink escapes are deliberately blocked |
+| The agent ran only `aitriage scan` | Ask it to use the AITriage MCP workflow; raw scan is not AI triage |
+| Web AI is unavailable | Export a supported provider API key before starting Web |
+| Full audit failed | Keep the error visible and repair the runtime; do not present a reduced scan as the final verdict |
 
 ## Project documentation
 

@@ -11,6 +11,7 @@ import (
 	"github.com/cybertortuga/aitriage/internal/agent/hostagent"
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
 	"github.com/cybertortuga/aitriage/internal/agent/pipeline"
+	"github.com/cybertortuga/aitriage/internal/agent/runstore"
 	"github.com/cybertortuga/aitriage/internal/engine/history"
 	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
 	"github.com/cybertortuga/aitriage/internal/scanner"
@@ -270,6 +271,9 @@ func TestHostRunFullLifecycle(t *testing.T) {
 	if appr.Fix == nil || appr.Fix.SummaryPath == "" || appr.Fix.FixSpecPath == "" || appr.Fix.NextAction == "" {
 		t.Fatalf("approve must return a self-contained fix context, got %+v", appr.Fix)
 	}
+	// The edit must happen after approval. Verification rejects retroactive or
+	// absent source changes, so write a deterministic post-approval fix marker.
+	must(t, os.WriteFile(filepath.Join(dir, "app.js"), []byte("const k = process.env.APP_KEY;\n"), 0o644))
 
 	// Verify starts a linked run; drive it to completion.
 	vstart, err := m.Verify(context.Background(), final.RunID, StartOptions{Policy: healthcheck.DefaultPolicy()})
@@ -314,6 +318,68 @@ func TestVerifyRequiresApproval(t *testing.T) {
 	}
 	if _, err := m.Verify(context.Background(), final.RunID, StartOptions{Policy: healthcheck.DefaultPolicy()}); err == nil {
 		t.Fatal("Verify must fail without an approval record")
+	}
+}
+
+// TestApproveRejectsProjectDriftSinceAudit proves approval can never be
+// back-dated after an agent has already edited source. The user must approve
+// the exact audited tree before any modification.
+func TestApproveRejectsProjectDriftSinceAudit(t *testing.T) {
+	dir := newProjectWithFinding(t)
+	m, err := NewManager(dir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := m.Start(context.Background(), StartOptions{Policy: healthcheck.DefaultPolicy(), Scan: pipeline.ScanOptions{RunExternal: false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := drive(t, m, start)
+	if final.Status != runstore.StatusAwaitingUserApproval {
+		t.Fatalf("status = %s, want awaiting approval", final.Status)
+	}
+	must(t, os.WriteFile(filepath.Join(dir, "app.js"), []byte("const k = process.env.APP_KEY;\n"), 0o644))
+
+	if _, err := m.Approve(final.RunID, final.Result.FixableFindingIDs); err == nil || !strings.Contains(err.Error(), "changed after audit") {
+		t.Fatalf("retroactive approval error = %v, want source-drift rejection", err)
+	}
+	run, err := m.store.Open(final.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status() != runstore.StatusAwaitingUserApproval {
+		t.Fatalf("rejected approval changed status to %s", run.Status())
+	}
+	if _, ok, err := run.ReadArtifact("approval.json"); err != nil || ok {
+		t.Fatalf("rejected approval created approval.json: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestVerifyRejectsNoPostApprovalChanges proves a verification run cannot
+// claim success when the project tree is byte-identical to the approved tree.
+func TestVerifyRejectsNoPostApprovalChanges(t *testing.T) {
+	dir := newProjectWithFinding(t)
+	m, err := NewManager(dir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := m.Start(context.Background(), StartOptions{Policy: healthcheck.DefaultPolicy(), Scan: pipeline.ScanOptions{RunExternal: false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := drive(t, m, start)
+	if _, err := m.Approve(final.RunID, final.Result.FixableFindingIDs); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Verify(context.Background(), final.RunID, StartOptions{Policy: healthcheck.DefaultPolicy()}); err == nil || !strings.Contains(err.Error(), "no project changes after") {
+		t.Fatalf("verification error = %v, want no-post-approval-change rejection", err)
+	}
+	run, err := m.store.Open(final.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status() != runstore.StatusFixing {
+		t.Fatalf("rejected verification changed status to %s", run.Status())
 	}
 }
 
@@ -403,10 +469,12 @@ func TestDirectVsDeferredParity(t *testing.T) {
 		return fakeHostAnswer(msgs), llm.Usage{}, nil
 	})
 
-	// Direct path: the shared runner, exactly as `aitriage agent` uses it.
+	// Direct path: the shared runner, exactly as `aitriage agent` uses it. The
+	// deferred path forces the complete scanner orchestration, so the oracle must
+	// request the same coverage contract.
 	direct, err := pipeline.Run(context.Background(), pipeline.Options{
 		ProjectPath: canonical,
-		Scan:        pipeline.ScanOptions{RunExternal: false},
+		Scan:        pipeline.ScanOptions{RunExternal: true},
 		Policy:      AuditPolicy(dir),
 	}, mock)
 	if err != nil {
@@ -461,4 +529,51 @@ func openArtifact(t *testing.T, m *Manager, runID, name string) ([]byte, bool, e
 		t.Fatalf("open run: %v", err)
 	}
 	return run.ReadArtifact(name)
+}
+
+// TestScannerFailClosedAndCoverage proves the scanner execution contract: with
+// mandatory scanners unavailable, a full-required run fails closed BEFORE any AI
+// triage and records the manifest, while a non-required (native/dev) run records
+// "partial" coverage and still proceeds.
+func TestScannerFailClosedAndCoverage(t *testing.T) {
+	// Force all external scanners to be "missing" deterministically.
+	t.Setenv("PATH", "")
+
+	dir := newProjectWithFinding(t)
+	m, err := NewManager(dir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fail-closed: required full bundle, scanners missing → hard error, no triage.
+	_, err = m.Start(context.Background(), StartOptions{
+		Policy:              healthcheck.DefaultPolicy(),
+		RequireFullScanners: true,
+	})
+	if err == nil {
+		t.Fatal("full-required run must fail closed when mandatory scanners are missing")
+	}
+	if !strings.Contains(err.Error(), "scanner") {
+		t.Errorf("error should explain the missing scanner bundle, got: %v", err)
+	}
+
+	// Non-required (native/dev): records partial coverage and proceeds to triage.
+	start, err := m.Start(context.Background(), StartOptions{Policy: healthcheck.DefaultPolicy()})
+	if err != nil {
+		t.Fatalf("native run should proceed, got: %v", err)
+	}
+	if start.Pending == nil && start.Result == nil {
+		t.Fatal("native run should reach a pending request or a result")
+	}
+	// The run bundle records the scanner manifest with partial coverage.
+	run, err := m.store.Open(start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Manifest().ScannerCoverage != "partial" {
+		t.Errorf("coverage = %q, want partial (scanners missing)", run.Manifest().ScannerCoverage)
+	}
+	if len(run.Manifest().Scanners) == 0 {
+		t.Fatal("scanner execution manifest must be recorded even when scanners are missing")
+	}
 }

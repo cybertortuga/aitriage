@@ -33,6 +33,11 @@ fi
 
 # Agent-specific flags (not applicable to scan/fix/sbom).
 if [ "$CMD" = "agent" ]; then
+  # This entrypoint already runs inside the verified scanner image. Never ask
+  # the inner CLI to launch a second Docker container, but keep the fail-closed
+  # full-bundle contract enabled.
+  export AITRIAGE_RUNTIME=container
+  set -- "$@" --runtime native
   [ -n "$AITRIAGE_SUMMARY_FILE" ] && set -- "$@" --summary-out "$AITRIAGE_SUMMARY_FILE"
 fi
 

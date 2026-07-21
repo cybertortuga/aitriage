@@ -3,7 +3,7 @@ package prompts
 // SecureCoderPromptVersion is part of the deterministic verdict-cache namespace.
 // Bump it whenever the prompts or evidence contract change in a way that could
 // alter TP/FP/NR decisions.
-const SecureCoderPromptVersion = "securecoder-v1"
+const SecureCoderPromptVersion = "securecoder-v2"
 
 const (
 	PoCPromptVersion     = "poc-v1"
@@ -170,6 +170,10 @@ authorize suppression:
 - test_only: the finding is in a test path; evidence.file must name that path.
 - code_mitigation: evidence.file, evidence.line, and evidence.observed must
   point to a literal mitigation present in repository source.
+evidence.file must identify the exact same file as the finding. It may echo the
+finding's absolute in-project path (for example /workspace/project/app.py) or use
+a path relative to the scanned project. Never reference a file outside the
+scanned project. evidence.observed must be literal text from evidence.line.
 If you cannot provide one of those proofs, return Needs Manual Review instead.
 
 Return ONLY JSON with this exact shape (no prose, no markdown):

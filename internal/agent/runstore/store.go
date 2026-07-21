@@ -16,6 +16,7 @@ import (
 
 	"github.com/cybertortuga/aitriage/internal/agent/hostagent"
 	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
+	"github.com/cybertortuga/aitriage/internal/scanner/external"
 )
 
 // SchemaVersion is bumped only for incompatible run-bundle changes. Open()
@@ -114,6 +115,13 @@ type Manifest struct {
 	// ScanHash is the sha256 of the persisted (redacted) scan snapshot, checked on
 	// resume to detect tampering with the deterministic state input.
 	ScanHash string `json:"scan_hash,omitempty"`
+	// Scanners is the per-scanner execution manifest — proof of what actually ran.
+	// A full audit records completed/missing/failed/not_applicable for every
+	// mandatory scanner; it is never a silent skip.
+	Scanners []external.ScannerExecution `json:"scanners,omitempty"`
+	// ScannerCoverage is "full" only when every required external scanner
+	// completed (or was not_applicable); otherwise "partial".
+	ScannerCoverage string `json:"scanner_coverage,omitempty"`
 	// LastError is a redacted, safe description of the last failure, if any.
 	LastError string `json:"last_error,omitempty"`
 }
@@ -143,6 +151,9 @@ func NewStore(projectRoot string) (*Store, error) {
 	base := filepath.Join(resolved, runsDirName)
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		return nil, fmt.Errorf("create runs dir: %w", err)
+	}
+	if err := os.Chmod(base, 0o700); err != nil {
+		return nil, fmt.Errorf("secure runs dir: %w", err)
 	}
 	return &Store{
 		baseDir:         base,
@@ -350,6 +361,15 @@ func (r *Run) CacheDir() string { return r.manifest.CacheDir }
 func (r *Run) SetCacheDir(dir string) error {
 	return r.mutate(func() error {
 		r.manifest.CacheDir = dir
+		return r.writeManifest()
+	})
+}
+
+// SetScanners records the scanner execution manifest and coverage.
+func (r *Run) SetScanners(execs []external.ScannerExecution, coverage string) error {
+	return r.mutate(func() error {
+		r.manifest.Scanners = execs
+		r.manifest.ScannerCoverage = coverage
 		return r.writeManifest()
 	})
 }
@@ -663,9 +683,11 @@ func (r *Run) AppendAudit(ev AuditEvent) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
-		_, err = f.Write(append(line, '\n'))
-		return err
+		if _, err = f.Write(append(line, '\n')); err != nil {
+			_ = f.Close()
+			return err
+		}
+		return f.Close()
 	})
 }
 

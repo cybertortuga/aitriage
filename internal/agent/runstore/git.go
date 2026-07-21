@@ -6,9 +6,10 @@ import (
 )
 
 // CollectGitInfo gathers safe VCS context for a run manifest: the current
-// commit, whether the working tree is dirty, and a content-free tree
-// fingerprint. It is fail-soft — outside a git repository every field is simply
-// empty, which is a valid manifest state.
+// commit, whether the working tree is dirty, and a content-derived tree
+// fingerprint. The digest never stores or exposes raw file contents. It is
+// fail-soft — outside a git repository the commit fields are empty while the
+// tree fingerprint is still collected when the directory is readable.
 func CollectGitInfo(root string) GitInfo {
 	var info GitInfo
 	if out, err := gitOutput(root, "rev-parse", "HEAD"); err == nil {

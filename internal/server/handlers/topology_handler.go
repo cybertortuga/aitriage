@@ -20,7 +20,7 @@ type TopologyLink struct {
 }
 
 type TopologyResponse struct {
-	Ok    bool           `json:"ok"`
+	Ok    bool                        `json:"ok"`
 	Nodes []repositories.TopologyNode `json:"nodes"`
 	Links []repositories.TopologyLink `json:"links"`
 }
@@ -60,4 +60,3 @@ func (h *TopologyHandler) HandleGetTopology(w http.ResponseWriter, r *http.Reque
 		Links: links,
 	})
 }
-

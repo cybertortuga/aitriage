@@ -45,6 +45,7 @@ func TestProbeHost(t *testing.T) {
 	finding := probePort("127.0.0.1", p, "TestService", 1*time.Second)
 	if finding == nil {
 		t.Fatalf("Expected probePort to find the open port %d, got nil", p)
+		return
 	}
 
 	if finding.Port != p {

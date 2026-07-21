@@ -111,6 +111,11 @@ func BuildState(opts Options, rich llm.RichScanResult) *graph.AgentState {
 		rich = applyTarget(rich, opts.Target)
 	}
 
+	coverage := "partial"
+	if len(rich.MissingRequiredScanners()) == 0 {
+		coverage = "full"
+	}
+
 	return &graph.AgentState{
 		ProjectPath:        opts.ProjectPath,
 		DeepScan:           true,
@@ -125,6 +130,8 @@ func BuildState(opts Options, rich llm.RichScanResult) *graph.AgentState {
 		NFRFindings:        rich.NFR,
 		DeployFindings:     rich.Deploy,
 		NetworkFindings:    rich.Network,
+		ScannerExecutions:  rich.ScannerExecutions,
+		ScannerCoverage:    coverage,
 		SecurityScore:      rich.Report.SecurityScore,
 		SecurityGrade:      rich.Report.SecurityGrade,
 		Policy:             opts.Policy,

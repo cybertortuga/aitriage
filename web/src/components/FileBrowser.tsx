@@ -8,7 +8,7 @@ interface FileBrowserProps {
 
 export const FileBrowser: React.FC<FileBrowserProps> = ({ onSelect, onCancel }) => {
   const { t } = useTranslation('components');
-  const [path, setPath] = useState('/project');
+  const [path, setPath] = useState('.');
   const [entries, setEntries] = useState<{ name: string; is_dir: boolean; path: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +39,7 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({ onSelect, onCancel }) 
   };
 
   useEffect(() => {
-    fetchEntries('/project');
+    fetchEntries('.');
   }, []);
 
   const navigateUp = () => {

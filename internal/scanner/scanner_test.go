@@ -3,6 +3,7 @@ package scanner_test
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
@@ -27,6 +28,62 @@ func TestScanReturnsReport(t *testing.T) {
 	}
 	if len(report.Results) == 0 {
 		t.Error("Expected findings in the dummy project")
+	}
+}
+
+func TestScanExcludesTestMockFixtureAndSpecFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	testOnly := map[string]string{
+		"main_test.go":       "package main\nvar token = \"AKIAIOSFODNN7EXAMPLE\"\n",
+		"tests/test_auth.py": "api_key = 'sk-proj-123456789012345678901234567890'\n",
+		"fixtures/leaked.ts": "const token = 'ghp_abcdefghijklmnopqrstuvwxyz1234567890'\n",
+		"src/auth.spec.js": "const secret = 'xoxb-" +
+			"123456789012-123456789012-abcdefghijklmnopqrstuvwx'\n",
+	}
+	for name, content := range testOnly {
+		path := filepath.Join(tmpDir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "contest.go"), []byte("package main\nvar safe = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := scanner.Scan(context.Background(), tmpDir, scanner.ScanOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, finding := range report.Results {
+		if finding.File != "" {
+			t.Fatalf("test-like source produced finding %s in %s", finding.ID, finding.File)
+		}
+	}
+}
+
+func TestScanProductionSubstringNamesRemainInScope(t *testing.T) {
+	tmpDir := t.TempDir()
+	for _, name := range []string{"contest.go", "latest.py"} {
+		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte("api_key = \"AKIAIOSFODNN7EXAMPLE\"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	report, err := scanner.Scan(context.Background(), tmpDir, scanner.ScanOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, finding := range report.Results {
+		found[filepath.Base(finding.File)] = true
+	}
+	for _, name := range []string{"contest.go", "latest.py"} {
+		if !found[name] {
+			t.Fatalf("production file %s was incorrectly excluded", name)
+		}
 	}
 }
 

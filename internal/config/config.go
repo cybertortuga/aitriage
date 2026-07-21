@@ -110,7 +110,14 @@ func LoadConfig(rootPath string) *Config {
 func applyEnvLLMConfig(llm *LLMConfig) {
 	// API key env overrides (only if not set in yaml)
 	if llm.APIKey == "" {
-		for _, env := range []string{"GEMINI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"} {
+		// Generic container-safe handoff. The host CLI forwards only this name to
+		// Docker; the secret value never appears in docker argv.
+		if v := os.Getenv("AITRIAGE_LLM_API_KEY"); v != "" {
+			llm.APIKey = v
+		}
+	}
+	if llm.APIKey == "" {
+		for _, env := range []string{"GEMINI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY"} {
 			if v := os.Getenv(env); v != "" {
 				llm.APIKey = v
 				// Auto-set provider if not specified
@@ -122,6 +129,8 @@ func applyEnvLLMConfig(llm *LLMConfig) {
 						llm.Provider = "anthropic"
 					case "OPENAI_API_KEY":
 						llm.Provider = "openai"
+					case "GROQ_API_KEY":
+						llm.Provider = "groq"
 					}
 				}
 				break

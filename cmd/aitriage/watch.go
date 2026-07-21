@@ -74,7 +74,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create watcher: %w", err)
 	}
-	defer watcher.Close()
+	defer func() { _ = watcher.Close() }()
 
 	// Walk and add all directories (fsnotify watches dirs, not files)
 	dirCount := 0
@@ -117,10 +117,10 @@ func runWatch(cmd *cobra.Command, args []string) error {
 
 	// Debounce timer
 	var (
-		mu         sync.Mutex
-		pending    = make(map[string]bool)
-		debounceMs = time.Duration(watchDebounce) * time.Millisecond
-		timer      *time.Timer
+		mu               sync.Mutex
+		pending          = make(map[string]bool)
+		debounceDuration = time.Duration(watchDebounce) * time.Millisecond
+		timer            *time.Timer
 	)
 
 	// Signal handling for graceful shutdown
@@ -154,7 +154,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 			if timer != nil {
 				timer.Stop()
 			}
-			timer = time.AfterFunc(debounceMs, func() {
+			timer = time.AfterFunc(debounceDuration, func() {
 				mu.Lock()
 				files := make([]string, 0, len(pending))
 				for f := range pending {

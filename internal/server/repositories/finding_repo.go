@@ -99,7 +99,7 @@ func (r *FindingRepository) BulkCreate(ctx context.Context, findings []models.Fi
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, f := range findings {
 		if f.Status == "" {
@@ -161,7 +161,7 @@ func (r *FindingRepository) List(ctx context.Context, engagementID int64) ([]mod
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var findings []models.Finding
 	for rows.Next() {
@@ -190,7 +190,7 @@ func (r *FindingRepository) ListByProductID(ctx context.Context, productID int64
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var findings []models.Finding
 	for rows.Next() {
@@ -217,7 +217,7 @@ func (r *FindingRepository) ListAll(ctx context.Context) ([]models.Finding, erro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var findings []models.Finding
 	for rows.Next() {

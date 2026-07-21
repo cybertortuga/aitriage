@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // ── Codex TOML ───────────────────────────────────────────────────────────────
@@ -17,11 +19,28 @@ func TestTomlSetServerOnEmpty(t *testing.T) {
 	if !strings.Contains(got, "[mcp_servers.aitriage]") {
 		t.Fatalf("missing header:\n%s", got)
 	}
-	if !strings.Contains(got, `"serve", "--profile", "safe", "--scan-root", "/proj"`) {
+	if !strings.Contains(got, `"serve", "--runtime", "container", "--profile", "safe", "--scan-root", "/proj"`) {
 		t.Fatalf("missing safe args:\n%s", got)
 	}
 	if !strings.Contains(got, "enabled = true") {
 		t.Fatalf("project-local install must override a disabled user-level entry:\n%s", got)
+	}
+}
+
+func TestClientInstallersDefaultToContainerRuntime(t *testing.T) {
+	for _, cmd := range []*cobra.Command{installCodexCmd, installClaudeCodeCmd} {
+		flag := cmd.Flags().Lookup("runtime")
+		if flag == nil || flag.DefValue != "container" {
+			t.Fatalf("%s --runtime default = %v, want container", cmd.Name(), flag)
+		}
+	}
+
+	previous := clientRuntime
+	clientRuntime = "native"
+	t.Cleanup(func() { clientRuntime = previous })
+	got := strings.Join(safeProfileArgs("/proj"), " ")
+	if !strings.Contains(got, "--runtime native") {
+		t.Fatalf("explicit native opt-in lost: %s", got)
 	}
 }
 
@@ -122,6 +141,11 @@ func TestManagedAgentContractPreservesProjectInstructions(t *testing.T) {
 	if !strings.Contains(once, original) || strings.Count(once, agentContractBegin) != 1 {
 		t.Fatalf("project instructions were lost or contract missing:\n%s", once)
 	}
+	for _, required := range []string{"aitriage_run_approve", "FIRST action", "before planning or editing anything", "status=fixing and fix_context"} {
+		if !strings.Contains(once, required) {
+			t.Errorf("managed contract missing approval-ordering rule %q", required)
+		}
+	}
 	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o640 {
 		t.Fatalf("AGENTS.md mode changed: info=%v err=%v", info, err)
 	}
@@ -143,16 +167,43 @@ func TestManagedAgentContractPreservesProjectInstructions(t *testing.T) {
 	}
 }
 
+func TestEnsureGitignoreEntryPreservesContentAndIsIdempotent(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".gitignore")
+	if err := os.WriteFile(path, []byte("node_modules/\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := ensureGitignoreEntry(root, reportsGitignoreEntry)
+	if err != nil || !changed {
+		t.Fatalf("first ensure changed=%v err=%v", changed, err)
+	}
+	changed, err = ensureGitignoreEntry(root, reportsGitignoreEntry)
+	if err != nil || changed {
+		t.Fatalf("second ensure changed=%v err=%v", changed, err)
+	}
+	content := readConfig(t, path)
+	if content != "node_modules/\n/aitriage-reports/\n" {
+		t.Fatalf("unexpected .gitignore:\n%s", content)
+	}
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o640 {
+		t.Fatalf(".gitignore mode changed: info=%v err=%v", info, err)
+	}
+}
+
 func TestCodexInstallAddsAgentContract(t *testing.T) {
-	prev := clientUninstall
-	clientUninstall = false
-	t.Cleanup(func() { clientUninstall = prev })
+	prevUninstall, prevRuntime := clientUninstall, clientRuntime
+	clientUninstall, clientRuntime = false, "container"
+	t.Cleanup(func() { clientUninstall, clientRuntime = prevUninstall, prevRuntime })
 
 	root := t.TempDir()
 	if err := runInstallCodex(nil, []string{root}); err != nil {
 		t.Fatal(err)
 	}
 	agents := readConfig(t, filepath.Join(root, "AGENTS.md"))
+	config := readConfig(t, filepath.Join(root, ".codex", "config.toml"))
+	if !strings.Contains(config, `"--runtime", "container"`) {
+		t.Fatalf("default installer did not create container-backed MCP config:\n%s", config)
+	}
 	for _, want := range []string{agentContractBegin, "aitriage_run_start", "never fall back to raw", agentContractEnd} {
 		if !strings.Contains(agents, want) {
 			t.Fatalf("managed AGENTS.md missing %q:\n%s", want, agents)
@@ -165,6 +216,30 @@ func TestCodexInstallAddsAgentContract(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("installer-created AGENTS.md should be removed on uninstall (err=%v)", err)
+	}
+}
+
+func TestCodexReinstallMigratesNativeEntryToContainer(t *testing.T) {
+	previousUninstall, previousRuntime := clientUninstall, clientRuntime
+	clientUninstall, clientRuntime = false, "container"
+	t.Cleanup(func() { clientUninstall, clientRuntime = previousUninstall, previousRuntime })
+
+	root := t.TempDir()
+	configPath := filepath.Join(root, ".codex", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := codexServerBlock(mcpServerName, "/old/aitriage", []string{"serve", "--runtime", "native", "--profile", "safe", "--scan-root", root})
+	if err := os.WriteFile(configPath, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runInstallCodex(nil, []string{root}); err != nil {
+		t.Fatal(err)
+	}
+	updated := readConfig(t, configPath)
+	if strings.Contains(updated, `"--runtime", "native"`) || !strings.Contains(updated, `"--runtime", "container"`) {
+		t.Fatalf("native entry was not migrated:\n%s", updated)
 	}
 }
 

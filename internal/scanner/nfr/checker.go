@@ -22,15 +22,18 @@ var (
 )
 
 type Rule struct {
-	ID            string   `yaml:"id"`
-	Name          string   `yaml:"name"`
-	Severity      string   `yaml:"severity"`
-	Message       string   `yaml:"message"`
-	Advice        string   `yaml:"advice"`
-	Check         string   `yaml:"check"`   // "file_contains" | "file_exists" | "file_not_exists"
-	Pattern       string   `yaml:"pattern"` // regex for file_contains
-	Files         []string `yaml:"files"`   // glob patterns of files to check
-	compiledRegex *regexp.Regexp
+	ID                     string   `yaml:"id"`
+	Name                   string   `yaml:"name"`
+	Severity               string   `yaml:"severity"`
+	Message                string   `yaml:"message"`
+	Advice                 string   `yaml:"advice"`
+	Check                  string   `yaml:"check"`   // "file_contains" | "file_exists" | "file_not_exists"
+	Pattern                string   `yaml:"pattern"` // regex for file_contains
+	Files                  []string `yaml:"files"`   // basename globs to inspect recursively
+	AppliesPattern         string   `yaml:"applies_pattern"`
+	AppliesFiles           []string `yaml:"applies_files"`
+	compiledRegex          *regexp.Regexp
+	compiledAppliesPattern *regexp.Regexp
 }
 
 func getRules() ([]Rule, error) {
@@ -60,6 +63,12 @@ func getRules() ([]Rule, error) {
 					re, err := regexp.Compile(rules[i].Pattern)
 					if err == nil {
 						rules[i].compiledRegex = re
+					}
+				}
+				if rules[i].AppliesPattern != "" {
+					re, err := regexp.Compile(rules[i].AppliesPattern)
+					if err == nil {
+						rules[i].compiledAppliesPattern = re
 					}
 				}
 			}
@@ -106,6 +115,10 @@ func CheckNFR(projectPath string) ([]NFRFinding, error) {
 }
 
 func evaluateRule(projectPath string, rule Rule) (bool, error) {
+	applies, err := ruleApplies(projectPath, rule)
+	if err != nil || !applies {
+		return false, err
+	}
 	switch rule.Check {
 	case "file_contains":
 		var re *regexp.Regexp
@@ -119,23 +132,23 @@ func evaluateRule(projectPath string, rule Rule) (bool, error) {
 			}
 		}
 
-		found := false
-		for _, glob := range rule.Files {
-			matches, _ := filepath.Glob(filepath.Join(projectPath, "**", glob))
-			matches2, _ := filepath.Glob(filepath.Join(projectPath, glob))
-			matches = append(matches, matches2...)
-			for _, path := range matches {
-				data, err := os.ReadFile(path)
-				if err != nil {
-					continue
-				}
-				if re.Match(data) {
-					found = true
-					break
-				}
+		matches, err := matchingFiles(projectPath, rule.Files)
+		if err != nil {
+			return false, err
+		}
+		if len(matches) == 0 {
+			return false, nil
+		}
+		for _, path := range matches {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			if re.Match(data) {
+				return false, nil
 			}
 		}
-		return !found, nil // NFR violated if pattern is NOT found
+		return true, nil // NFR violated if pattern is NOT found
 	case "file_exists":
 		_, err := os.Stat(filepath.Join(projectPath, rule.Pattern))
 		return os.IsNotExist(err), nil // violated if file does NOT exist
@@ -145,6 +158,61 @@ func evaluateRule(projectPath string, rule Rule) (bool, error) {
 	default:
 		return false, nil
 	}
+}
+
+func ruleApplies(projectPath string, rule Rule) (bool, error) {
+	if rule.AppliesPattern == "" {
+		return true, nil
+	}
+	re := rule.compiledAppliesPattern
+	if re == nil {
+		var err error
+		re, err = regexp.Compile(rule.AppliesPattern)
+		if err != nil {
+			return false, err
+		}
+	}
+	files := rule.AppliesFiles
+	if len(files) == 0 {
+		files = rule.Files
+	}
+	matches, err := matchingFiles(projectPath, files)
+	if err != nil {
+		return false, err
+	}
+	for _, path := range matches {
+		data, err := os.ReadFile(path)
+		if err == nil && re.Match(data) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func matchingFiles(projectPath string, globs []string) ([]string, error) {
+	var matches []string
+	err := filepath.WalkDir(projectPath, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", ".aitriage", "aitriage-reports", "node_modules", "vendor", "dist", "build", ".next":
+				if path != projectPath {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+		for _, glob := range globs {
+			if ok, matchErr := filepath.Match(glob, entry.Name()); matchErr == nil && ok {
+				matches = append(matches, path)
+				break
+			}
+		}
+		return nil
+	})
+	return matches, err
 }
 
 // GetAllRulesAsText returns all NFR rules serialized as text for LLM consumption

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime/debug"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -14,10 +16,57 @@ import (
 // Falls back to "dev" for local builds.
 var Version = "dev"
 
+func init() {
+	// `go install module@version` does not apply our release ldflags, but Go
+	// records the selected module version in build info.  Recover it here so
+	// that the host CLI resolves the matching immutable container image instead
+	// of falling back to the rolling development tag.
+	if Version == "dev" {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			Version = resolvedBuildVersion(Version, info.Main.Version)
+		}
+	}
+}
+
+func resolvedBuildVersion(linkedVersion, moduleVersion string) string {
+	if strings.TrimSpace(linkedVersion) != "" && linkedVersion != "dev" {
+		return linkedVersion
+	}
+
+	moduleVersion = strings.TrimSpace(moduleVersion)
+	if !isExactModuleVersion(moduleVersion) {
+		return "dev"
+	}
+	return moduleVersion
+}
+
+func isExactModuleVersion(version string) bool {
+	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // ErrPolicyViolation is returned when the security policy gate fails.
 // Commands should return this instead of calling os.Exit(1) directly,
 // so that defers run and the error is testable.
 var ErrPolicyViolation = errors.New("security policy violation: see blocking reasons above")
+
+// errSilentExit signals a non-zero exit whose user-facing message was already
+// rendered (e.g. setup failures). Execute exits 1 without printing anything more.
+var errSilentExit = errors.New("")
 
 var rootCmd = &cobra.Command{
 	Use:   "aitriage [path]",
@@ -51,8 +100,8 @@ Running "aitriage" without a subcommand is equivalent to "aitriage scan .".`,
 // Execute adds all child commands to the root command and sets flags appropriately.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		if errors.Is(err, ErrPolicyViolation) {
-			// Policy failure already printed by printPolicyFailure.
+		if errors.Is(err, ErrPolicyViolation) || errors.Is(err, errSilentExit) {
+			// Message already printed by the command; just exit non-zero.
 			os.Exit(1)
 		}
 		fmt.Fprintln(os.Stderr, err)

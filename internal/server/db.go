@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
@@ -292,12 +294,20 @@ func InitDB(dbPath string) (*sql.DB, error) {
 	}
 
 	if err := db.Ping(); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	// 1. Create tables
 	if err := RunMigrations(db); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
+	}
+	if dbPath != ":memory:" && !strings.HasPrefix(dbPath, "file:") {
+		if err := os.Chmod(dbPath, 0o600); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("secure database file: %w", err)
+		}
 	}
 
 	// 2. Add stack column to findings if it doesn't exist (Migration)
@@ -314,7 +324,11 @@ func InitDB(dbPath string) (*sql.DB, error) {
 	// 2b. Patch old engine_llm_model to gemini-2.5-flash
 	_, _ = db.Exec("UPDATE system_config SET config_val = 'gemini-2.5-flash' WHERE config_key = 'engine_llm_model' AND config_val = 'gemini-2.0-flash'")
 
-	if err := migrateUsersJson(db); err != nil {
+	legacyUsersPath := ""
+	if dbPath != ":memory:" && !strings.HasPrefix(dbPath, "file:") {
+		legacyUsersPath = filepath.Join(filepath.Dir(dbPath), "users.json")
+	}
+	if err := migrateUsersJSON(db, legacyUsersPath); err != nil {
 		log.Printf("Warning: failed to migrate users.json: %v\n", err)
 	}
 
@@ -384,9 +398,11 @@ type oldUser struct {
 	IsAdmin  bool   `json:"is_admin"`
 }
 
-func migrateUsersJson(db *sql.DB) error {
-	usersFile := "users.json"
-	migratedFile := "users.json.migrated"
+func migrateUsersJSON(db *sql.DB, usersFile string) error {
+	if usersFile == "" {
+		return nil
+	}
+	migratedFile := usersFile + ".migrated"
 
 	data, err := os.ReadFile(usersFile)
 	if err != nil {

@@ -33,11 +33,13 @@ type AgentState struct {
 	LLMDisableThinking bool
 
 	// Deterministic Go findings
-	CoreFindings     []core.CheckResult
-	ExternalFindings []external.UnifiedFinding
-	NFRFindings      []nfr.NFRFinding
-	DeployFindings   []deployaudit.DeployFinding
-	NetworkFindings  []network.NetworkFinding
+	CoreFindings      []core.CheckResult
+	ExternalFindings  []external.UnifiedFinding
+	NFRFindings       []nfr.NFRFinding
+	DeployFindings    []deployaudit.DeployFinding
+	NetworkFindings   []network.NetworkFinding
+	ScannerExecutions []external.ScannerExecution
+	ScannerCoverage   string
 
 	SecurityScore int
 	SecurityGrade string
@@ -84,16 +86,25 @@ type AgentState struct {
 
 // EnrichedFinding is a unified representation of any finding with its source snippet attached.
 type EnrichedFinding struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"` // "core", "external", "nfr", "deploy", "network"
-	Source    string `json:"source,omitempty"`
-	Severity  string `json:"severity"`
-	File      string `json:"file,omitempty"`
-	Line      int    `json:"line,omitempty"`
-	Message   string `json:"message"`
-	Snippet   string `json:"code_snippet,omitempty"`
-	ExtraData string `json:"extra_data,omitempty"`
-	VulnID    string `json:"vuln_id,omitempty"` // CS-XXX-NNN format
+	ID        string          `json:"id"`
+	Type      string          `json:"type"` // "core", "external", "nfr", "deploy", "network"
+	Source    string          `json:"source,omitempty"`
+	Severity  string          `json:"severity"`
+	File      string          `json:"file,omitempty"`
+	Line      int             `json:"line,omitempty"`
+	Message   string          `json:"message"`
+	Snippet   string          `json:"code_snippet,omitempty"`
+	ExtraData string          `json:"extra_data,omitempty"`
+	Origins   []FindingOrigin `json:"origins,omitempty"`
+	VulnID    string          `json:"vuln_id,omitempty"` // CS-XXX-NNN format
+}
+
+// FindingOrigin keeps every scanner/rule that corroborated a semantic issue.
+// Deduplication reduces user-visible issue count without losing provenance.
+type FindingOrigin struct {
+	Type   string `json:"type"`
+	Source string `json:"source"`
+	RuleID string `json:"rule_id"`
 }
 
 // ── SecureCoder Threat Model Types ───────────────────────────────────────────

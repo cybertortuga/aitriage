@@ -29,11 +29,11 @@ var (
 )
 
 type WizLoginSession struct {
-	Status          string    `json:"status"` // "starting", "prompt", "success", "failed"
-	UserCode        string    `json:"userCode"`
-	VerificationURL string    `json:"verificationUrl"`
-	Error           string    `json:"error,omitempty"`
-	Completed       bool      `json:"completed"`
+	Status          string `json:"status"` // "starting", "prompt", "success", "failed"
+	UserCode        string `json:"userCode"`
+	VerificationURL string `json:"verificationUrl"`
+	Error           string `json:"error,omitempty"`
+	Completed       bool   `json:"completed"`
 	cmd             *exec.Cmd
 }
 
@@ -49,19 +49,20 @@ func EnsureWizCLI(ctx context.Context) (string, error) {
 	// Determine download URL
 	arch := runtime.GOARCH
 	var url string
-	if runtime.GOOS == "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
 		if arch == "arm64" {
 			url = "https://downloads.wiz.io/v1/wizcli/latest/wizcli-darwin-arm64"
 		} else {
 			url = "https://downloads.wiz.io/v1/wizcli/latest/wizcli-darwin-amd64"
 		}
-	} else if runtime.GOOS == "linux" {
+	case "linux":
 		if arch == "arm64" {
 			url = "https://downloads.wiz.io/v1/wizcli/latest/wizcli-linux-arm64"
 		} else {
 			url = "https://downloads.wiz.io/v1/wizcli/latest/wizcli-linux-amd64"
 		}
-	} else {
+	default:
 		return "", fmt.Errorf("unsupported OS: %s", runtime.GOOS)
 	}
 
@@ -84,7 +85,7 @@ func EnsureWizCLI(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("download request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("server returned status %d", resp.StatusCode)
@@ -94,10 +95,12 @@ func EnsureWizCLI(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create file: %w", err)
 	}
-	defer out.Close()
-
 	if _, err := io.Copy(out, resp.Body); err != nil {
+		_ = out.Close()
 		return "", fmt.Errorf("failed to save binary: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		return "", fmt.Errorf("finalize downloaded binary: %w", err)
 	}
 
 	return wizBinaryPath, nil
@@ -216,8 +219,8 @@ func StartWizAuth(ctx context.Context) (*WizLoginSession, error) {
 	// Background reader for stdout
 	go func() {
 		defer func() {
-			os.RemoveAll(tmpDir)
-			os.Remove(tmpJSON)
+			_ = os.RemoveAll(tmpDir)
+			_ = os.Remove(tmpJSON)
 		}()
 
 		reader := bufio.NewReader(stdoutPipe)
@@ -285,7 +288,7 @@ func RunWizScan(ctx context.Context, dir string) ([]UnifiedFinding, error) {
 	}
 
 	tmpJSON := filepath.Join(os.TempDir(), fmt.Sprintf("wiz-scan-%d.json", time.Now().UnixNano()))
-	defer os.Remove(tmpJSON)
+	defer func() { _ = os.Remove(tmpJSON) }()
 
 	// Spawns Wiz CLI scan
 	cmd := exec.CommandContext(ctx, binary, "scan", "dir", dir,
@@ -315,8 +318,10 @@ func RunWizScan(ctx context.Context, dir string) ([]UnifiedFinding, error) {
 	var result struct {
 		Result struct {
 			SAST []struct {
-				ID          string `json:"id"`
-				Rule        *struct{ ID string `json:"id"` } `json:"rule"`
+				ID   string `json:"id"`
+				Rule *struct {
+					ID string `json:"id"`
+				} `json:"rule"`
 				Name        string `json:"name"`
 				Description string `json:"description"`
 				Severity    string `json:"severity"`

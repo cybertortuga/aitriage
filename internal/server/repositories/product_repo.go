@@ -65,7 +65,7 @@ func (r *ProductRepository) List(ctx context.Context, userID int64, globalRole s
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var products []models.Product
 	for rows.Next() {
@@ -114,7 +114,7 @@ func (r *ProductRepository) GetMembers(ctx context.Context, productID int64) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var members []models.ProductMember
 	for rows.Next() {
@@ -168,7 +168,7 @@ func (r *ProductRepository) ListProductTypes(ctx context.Context) ([]models.Prod
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var pts []models.ProductType
 	for rows.Next() {

@@ -32,7 +32,7 @@ func (r *TopologyRepository) List() ([]TopologyNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var nodes []TopologyNode
 	for rows.Next() {
@@ -62,7 +62,7 @@ func (r *TopologyRepository) ListLinks() ([]TopologyLink, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var links []TopologyLink
 	for rows.Next() {

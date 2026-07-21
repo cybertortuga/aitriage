@@ -40,7 +40,7 @@ func (r *AuditRepository) List(ctx context.Context, entityType string, limit, of
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var logs []models.AuditLog
 	for rows.Next() {

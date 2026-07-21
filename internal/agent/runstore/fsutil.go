@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -100,12 +101,18 @@ var skipTreeDirs = map[string]bool{
 	"node_modules":     true,
 	"vendor":           true,
 	".venv":            true,
+	".pytest_cache":    true,
+	"__pycache__":      true,
+	".mypy_cache":      true,
+	".ruff_cache":      true,
 }
 
 // TreeFingerprint returns a stable digest of the working tree derived from
-// relative paths, sizes, and modification times — never file contents. It is
-// used to detect drift between approval and fix, so it does not need to be a
-// content hash and stays cheap on large repositories.
+// relative paths, file types, permission bits, symlink targets and content
+// hashes. It never stores file contents. Content identity is required here:
+// size/mtime metadata can be preserved while bytes change, which would let a
+// source edit happen before the recorded approval without being detected.
+// Symlinks are hashed as links and are never followed outside the project.
 func TreeFingerprint(root string) (string, error) {
 	abs, err := filepath.Abs(root)
 	if err != nil {
@@ -126,11 +133,38 @@ func TreeFingerprint(root string) (string, error) {
 		if rerr != nil {
 			return rerr
 		}
+		rel = filepath.ToSlash(rel)
 		info, ierr := d.Info()
 		if ierr != nil {
 			return ierr
 		}
-		entries = append(entries, fmt.Sprintf("%s|%d|%d", rel, info.Size(), info.ModTime().UnixNano()))
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, rerr := os.Readlink(p)
+			if rerr != nil {
+				return rerr
+			}
+			entries = append(entries, fmt.Sprintf("%s|symlink|%s", rel, target))
+			return nil
+		}
+		if !info.Mode().IsRegular() {
+			entries = append(entries, fmt.Sprintf("%s|%s", rel, info.Mode().String()))
+			return nil
+		}
+
+		file, oerr := os.Open(p)
+		if oerr != nil {
+			return oerr
+		}
+		fileHash := sha256.New()
+		_, copyErr := io.Copy(fileHash, file)
+		closeErr := file.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		entries = append(entries, fmt.Sprintf("%s|file|%04o|%s", rel, info.Mode().Perm(), hex.EncodeToString(fileHash.Sum(nil))))
 		return nil
 	})
 	if err != nil {

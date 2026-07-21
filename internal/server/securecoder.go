@@ -28,6 +28,7 @@ import (
 
 func (s *Server) handleSecureCoderConfig(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	//nolint:staticcheck // Explicit GET/POST branches mirror the compatibility API contract.
 	if r.Method == http.MethodGet {
 		enabledStr, _ := s.configRepo.Get(ctx, "securecoder_enabled")
 		backendStr, _ := s.configRepo.Get(ctx, "securecoder_scanner_backend")
@@ -170,9 +171,10 @@ func (s *Server) handleSecureCoderScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	containerPath := req.FilePath
-	if s.hostPrefix != "" && !strings.HasPrefix(req.FilePath, s.hostPrefix) {
-		containerPath = filepath.Join(s.hostPrefix, req.FilePath)
+	containerPath, err := s.resolveProjectPath(req.FilePath)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusForbidden)
+		return
 	}
 
 	slog.Info("SecureCoder scan requested", "filePath", req.FilePath, "full", containerPath)
@@ -302,6 +304,7 @@ func (s *Server) handleSecureCoderIgnore(w http.ResponseWriter, r *http.Request)
 // ── GET /api/securecoder/ignored ─────────────────────────────────────────────
 
 func (s *Server) handleSecureCoderIgnored(w http.ResponseWriter, r *http.Request) {
+	//nolint:staticcheck // Explicit GET/non-GET branches keep response handling adjacent.
 	if r.Method == http.MethodGet {
 		entries, err := s.ignoreRepo.List(r.Context())
 		if err != nil {
@@ -411,7 +414,7 @@ func (s *Server) handleSecureCoderDepScan(w http.ResponseWriter, r *http.Request
 	}
 
 	var req struct {
-		Registry string                     `json:"registry"`
+		Registry string                       `json:"registry"`
 		Packages []external.DepPackageRequest `json:"packages"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -484,9 +487,10 @@ func (s *Server) handleSecureCoderScanDirectory(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	containerPath := req.Path
-	if s.hostPrefix != "" && !strings.HasPrefix(req.Path, s.hostPrefix) {
-		containerPath = filepath.Join(s.hostPrefix, req.Path)
+	containerPath, err := s.resolveProjectPath(req.Path)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusForbidden)
+		return
 	}
 
 	ctx := r.Context()
@@ -602,6 +606,7 @@ func (s *Server) handleSecureCoderIgnoreFile(w http.ResponseWriter, r *http.Requ
 	ignoreDir := filepath.Join(os.Getenv("HOME"), ".securecoder")
 	ignorePath := filepath.Join(ignoreDir, ".securecoderignore")
 
+	//nolint:staticcheck // Explicit read/write branches keep filesystem effects obvious.
 	if r.Method == http.MethodGet {
 		if _, err := os.Stat(ignorePath); os.IsNotExist(err) {
 			w.Header().Set("Content-Type", "application/json")

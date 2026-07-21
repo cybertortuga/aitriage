@@ -95,15 +95,6 @@ rules:
     pattern: '(?i)(Security\(|\bRole\b|\bpermission\b|\bscope\b|is_admin|require_role|check_permission|get_current_active_user|CurrentUser|current_user)'
     suggestion: "HIGH: No authorization mechanisms found."
 
-  - id: FAST-VAL
-    name: "Missing Validation Schemas"
-    stack: fastapi
-    extensions: [".py"]
-    target: all
-    condition: "required_pattern"
-    pattern: '(?i)(BaseModel|from pydantic|pydantic\.v1|marshmallow|TypedDict|dataclass)'
-    suggestion: "HIGH: No Pydantic schemas found for input validation."
-
   - id: FAST-RATELIMIT
     name: "Missing Rate Limiting"
     stack: fastapi
@@ -113,42 +104,6 @@ rules:
     pattern: '(?i)(slowapi|Limiter)'
     suggestion: "HIGH: No rate limiter dependency."
 
-  - id: FAST-ERROR
-    name: "Missing Global Error Handling"
-    stack: fastapi
-    extensions: [".py"]
-    target: all
-    condition: "required_pattern"
-    pattern: '(?i)(exception_handler|add_exception_handler|HTTPException|RequestValidationError|AppBaseException)'
-    suggestion: "HIGH: No global exception handler registered."
-
-  - id: FAST-HEADERS
-    name: "Missing Security Headers"
-    stack: fastapi
-    extensions: [".py"]
-    target: all
-    condition: "required_pattern"
-    pattern: '(?i)(SecureHeaders|CORSMiddleware|TrustedHostMiddleware)'
-    suggestion: "MEDIUM: No security middleware found."
-
-  - id: FAST-CORS
-    name: "Missing CORS Policy"
-    stack: fastapi
-    extensions: [".py"]
-    target: all
-    condition: "required_pattern"
-    pattern: '(?i)(CORSMiddleware|add_middleware.*CORS|Access-Control-Allow-Origin|cors_origins|allow_origins)'
-    suggestion: "HIGH: No CORS policy configured."
-
-  - id: FAST-SECRETS
-    name: "Missing Secret Management"
-    stack: fastapi
-    extensions: [".py"]
-    target: all
-    condition: "required_pattern"
-    pattern: '(?i)(pydantic_settings|BaseSettings|SettingsConfigDict|load_dotenv|dotenv_values|python-decouple|dynaconf|os\.environ|os\.getenv)'
-    suggestion: "HIGH: No secret management found. Use pydantic-settings or python-dotenv."
-
   - id: FAST-ORM
     name: "Raw Database Access Without ORM"
     stack: fastapi
@@ -157,15 +112,6 @@ rules:
     pattern: '(?i)\b(sqlite3|psycopg|asyncpg|pymysql|mysql\.connector|pymongo|motor)\b'
     condition: "not_contains:sqlalchemy"
     suggestion: "HIGH: Database driver detected without an ORM. Use parameterized queries or an ORM; do not interpolate untrusted SQL."
-
-  - id: FAST-LOGGING
-    name: "Missing Security Logging"
-    stack: fastapi
-    extensions: [".py", ".txt", ".toml"]
-    target: raw
-    condition: "required_pattern"
-    pattern: '(?i)(loguru|logging|structlog)'
-    suggestion: "MEDIUM: Dedicated logging library missing."
 
   - id: FAST-CSRF
     name: "Missing CSRF Protection"

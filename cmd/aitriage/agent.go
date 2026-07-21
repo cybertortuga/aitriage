@@ -3,8 +3,14 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/cybertortuga/aitriage/internal/agent/graph"
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
@@ -12,6 +18,8 @@ import (
 	"github.com/cybertortuga/aitriage/internal/config"
 	"github.com/cybertortuga/aitriage/internal/healthpolicy"
 	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
+	rt "github.com/cybertortuga/aitriage/internal/runtime"
+	"github.com/cybertortuga/aitriage/internal/scanner/external"
 	"github.com/spf13/cobra"
 )
 
@@ -30,9 +38,12 @@ var (
 	agentFixSpecOut    string
 	agentSummaryOut    string
 	agentTriageOut     string
+	agentManifestOut   string
+	agentSARIFOut      string
 	agentFailOn        string
 	agentFailScore     int
 	agentHealthProfile string
+	agentRuntime       string
 )
 
 var agentCmd = &cobra.Command{
@@ -42,7 +53,7 @@ var agentCmd = &cobra.Command{
 a prioritized report, and produce an AI fix specification.
 
 The LLM provider is auto-detected from environment variables:
-  GEMINI_API_KEY    → Google Gemini (default model: gemini-2.0-flash)
+  GEMINI_API_KEY    → Google Gemini
   ANTHROPIC_API_KEY → Anthropic Claude
   OPENAI_API_KEY    → OpenAI GPT
 
@@ -72,17 +83,31 @@ func init() {
 	agentCmd.Flags().StringVar(&agentFixSpecOut, "fixspec-out", "", "Write the AI fix specification to this file (for CI/CD)")
 	agentCmd.Flags().StringVar(&agentSummaryOut, "summary-out", "", "Write the actionable summary (TP/NR only, no FP) to this file")
 	agentCmd.Flags().StringVar(&agentTriageOut, "triage-out", "", "Write the canonical JSON inventory of every triaged finding to this file (for CI/CD)")
+	agentCmd.Flags().StringVar(&agentManifestOut, "manifest-out", "", "Write scanner execution coverage and statuses to this JSON file")
+	agentCmd.Flags().StringVar(&agentSARIFOut, "sarif-out", "", "Write deterministic AITriage findings as SARIF")
 	agentCmd.Flags().StringVar(&agentFailOn, "fail-on", "never", "CI gate: exit 1 when 'critical' (active CRITICAL/HIGH after AI triage), 'any' finding, or 'never'")
 	agentCmd.Flags().IntVar(&agentFailScore, "fail-score", 0, "CI gate: exit 1 if the post-AI Health Check score is below this threshold (0 = disabled)")
 	agentCmd.Flags().StringVar(&agentHealthProfile, "health-profile", "", "Health Check policy profile: baseline, standard, strict")
+	agentCmd.Flags().StringVar(&agentRuntime, "runtime", "container", "Where to run: container (default, full scanner bundle) or native (development only)")
 }
 
 func runAgent(cmd *cobra.Command, args []string) error {
+	switch agentRuntime {
+	case "container", "":
+		return runAgentInContainer(cmd.Context(), cmd, args)
+	case "native":
+		return runAgentNative(cmd, args)
+	default:
+		return fmt.Errorf("unsupported agent runtime %q: use container or native", agentRuntime)
+	}
+}
+
+func runAgentNative(cmd *cobra.Command, args []string) error {
 	projectPath := "."
 	if len(args) > 0 {
 		projectPath = args[0]
 	}
-	ctx := context.Background()
+	ctx := cmd.Context()
 
 	// Load config
 	cfg := config.LoadConfig(projectPath)
@@ -144,6 +169,38 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "📡 Step 1/3: Scanning (parallel)...\n")
 
 	richResult := pipeline.Scan(ctx, opts)
+	missingScanners := richResult.MissingRequiredScanners()
+	coverage := "partial"
+	if len(missingScanners) == 0 {
+		coverage = "full"
+	}
+	if agentManifestOut != "" {
+		manifest := struct {
+			ScannerCoverage string                      `json:"scanner_coverage"`
+			Scanners        []external.ScannerExecution `json:"scanners"`
+		}{ScannerCoverage: coverage, Scanners: richResult.ScannerExecutions}
+		data, err := json.MarshalIndent(manifest, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(agentManifestOut, append(data, '\n'), 0o600); err != nil {
+			return fmt.Errorf("write scanner manifest: %w", err)
+		}
+	}
+	if agentSARIFOut != "" {
+		data, err := richResult.Report.ToSARIF()
+		if err != nil {
+			return fmt.Errorf("build SARIF: %w", err)
+		}
+		if err := os.WriteFile(agentSARIFOut, data, 0o600); err != nil {
+			return fmt.Errorf("write SARIF: %w", err)
+		}
+	}
+	if os.Getenv("AITRIAGE_RUNTIME") == "container" {
+		if len(missingScanners) > 0 {
+			return fmt.Errorf("full audit aborted: required scanner execution(s) did not complete: %s", strings.Join(missingScanners, ", "))
+		}
+	}
 
 	fmt.Fprintf(os.Stderr, "   ✓ AITriage: %d findings\n", len(richResult.Report.Results))
 	fmt.Fprintf(os.Stderr, "   ✓ External: %d findings\n", len(richResult.External))
@@ -173,19 +230,19 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Persist artifacts to files when requested (CI/CD consumes these).
 	if agentReportOut != "" {
-		if err := os.WriteFile(agentReportOut, []byte(state.ReportMarkdown), 0644); err != nil {
+		if err := os.WriteFile(agentReportOut, []byte(state.ReportMarkdown), 0o600); err != nil {
 			return fmt.Errorf("failed to write report to %s: %w", agentReportOut, err)
 		}
 		fmt.Fprintf(os.Stderr, "   ✓ Report written to %s\n", agentReportOut)
 	}
 	if agentFixSpecOut != "" {
-		if err := os.WriteFile(agentFixSpecOut, []byte(state.AIFixSpec), 0644); err != nil {
+		if err := os.WriteFile(agentFixSpecOut, []byte(state.AIFixSpec), 0o600); err != nil {
 			return fmt.Errorf("failed to write fix spec to %s: %w", agentFixSpecOut, err)
 		}
 		fmt.Fprintf(os.Stderr, "   ✓ Fix spec written to %s\n", agentFixSpecOut)
 	}
 	if agentSummaryOut != "" {
-		if err := os.WriteFile(agentSummaryOut, []byte(state.SummaryMarkdown), 0644); err != nil {
+		if err := os.WriteFile(agentSummaryOut, []byte(state.SummaryMarkdown), 0o600); err != nil {
 			return fmt.Errorf("failed to write summary to %s: %w", agentSummaryOut, err)
 		}
 		fmt.Fprintf(os.Stderr, "   ✓ Summary written to %s\n", agentSummaryOut)
@@ -228,6 +285,191 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		return ErrPolicyViolation
 	}
 	return nil
+}
+
+var agentEnvAllowlist = []string{
+	"AITRIAGE_LLM_API_KEY",
+	"AITRIAGE_LLM_PROVIDER",
+	"AITRIAGE_LLM_MODEL",
+	"AITRIAGE_LLM_BASE_URL",
+	"AITRIAGE_LLM_DISABLE_THINKING",
+	"AITRIAGE_LLM_TIMEOUT",
+	"AITRIAGE_BATCH_SIZE",
+	"GEMINI_API_KEY",
+	"GOOGLE_API_KEY",
+	"ANTHROPIC_API_KEY",
+	"OPENAI_API_KEY",
+	"GROQ_API_KEY",
+}
+
+func runAgentInContainer(ctx context.Context, cmd *cobra.Command, args []string) error {
+	if agentAPIKey != "" {
+		return fmt.Errorf("--api-key is not accepted in container mode because secrets must not appear in process arguments; set GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, or AITRIAGE_LLM_API_KEY in the environment")
+	}
+	if err := requireContainerRuntime(ctx); err != nil {
+		return err
+	}
+
+	project := "."
+	if len(args) > 0 {
+		project = args[0]
+	}
+	hostRoot, err := resolveProjectRoot([]string{project})
+	if err != nil {
+		return err
+	}
+	reports, err := ensureReportsDir(hostRoot)
+	if err != nil {
+		return err
+	}
+	cache, err := rt.EnsureScannerCacheDir()
+	if err != nil {
+		return err
+	}
+	if agentOutputsEmpty() {
+		runDir := filepath.Join(reports, newCLIRunID())
+		agentReportOut = filepath.Join(runDir, "report.md")
+		agentFixSpecOut = filepath.Join(runDir, "fixspec.md")
+		agentSummaryOut = filepath.Join(runDir, "summary.md")
+		agentTriageOut = filepath.Join(runDir, "triage-findings.json")
+		agentManifestOut = filepath.Join(runDir, "manifest.json")
+		agentSARIFOut = filepath.Join(runDir, "aitriage.sarif")
+		fmt.Fprintf(os.Stderr, "AITriage artifacts: %s\n", runDir)
+	}
+
+	inner, err := agentContainerCommandArgs(hostRoot)
+	if err != nil {
+		return err
+	}
+	name := managedContainerName("agent")
+	dockerArgs := rt.DockerRunArgs(rt.RunSpec{
+		Image:       rt.ResolveImage(Version),
+		Name:        name,
+		User:        rt.HostUser(),
+		HostRoot:    hostRoot,
+		ReportsDir:  reports,
+		CacheDir:    cache,
+		Interactive: !agentNoChat,
+		TTY:         false,
+		EnvPassed:   agentEnvAllowlist,
+		EnvSet: []string{
+			"AITRIAGE_RUNTIME=container",
+			"AITRIAGE_CACHE_DIR=/workspace/aitriage-reports/cache",
+		},
+		Argv: inner,
+	})
+
+	return runManagedContainer(ctx, dockerArgs, name)
+}
+
+// agentContainerCommandArgs reproduces the public agent flags for the native
+// inner process. Secret values are intentionally absent; only allowlisted env
+// names are forwarded by DockerRunArgs.
+func agentContainerCommandArgs(hostRoot string) ([]string, error) {
+	args := []string{"agent", "--runtime", "native"}
+	appendStringFlag := func(name, value string) {
+		if value != "" {
+			args = append(args, name, value)
+		}
+	}
+	appendStringFlag("--provider", agentProvider)
+	appendStringFlag("--model", agentModel)
+	if agentNoChat {
+		args = append(args, "--no-chat")
+	}
+	appendStringFlag("--output", agentOutput)
+	appendStringFlag("--probe", agentProbe)
+	if agentFullScan {
+		args = append(args, "--full-scan")
+	}
+	appendStringFlag("--rule-id", agentRuleID)
+	if agentTargetFile != "" {
+		mapped, err := containerProjectPath(hostRoot, agentTargetFile)
+		if err != nil {
+			return nil, fmt.Errorf("target file: %w", err)
+		}
+		appendStringFlag("--file", mapped)
+	}
+	if agentTargetLine > 0 {
+		args = append(args, "--line", fmt.Sprint(agentTargetLine))
+	}
+
+	for _, output := range []struct {
+		name string
+		path string
+	}{
+		{"--report-out", agentReportOut},
+		{"--fixspec-out", agentFixSpecOut},
+		{"--summary-out", agentSummaryOut},
+		{"--triage-out", agentTriageOut},
+		{"--manifest-out", agentManifestOut},
+		{"--sarif-out", agentSARIFOut},
+	} {
+		if output.path == "" {
+			continue
+		}
+		mapped, err := containerReportPath(hostRoot, output.path)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", output.name, err)
+		}
+		appendStringFlag(output.name, mapped)
+	}
+	appendStringFlag("--fail-on", agentFailOn)
+	if agentFailScore > 0 {
+		args = append(args, "--fail-score", fmt.Sprint(agentFailScore))
+	}
+	appendStringFlag("--health-profile", agentHealthProfile)
+	args = append(args, ".")
+	return args, nil
+}
+
+func agentOutputsEmpty() bool {
+	return agentReportOut == "" && agentFixSpecOut == "" && agentSummaryOut == "" &&
+		agentTriageOut == "" && agentManifestOut == "" && agentSARIFOut == ""
+}
+
+func newCLIRunID() string {
+	var suffix [4]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return "run-" + time.Now().UTC().Format("20060102T150405") + "-cli"
+	}
+	return "run-" + time.Now().UTC().Format("20060102T150405") + "-" + hex.EncodeToString(suffix[:])
+}
+
+func containerProjectPath(hostRoot, path string) (string, error) {
+	return rt.ContainerScanRoot(hostRoot, path)
+}
+
+func containerReportPath(hostRoot, path string) (string, error) {
+	abs := path
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(hostRoot, abs)
+	}
+	abs = filepath.Clean(abs)
+	reports := filepath.Join(hostRoot, "aitriage-reports")
+	rel, err := filepath.Rel(reports, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("output must be inside %s", reports)
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o700); err != nil {
+		return "", err
+	}
+	resolvedReports, err := filepath.EvalSymlinks(reports)
+	if err != nil {
+		return "", err
+	}
+	resolvedParent, err := filepath.EvalSymlinks(filepath.Dir(abs))
+	if err != nil {
+		return "", err
+	}
+	parentRel, err := filepath.Rel(resolvedReports, resolvedParent)
+	if err != nil || parentRel == ".." || strings.HasPrefix(parentRel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("output path escapes %s through a symlink", reports)
+	}
+	if info, statErr := os.Lstat(abs); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("output file must not be a symlink: %s", abs)
+	}
+	return "/workspace/aitriage-reports/" + filepath.ToSlash(rel), nil
 }
 
 func agentPolicyFromFlags(cmd *cobra.Command, cfg *config.Config) healthcheck.Policy {
@@ -293,7 +535,7 @@ func writeAgentGHASummary(state *graph.AgentState) {
 		fmt.Fprintf(os.Stderr, "   ⚠ Failed to write GHA Step Summary: %v\n", err)
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_, _ = f.WriteString(state.SummaryMarkdown)
 	fmt.Fprintf(os.Stderr, "   ✓ GHA Step Summary written (actionable findings only)\n")
 }

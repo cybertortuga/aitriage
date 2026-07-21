@@ -23,10 +23,11 @@ import (
 // AITriage-owned LLM token.
 
 const (
-	mcpServerName        = "aitriage"
-	agentContractBegin   = "<!-- AITRIAGE:BEGIN -->"
-	agentContractEnd     = "<!-- AITRIAGE:END -->"
-	agentContractHeading = "# AITriage Security Contract"
+	mcpServerName         = "aitriage"
+	agentContractBegin    = "<!-- AITRIAGE:BEGIN -->"
+	agentContractEnd      = "<!-- AITRIAGE:END -->"
+	agentContractHeading  = "# AITriage Security Contract"
+	reportsGitignoreEntry = "/aitriage-reports/"
 )
 
 var (
@@ -77,6 +78,8 @@ func init() {
 	rootCmd.AddCommand(installClaudeCodeCmd)
 	installCodexCmd.Flags().BoolVar(&clientUninstall, "uninstall", false, "Remove the AITriage entry instead of installing it")
 	installClaudeCodeCmd.Flags().BoolVar(&clientUninstall, "uninstall", false, "Remove the AITriage entry instead of installing it")
+	installCodexCmd.Flags().StringVar(&clientRuntime, "runtime", "container", "MCP server runtime: container (default, full scanner bundle) or native (development only)")
+	installClaudeCodeCmd.Flags().StringVar(&clientRuntime, "runtime", "container", "MCP server runtime: container (default, full scanner bundle) or native (development only)")
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -110,10 +113,28 @@ func resolveProjectRoot(args []string) (string, error) {
 	return resolved, nil
 }
 
+// clientRuntime selects where the MCP server runs: "container" (the verified
+// full scanner bundle, default) or "native" (explicit development opt-in).
+var clientRuntime string
+
 // safeProfileArgs are the `aitriage serve` arguments that launch the safe
-// profile confined to scanRoot.
+// profile confined to scanRoot, in the selected runtime.
 func safeProfileArgs(scanRoot string) []string {
-	return []string{"serve", "--profile", "safe", "--scan-root", scanRoot}
+	rt := clientRuntime
+	if rt == "" {
+		rt = "container"
+	}
+	return []string{"serve", "--runtime", rt, "--profile", "safe", "--scan-root", scanRoot}
+}
+
+func validateClientRuntime() error {
+	if clientRuntime == "" {
+		clientRuntime = "container"
+	}
+	if clientRuntime != "container" && clientRuntime != "native" {
+		return fmt.Errorf("unsupported MCP runtime %q: use container or native", clientRuntime)
+	}
+	return nil
 }
 
 func aitriageBinaryPath() (string, error) {
@@ -135,6 +156,25 @@ func writeFilePreservingMode(path string, data []byte, defaultMode os.FileMode) 
 		return err
 	}
 	return os.WriteFile(path, data, mode)
+}
+
+func ensureGitignoreEntry(root, entry string) (bool, error) {
+	path := filepath.Join(root, ".gitignore")
+	existing, err := readFileOrEmpty(path)
+	if err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(existing, "\n") {
+		if strings.TrimSpace(line) == entry {
+			return false, nil
+		}
+	}
+	updated := strings.TrimRight(existing, "\n")
+	if updated != "" {
+		updated += "\n"
+	}
+	updated += entry + "\n"
+	return true, writeFilePreservingMode(path, []byte(updated), 0o644)
 }
 
 // syncAgentContract installs or removes AITriage's managed instruction block
@@ -238,6 +278,9 @@ func runInstallCodex(cmd *cobra.Command, args []string) error {
 		fmt.Printf("✅ Removed AITriage from Codex config and managed AGENTS.md instructions: %s\n", root)
 		return nil
 	}
+	if err := validateClientRuntime(); err != nil {
+		return err
+	}
 
 	bin, err := aitriageBinaryPath()
 	if err != nil {
@@ -251,6 +294,9 @@ func runInstallCodex(cmd *cobra.Command, args []string) error {
 	}
 	if _, err := syncAgentContract(root, "AGENTS.md", agentsMdContent, false); err != nil {
 		return fmt.Errorf("install Codex agent instructions: %w", err)
+	}
+	if _, err := ensureGitignoreEntry(root, reportsGitignoreEntry); err != nil {
+		return fmt.Errorf("ignore AITriage reports: %w", err)
 	}
 
 	fmt.Printf("✅ AITriage wired into Codex (safe profile) at:\n   %s\n", configPath)
@@ -344,6 +390,11 @@ func runInstallClaudeCode(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	if !clientUninstall {
+		if err := validateClientRuntime(); err != nil {
+			return err
+		}
+	}
 
 	// Preferred path: the official `claude mcp add --scope local` flow. It records
 	// the server in the user's own ~/.claude.json keyed to this project, so it is
@@ -375,7 +426,6 @@ func installClaudeCodeViaCLI(claudeBin, root string) error {
 		fmt.Printf("✅ Removed AITriage from Claude Code (local scope) for:\n   %s\n", root)
 		return nil
 	}
-
 	bin, err := aitriageBinaryPath()
 	if err != nil {
 		return err
@@ -391,6 +441,9 @@ func installClaudeCodeViaCLI(claudeBin, root string) error {
 	}
 	if _, err := syncAgentContract(root, "CLAUDE.md", claudeMdContent, false); err != nil {
 		return fmt.Errorf("install Claude Code agent instructions: %w", err)
+	}
+	if _, err := ensureGitignoreEntry(root, reportsGitignoreEntry); err != nil {
+		return fmt.Errorf("ignore AITriage reports: %w", err)
 	}
 
 	fmt.Printf("✅ AITriage wired into Claude Code (safe profile, local scope):\n   %s\n", root)
@@ -449,6 +502,9 @@ func installClaudeCodeViaMcpJSON(root string) error {
 	}
 	if _, err := syncAgentContract(root, "CLAUDE.md", claudeMdContent, false); err != nil {
 		return fmt.Errorf("install Claude Code agent instructions: %w", err)
+	}
+	if _, err := ensureGitignoreEntry(root, reportsGitignoreEntry); err != nil {
+		return fmt.Errorf("ignore AITriage reports: %w", err)
 	}
 
 	fmt.Printf("⚠️  Wrote AITriage to %s, but it is NOT yet active.\n", mcpPath)

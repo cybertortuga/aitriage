@@ -12,6 +12,7 @@ import (
 	"github.com/cybertortuga/aitriage/internal/config"
 	"github.com/cybertortuga/aitriage/internal/scanner/ast"
 	"github.com/cybertortuga/aitriage/internal/scanner/entropy"
+	"github.com/cybertortuga/aitriage/internal/scanner/pathpolicy"
 	ignore "github.com/sabhiram/go-gitignore"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
@@ -348,7 +349,7 @@ func isAITriageGeneratedArtifact(path string, size int64) bool {
 		if err != nil {
 			return false
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		buf := make([]byte, 512)
 		n, _ := f.Read(buf)
 		if bytes.Contains(buf[:n], []byte(AITriageArtifactMarker)) {
@@ -447,16 +448,10 @@ func NewWorkspace(rootPath string) (*Workspace, error) {
 			return nil
 		}
 
-		isTest := false
-		lowerRelPath := strings.ToLower(relPath)
-		if strings.Contains(lowerRelPath, "test") || strings.Contains(lowerRelPath, "mock") || strings.Contains(lowerRelPath, "spec") {
-			isTest = true
-		}
-
 		fi := &FileInfo{
 			Path:      path,
 			Extension: ext,
-			IsTest:    isTest,
+			IsTest:    pathpolicy.IsTestLike(relPath),
 		}
 		ws.Files = append(ws.Files, fi)
 

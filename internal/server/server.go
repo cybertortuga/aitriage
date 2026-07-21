@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -106,14 +108,75 @@ func NewServer(hostPrefix string, db *sql.DB) *Server {
 	}
 }
 
+// resolveProjectPath maps a Web/API path into the single project root mounted
+// at hostPrefix. In container mode the root is /workspace; callers may use
+// relative paths, /workspace paths, or the legacy UI aliases /project and
+// /host. Every result is symlink-resolved and confined to that root.
+//
+// An empty hostPrefix keeps the historical native/development behavior. The
+// production container always supplies a hostPrefix and therefore fails closed
+// on traversal and symlink escapes instead of exposing the container filesystem.
+func (s *Server) resolveProjectPath(input string) (string, error) {
+	if s.hostPrefix == "" {
+		return input, nil
+	}
+
+	root, err := filepath.Abs(s.hostPrefix)
+	if err != nil {
+		return "", fmt.Errorf("resolve project root: %w", err)
+	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("project root is unavailable")
+	}
+
+	raw := strings.TrimSpace(input)
+	var candidate string
+	switch {
+	case raw == "", raw == ".", raw == "/", raw == "/project", raw == "/host":
+		candidate = root
+	case filepath.IsAbs(raw):
+		absolute, resolveErr := filepath.EvalSymlinks(raw)
+		if resolveErr == nil && (absolute == root || strings.HasPrefix(absolute, root+string(os.PathSeparator))) {
+			candidate = absolute
+		} else {
+			// Older Web clients use /project/... or /host/... and breadcrumb
+			// paths rooted at /. Interpret every other absolute path as project-
+			// relative; it can never address /etc or another container directory.
+			rel := strings.TrimPrefix(filepath.Clean(raw), string(os.PathSeparator))
+			rel = strings.TrimPrefix(rel, "project"+string(os.PathSeparator))
+			rel = strings.TrimPrefix(rel, "host"+string(os.PathSeparator))
+			candidate = filepath.Join(root, rel)
+		}
+	default:
+		candidate = filepath.Join(root, raw)
+	}
+
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", fmt.Errorf("path %q does not exist inside the opened project", input)
+	}
+	if resolved != root && !strings.HasPrefix(resolved, root+string(os.PathSeparator)) {
+		return "", fmt.Errorf("path %q escapes the opened project", input)
+	}
+	return resolved, nil
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// CORS
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE, PUT")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin != "" {
+		if !allowedLocalWebOrigin(origin) {
+			http.Error(w, "cross-origin access is not allowed", http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE, PUT")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	}
 
 	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
@@ -304,6 +367,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	handler.ServeHTTP(w, r)
 }
 
+func allowedLocalWebOrigin(raw string) bool {
+	origin, err := url.Parse(raw)
+	if err != nil || (origin.Scheme != "http" && origin.Scheme != "https") {
+		return false
+	}
+	host := origin.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // ── API Handlers ─────────────────────────────────────────────────────────────
 
 type scanRequest struct {
@@ -325,16 +401,19 @@ type findingDTO struct {
 }
 
 type scanResponse struct {
-	Ok            bool               `json:"ok"`
-	ScanID        string             `json:"scan_id"`
-	Findings      []findingDTO       `json:"findings"`
-	Dependencies  []deps.Dependency  `json:"dependencies"`
-	Stacks        []string           `json:"stacks"`
-	SecurityScore int                `json:"security_score"`
-	SecurityGrade string             `json:"security_grade"`
-	HealthCheck   healthcheck.Result `json:"health_check"`
-	Duration      string             `json:"duration"`
-	Error         string             `json:"error,omitempty"`
+	Ok              bool                        `json:"ok"`
+	ScanID          string                      `json:"scan_id"`
+	Findings        []findingDTO                `json:"findings"`
+	Dependencies    []deps.Dependency           `json:"dependencies"`
+	Stacks          []string                    `json:"stacks"`
+	SecurityScore   int                         `json:"security_score"`
+	SecurityGrade   string                      `json:"security_grade"`
+	HealthCheck     healthcheck.Result          `json:"health_check"`
+	ScannerCoverage string                      `json:"scanner_coverage"`
+	Scanners        []external.ScannerExecution `json:"scanners,omitempty"`
+	ManifestPath    string                      `json:"manifest_path,omitempty"`
+	Duration        string                      `json:"duration"`
+	Error           string                      `json:"error,omitempty"`
 }
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
@@ -348,24 +427,55 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	containerPath := req.Path
-	if s.hostPrefix != "" && !strings.HasPrefix(req.Path, s.hostPrefix) {
-		containerPath = filepath.Join(s.hostPrefix, req.Path)
+	containerPath, err := s.resolveProjectPath(req.Path)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusForbidden)
+		return
 	}
 
 	slog.Info("Scan requested", "path", req.Path, "full", containerPath)
 	start := time.Now()
 	ctx := r.Context()
 
+	containerFull := os.Getenv("AITRIAGE_RUNTIME") == "container"
 	opts := orchestrator.Options{
 		ProjectPath: containerPath,
 		ForceStack:  req.Stack,
-		RunExternal: req.External,
+		RunExternal: req.External || containerFull,
 		ProbeHost:   "localhost",
 	}
 
 	rich := orchestrator.RunAllScanners(ctx, opts)
 	s.lastResult = &rich
+	scannerCoverage := "core"
+	if opts.RunExternal {
+		scannerCoverage = "partial"
+	}
+	if containerFull {
+		if missing := rich.MissingRequiredScanners(); len(missing) > 0 {
+			jsonError(w, "full audit aborted: required scanner execution(s) did not complete: "+strings.Join(missing, ", "), http.StatusServiceUnavailable)
+			return
+		}
+		scannerCoverage = "full"
+	}
+	scanID := fmt.Sprintf("scan-%s-%d", time.Now().UTC().Format("20060102T150405"), time.Now().UnixNano())
+	manifestPath := ""
+	if reportsDir := strings.TrimSpace(os.Getenv("AITRIAGE_REPORTS_DIR")); reportsDir != "" {
+		manifestPath, err = writeWebScanManifest(reportsDir, webScanManifest{
+			SchemaVersion:   1,
+			ScanID:          scanID,
+			RequestedPath:   req.Path,
+			ScannerCoverage: scannerCoverage,
+			Scanners:        rich.ScannerExecutions,
+			SecurityScore:   rich.Report.SecurityScore,
+			SecurityGrade:   rich.Report.SecurityGrade,
+			CreatedAt:       time.Now().UTC(),
+		})
+		if err != nil {
+			jsonError(w, "full audit completed but its scanner manifest could not be persisted: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 
 	// Initialize LLM if config is available
 	if rich.Report.Config != nil && s.llmClient == nil {
@@ -620,11 +730,12 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 
 	appNodeID := fmt.Sprintf("app-%d", productID)
 	appRisk := rich.Report.SecurityGrade
-	if appRisk == "F" || appRisk == "D" {
+	switch appRisk {
+	case "F", "D":
 		appRisk = "CRITICAL"
-	} else if appRisk == "C" {
+	case "C":
 		appRisk = "MEDIUM"
-	} else {
+	default:
 		appRisk = "LOW"
 	}
 
@@ -718,16 +829,76 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(scanResponse{
-		Ok:            true,
-		ScanID:        fmt.Sprintf("SCAN-%d", time.Now().Unix()),
-		Findings:      findings,
-		Dependencies:  rich.Report.Dependencies,
-		Stacks:        stacks,
-		SecurityScore: rich.Report.SecurityScore,
-		SecurityGrade: rich.Report.SecurityGrade,
-		HealthCheck:   rich.Report.HealthCheck,
-		Duration:      duration,
+		Ok:              true,
+		ScanID:          scanID,
+		Findings:        findings,
+		Dependencies:    rich.Report.Dependencies,
+		Stacks:          stacks,
+		SecurityScore:   rich.Report.SecurityScore,
+		SecurityGrade:   rich.Report.SecurityGrade,
+		HealthCheck:     rich.Report.HealthCheck,
+		ScannerCoverage: scannerCoverage,
+		Scanners:        rich.ScannerExecutions,
+		ManifestPath:    manifestPath,
+		Duration:        duration,
 	})
+}
+
+type webScanManifest struct {
+	SchemaVersion   int                         `json:"schema_version"`
+	ScanID          string                      `json:"scan_id"`
+	RequestedPath   string                      `json:"requested_path"`
+	ScannerCoverage string                      `json:"scanner_coverage"`
+	Scanners        []external.ScannerExecution `json:"scanners"`
+	SecurityScore   int                         `json:"security_score"`
+	SecurityGrade   string                      `json:"security_grade"`
+	CreatedAt       time.Time                   `json:"created_at"`
+}
+
+func writeWebScanManifest(reportsDir string, manifest webScanManifest) (string, error) {
+	base, err := filepath.Abs(reportsDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve reports directory: %w", err)
+	}
+	runDir := filepath.Join(base, "web-scans", manifest.ScanID)
+	if err := os.MkdirAll(runDir, 0o700); err != nil {
+		return "", fmt.Errorf("create web scan directory: %w", err)
+	}
+	if err := os.Chmod(runDir, 0o700); err != nil {
+		return "", fmt.Errorf("secure web scan directory: %w", err)
+	}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("encode scanner manifest: %w", err)
+	}
+	data = append(data, '\n')
+	tmp, err := os.CreateTemp(runDir, ".manifest-*.tmp")
+	if err != nil {
+		return "", fmt.Errorf("create scanner manifest: %w", err)
+	}
+	tmpName := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	defer cleanup()
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return "", err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return "", err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	target := filepath.Join(runDir, "manifest.json")
+	if err := os.Rename(tmpName, target); err != nil {
+		return "", fmt.Errorf("publish scanner manifest: %w", err)
+	}
+	return filepath.ToSlash(filepath.Join("aitriage-reports", "web-scans", manifest.ScanID, "manifest.json")), nil
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -770,9 +941,10 @@ func (s *Server) handleBrowser(w http.ResponseWriter, r *http.Request) {
 		path = "."
 	}
 
-	fullPath := path
-	if s.hostPrefix != "" && !strings.HasPrefix(path, s.hostPrefix) {
-		fullPath = filepath.Join(s.hostPrefix, path)
+	fullPath, err := s.resolveProjectPath(path)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusForbidden)
+		return
 	}
 
 	entries, err := os.ReadDir(fullPath)
@@ -813,12 +985,18 @@ func (s *Server) handleClearCache(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Warn("Admin requested to clear findings cache")
-	// Clear scan results but keep topology nodes (or clear topology links to rescan).
-	_, _ = s.db.Exec("DELETE FROM finding_notes")
-	_, _ = s.db.Exec("DELETE FROM findings")
-	_, _ = s.db.Exec("DELETE FROM engagements")
-	_, _ = s.db.Exec("DELETE FROM topology_links")
-	_, _ = s.db.Exec("DELETE FROM topology_nodes")
+	queries := []deleteQuery{
+		{"finding_notes", "DELETE FROM finding_notes"},
+		{"findings", "DELETE FROM findings"},
+		{"engagements", "DELETE FROM engagements"},
+		{"topology_links", "DELETE FROM topology_links"},
+		{"topology_nodes", "DELETE FROM topology_nodes"},
+	}
+	if err := s.deleteRows(r.Context(), queries); err != nil {
+		slog.Error("Failed to clear findings cache", "error", err)
+		jsonError(w, "failed to clear cache", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
@@ -831,21 +1009,52 @@ func (s *Server) handlePurgeDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Warn("Admin requested to PURGE ALL DATA")
 
-	tables := []string{
-		"finding_notes", "findings", "engagements", "product_members",
-		"products", "product_types", "topology_links", "topology_nodes",
-		"reports", "chat_messages", "chat_sessions", "audit_log", "notifications",
-		"runway_sessions",
+	queries := []deleteQuery{
+		{"finding_notes", "DELETE FROM finding_notes"},
+		{"findings", "DELETE FROM findings"},
+		{"engagements", "DELETE FROM engagements"},
+		{"product_members", "DELETE FROM product_members"},
+		{"products", "DELETE FROM products"},
+		{"product_types", "DELETE FROM product_types"},
+		{"topology_links", "DELETE FROM topology_links"},
+		{"topology_nodes", "DELETE FROM topology_nodes"},
+		{"reports", "DELETE FROM reports"},
+		{"chat_messages", "DELETE FROM chat_messages"},
+		{"chat_sessions", "DELETE FROM chat_sessions"},
+		{"audit_log", "DELETE FROM audit_log"},
+		{"notifications", "DELETE FROM notifications"},
+		{"runway_sessions", "DELETE FROM runway_sessions"},
 	}
-	for _, table := range tables {
-		_, err := s.db.Exec(fmt.Sprintf("DELETE FROM %s", table))
-		if err != nil {
-			slog.Error("Failed to purge table", "table", table, "error", err)
-		}
+	if err := s.deleteRows(r.Context(), queries); err != nil {
+		slog.Error("Failed to purge database", "error", err)
+		jsonError(w, "failed to purge database", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+}
+
+type deleteQuery struct {
+	table string
+	query string
+}
+
+func (s *Server) deleteRows(ctx context.Context, queries []deleteQuery) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, item := range queries {
+		if _, err := tx.ExecContext(ctx, item.query); err != nil {
+			return fmt.Errorf("delete %s: %w", item.table, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete transaction: %w", err)
+	}
+	return nil
 }
 
 func (s *Server) handleRebuild(w http.ResponseWriter, r *http.Request) {
@@ -853,15 +1062,10 @@ func (s *Server) handleRebuild(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	slog.Warn("Admin requested to REBUILD container - server will restart")
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-
-	go func() {
-		time.Sleep(1 * time.Second)
-		os.Exit(0)
-	}()
+	// A process inside a managed, immutable image cannot rebuild itself. The old
+	// implementation only exited, leaving `aitriage web` stopped while claiming
+	// a rebuild had started. Fail explicitly and keep the current audit alive.
+	jsonError(w, "This Web instance is managed by the AITriage CLI and cannot rebuild itself. Update the CLI/image with `aitriage setup --repair`, then restart `aitriage web`.", http.StatusConflict)
 }
 
 func (s *Server) handleTriage(w http.ResponseWriter, r *http.Request) {
@@ -876,21 +1080,22 @@ func (s *Server) handleTriage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fullProject := req.Project
-	if s.hostPrefix != "" && !strings.HasPrefix(req.Project, s.hostPrefix) {
-		fullProject = filepath.Join(s.hostPrefix, req.Project)
+	fullProject, err := s.resolveProjectPath(req.Project)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusForbidden)
+		return
 	}
 
 	auditStore := core.NewAuditStore(fullProject)
 	status := core.AuditStatusOpen
-	if req.Action == "IGNORE" {
+	switch req.Action {
+	case "IGNORE":
 		status = core.AuditStatusIgnored
-	} else if req.Action == "FIX" || req.Action == "TRIAGE" {
+	case "FIX", "TRIAGE":
 		status = core.AuditStatusTriage
 	}
 
-	_ = auditStore.SetStatus(req.ID, req.File, status, "Triage via Web UI")
-	err := auditStore.Save()
+	err = auditStore.SetStatus(req.ID, req.File, status, "Triage via Web UI")
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
@@ -1021,12 +1226,12 @@ func (s *Server) handleFindingVerification(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) resolveFindingScanPath(ctx context.Context, finding *models.Finding) (string, error) {
 	if engagement, err := s.engagementRepo.GetByID(ctx, finding.EngagementID); err == nil && engagement != nil && engagement.ScanPath != nil && *engagement.ScanPath != "" {
-		return s.toContainerPath(*engagement.ScanPath), nil
+		return s.resolveProjectPath(*engagement.ScanPath)
 	}
 
 	if finding.ProductID != nil {
 		if product, err := s.productRepo.GetByID(ctx, *finding.ProductID); err == nil && product != nil && product.RepoURL != nil && *product.RepoURL != "" {
-			return s.toContainerPath(*product.RepoURL), nil
+			return s.resolveProjectPath(*product.RepoURL)
 		}
 	}
 
@@ -1035,16 +1240,17 @@ func (s *Server) resolveFindingScanPath(ctx context.Context, finding *models.Fin
 		return "", fmt.Errorf("finding has no scan path or file path")
 	}
 	if filepath.IsAbs(filePath) {
-		return s.toContainerPath(filepath.Dir(filePath)), nil
+		return s.resolveProjectPath(filepath.Dir(filePath))
 	}
 	return "", fmt.Errorf("finding has only relative file path %q and no engagement scan path", filePath)
 }
 
 func (s *Server) toContainerPath(path string) string {
-	if s.hostPrefix != "" && !strings.HasPrefix(path, s.hostPrefix) {
-		return filepath.Join(s.hostPrefix, path)
+	resolved, err := s.resolveProjectPath(path)
+	if err != nil {
+		return ""
 	}
-	return path
+	return resolved
 }
 
 func shouldRunExternalForFinding(finding *models.Finding) bool {
@@ -1414,9 +1620,11 @@ func (s *Server) readFindingSourceContext(scanPath, filePath, displayFilePath st
 	if scanPath != "" && !filepath.IsAbs(filePath) {
 		fullPath = filepath.Join(scanPath, filePath)
 	}
-	if s.hostPrefix != "" && !strings.HasPrefix(fullPath, s.hostPrefix) {
-		fullPath = filepath.Join(s.hostPrefix, fullPath)
+	resolvedPath, err := s.resolveProjectPath(fullPath)
+	if err != nil {
+		return fmt.Sprintf("Source context unavailable: %v.", err), false
 	}
+	fullPath = resolvedPath
 
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
@@ -1510,7 +1718,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Get product (project) list
 	rows, err := s.db.QueryContext(ctx, `SELECT id, name, COALESCE(repo_url,'') FROM products ORDER BY name`)
 	if err == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		systemCtx.WriteString("## Scanned Projects\n")
 		for rows.Next() {
 			var id int64
@@ -1532,7 +1740,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		LIMIT 30
 	`)
 	if err == nil {
-		defer frows.Close()
+		defer func() { _ = frows.Close() }()
 		systemCtx.WriteString("## Top Critical & High Findings\n")
 		for frows.Next() {
 			var title, severity, filePath, desc, project string
@@ -1708,8 +1916,11 @@ func (s *Server) handleAITriage(w http.ResponseWriter, r *http.Request) {
 				fullPath = *finding.FilePath
 			}
 		}
-		if s.hostPrefix != "" && !strings.HasPrefix(fullPath, s.hostPrefix) {
-			fullPath = filepath.Join(s.hostPrefix, fullPath)
+		if resolved, resolveErr := s.resolveProjectPath(fullPath); resolveErr == nil {
+			fullPath = resolved
+		} else {
+			slog.Warn("AI Triage: rejected source path", "path", fullPath, "error", resolveErr)
+			fullPath = ""
 		}
 
 		data, err := os.ReadFile(fullPath)
@@ -1993,10 +2204,11 @@ Return ONLY a valid JSON object with no other text:
 	}
 
 	// If False Positive, automatically update the finding status
-	if triageRes.Status == "false_positive" {
+	switch triageRes.Status {
+	case "false_positive":
 		_ = s.findingRepo.UpdateStatus(ctx, findingID, "false_positive")
 		_, _ = s.db.ExecContext(ctx, "UPDATE findings SET is_false_positive = 1, fp_reason = ? WHERE id = ?", triageRes.Summary, findingID)
-	} else if triageRes.Status == "true_positive" {
+	case "true_positive":
 		_ = s.findingRepo.UpdateStatus(ctx, findingID, "triage")
 	}
 
@@ -2027,9 +2239,10 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fullPath := path
-	if s.hostPrefix != "" && !strings.HasPrefix(path, s.hostPrefix) {
-		fullPath = filepath.Join(s.hostPrefix, path)
+	fullPath, err := s.resolveProjectPath(path)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusForbidden)
+		return
 	}
 
 	content, err := os.ReadFile(fullPath)
@@ -2047,7 +2260,15 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) Listen(addr string) error {
 	slog.Info("AITriage Web UI started", "url", "http://"+addr)
-	return http.ListenAndServe(addr, s)
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           s,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    1 << 20,
+	}
+	return server.ListenAndServe()
 }
 
 func jsonError(w http.ResponseWriter, msg string, code int) {
@@ -2249,7 +2470,7 @@ func (s *Server) loadAISummaryEvidence(ctx context.Context, productID int, usePr
 	if err != nil {
 		return evidence, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var severity, status string
@@ -2297,7 +2518,7 @@ func (s *Server) loadAISummaryEvidence(ctx context.Context, productID int, usePr
 	if err != nil {
 		return evidence, err
 	}
-	defer findingRows.Close()
+	defer func() { _ = findingRows.Close() }()
 
 	for findingRows.Next() {
 		var f aiSummaryFinding
@@ -3072,27 +3293,31 @@ func (s *Server) handleRunwayExport(w http.ResponseWriter, r *http.Request) {
 
 	mdContent := md.String()
 
-	// Resolve project path and save file
+	// Resolve project path and save the export in the one writable artifact
+	// tree. The source mount stays read-only in the production container.
 	var projectPath string
 	if product.RepoURL != nil && *product.RepoURL != "" {
-		projectPath = *product.RepoURL
-		if s.hostPrefix != "" && !strings.HasPrefix(projectPath, s.hostPrefix) {
-			projectPath = filepath.Join(s.hostPrefix, projectPath)
+		resolved, resolveErr := s.resolveProjectPath(*product.RepoURL)
+		if resolveErr != nil {
+			slog.Warn("Rejected runway report project path", "path", *product.RepoURL, "error", resolveErr)
+		} else {
+			projectPath = resolved
 		}
 	}
 
 	var savedPath string
 	if projectPath != "" {
-		aitriageDir := filepath.Join(projectPath, "aitriage")
-		if err := os.MkdirAll(aitriageDir, 0755); err != nil {
-			slog.Error("Failed to create aitriage directory", "path", aitriageDir, "error", err)
+		reportsRoot := runwayReportsRoot(projectPath)
+		reportDir := filepath.Join(reportsRoot, "runway")
+		if err := os.MkdirAll(reportDir, 0o700); err != nil {
+			slog.Error("Failed to create runway report directory", "path", reportDir, "error", err)
 		} else {
 			filename := fmt.Sprintf("runway-report-%d-%s.md", session.ID, session.CreatedAt.Format("2006-01-02"))
-			fullPath := filepath.Join(aitriageDir, filename)
-			if err := os.WriteFile(fullPath, []byte(mdContent), 0644); err != nil {
+			fullPath := filepath.Join(reportDir, filename)
+			if err := os.WriteFile(fullPath, []byte(mdContent), 0o600); err != nil {
 				slog.Error("Failed to write runway report", "path", fullPath, "error", err)
 			} else {
-				savedPath = filepath.Join("aitriage", filename)
+				savedPath = filepath.Join("aitriage-reports", "runway", filename)
 				slog.Info("Runway report saved", "path", fullPath)
 			}
 		}
@@ -3104,6 +3329,13 @@ func (s *Server) handleRunwayExport(w http.ResponseWriter, r *http.Request) {
 		"content":  mdContent,
 		"saved_to": savedPath,
 	})
+}
+
+func runwayReportsRoot(projectPath string) string {
+	if configured := strings.TrimSpace(os.Getenv("AITRIAGE_REPORTS_DIR")); configured != "" {
+		return configured
+	}
+	return filepath.Join(projectPath, "aitriage-reports")
 }
 
 func (s *Server) handleRunwayStart(w http.ResponseWriter, r *http.Request) {

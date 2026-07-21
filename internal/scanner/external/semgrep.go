@@ -29,7 +29,8 @@ func RunSemgrep(ctx context.Context, path, config string) ([]UnifiedFinding, err
 	if config == "" {
 		config = "auto"
 	}
-	result, err := RunTool(ctx, "semgrep", "scan", "--json", "--config", config, path)
+	result, err := RunTool(ctx, "semgrep", "scan", "--json", "--config", config,
+		"--exclude", "aitriage-reports", "--exclude", ".aitriage", "--exclude", ".aitriage-cache", path)
 	if err != nil {
 		return nil, fmt.Errorf("semgrep execution failed: %w", err)
 	}
@@ -39,6 +40,9 @@ func RunSemgrep(ctx context.Context, path, config string) ([]UnifiedFinding, err
 	}
 	findings := make([]UnifiedFinding, 0, len(output.Results))
 	for _, r := range output.Results {
+		if isGeneratedArtifactPath(r.Path) {
+			continue
+		}
 		findings = append(findings, UnifiedFinding{
 			Source:   "semgrep",
 			RuleID:   r.RuleID,

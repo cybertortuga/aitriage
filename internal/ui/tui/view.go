@@ -3392,6 +3392,7 @@ func (m DashboardModel) renderFooter(w int) string {
 		}
 	case ViewChat:
 		focusLabel := "COMMANDS"
+		//nolint:staticcheck // Explicit two-pane focus styling is clearer as a branch.
 		if m.ChatFocusMode == 1 {
 			focusLabel = "HISTORY"
 		} else if m.ChatFocusMode == 2 {

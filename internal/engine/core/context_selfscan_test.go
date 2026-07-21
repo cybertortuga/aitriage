@@ -42,13 +42,14 @@ func TestIsAITriageGeneratedArtifact(t *testing.T) {
 
 func TestNewWorkspaceSkipsGeneratedReports(t *testing.T) {
 	root := t.TempDir()
-	// AITriage's own output directory, as written by the web/runway feature.
-	aiDir := filepath.Join(root, "aitriage")
+	// AITriage's canonical output directory must be excluded as a whole even if
+	// a generated file has no content marker.
+	aiDir := filepath.Join(root, "aitriage-reports", "run-1")
 	if err := os.MkdirAll(aiDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	report := filepath.Join(aiDir, "runway-report-11-2026-06-19.md")
-	if err := os.WriteFile(report, []byte("secret sk-abc\n[gitleaks] jwt\n"), 0o644); err != nil {
+	if err := os.WriteFile(report, []byte("unmarked generated content\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	src := filepath.Join(root, "main.py")

@@ -168,7 +168,7 @@ const PathInput: React.FC<{ value: string; onChange: (p: string) => void }> = ({
 };
 
 /* ── Scan Panel (right column) ── */
-type ScanStatus = { state: 'idle' | 'scanning' | 'done' | 'error'; findings?: number; duration?: string; error?: string };
+type ScanStatus = { state: 'idle' | 'scanning' | 'done' | 'error'; findings?: number; duration?: string; coverage?: string; error?: string };
 
 interface ScanPanelProps {
   onScanComplete?: () => void;
@@ -177,7 +177,7 @@ interface ScanPanelProps {
 const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
   const { t } = useTranslation('pages');
   const [external,  ] = useState(true);
-  const [scanPath, setScanPath] = useState('/host');
+  const [scanPath, setScanPath] = useState('.');
   const [projects, setProjects] = useState<BrowserEntry[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [showCustomPath, setShowCustomPath] = useState(false);
@@ -190,7 +190,7 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
   const [tools, setTools] = useState({ semgrep: true, gitleaks: true, trivy: true, bandit: true });
   const [toolStatus, setToolStatus] = useState<Record<string, boolean>>({});
 
-  const [currentPath, setCurrentPath] = useState('/host');
+  const [currentPath, setCurrentPath] = useState('.');
 
   const loadPath = useCallback((path: string) => {
     setLoadingProjects(true);
@@ -255,7 +255,7 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
       });
       const data = await res.json();
       if (data.ok) {
-        setScanStatuses(prev => ({ ...prev, [path]: { state: 'done', findings: data.findings?.length ?? 0, duration: data.duration } }));
+        setScanStatuses(prev => ({ ...prev, [path]: { state: 'done', findings: data.findings?.length ?? 0, duration: data.duration, coverage: data.scanner_coverage } }));
         return true;
       } else {
         setScanStatuses(prev => ({ ...prev, [path]: { state: 'error', error: data.error || 'Failed' } }));
@@ -422,6 +422,7 @@ const ScanPanel: React.FC<ScanPanelProps> = ({ onScanComplete }) => {
                       {status?.state === 'done' && (
                         <div className="text-[10px] text-[#52525b] mt-0.5">
                           <span className="text-[#22c55e]">{status.findings}</span> {t('issues')} · {status.duration}
+                          {status.coverage && <> · <span className={status.coverage === 'full' ? 'text-[#22c55e]' : 'text-[#f59e0b]'}>{status.coverage.toUpperCase()}</span></>}
                         </div>
                       )}
                       {status?.state === 'error' && (

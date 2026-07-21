@@ -30,14 +30,35 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build and audit Web UI
+        working-directory: web
+        run: |
+          npm ci
+          npm audit --audit-level=high
+          npm run build
+
       - name: Download dependencies
         run: go mod download
 
       - name: Build (CGO for tree-sitter)
         run: CGO_ENABLED=1 go build -v ./...
 
+      - name: Validate installer
+        run: |
+          sh -n scripts/install.sh scripts/install_test.sh
+          sh scripts/install_test.sh
+
       - name: Vet
         run: go vet ./...
+
+      - name: Vulnerability check
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6

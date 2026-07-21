@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,116 +29,135 @@ type Options struct {
 	FullPortScan bool // scan all 65535 ports instead of common ones
 }
 
+// redactScannerError returns a short, safe scanner error string for the
+// execution manifest: it strips absolute paths and caps length so no secret or
+// full environment dump reaches persisted evidence.
+func redactScannerError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	if i := strings.IndexByte(msg, '\n'); i >= 0 {
+		msg = msg[:i]
+	}
+	msg = absPathRegex.ReplaceAllString(msg, "<path>")
+	if len(msg) > 200 {
+		msg = msg[:200] + "…"
+	}
+	return msg
+}
+
+var absPathRegex = regexp.MustCompile(`(/[^\s:]+){2,}`)
+
+const externalScannerTimeout = 10 * time.Minute
+
 // RunAllScanners executes all SAST, NFR, Deploy, Git, Network and architecture diagram generators concurrently.
 func RunAllScanners(ctx context.Context, opts Options) llm.RichScanResult {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	result := llm.RichScanResult{ProjectPath: opts.ProjectPath}
+	// Keep collection fields non-nil even when a scanner legitimately returns no
+	// findings. Callers use nil to distinguish "scanner did not initialize" from
+	// "scanner completed with zero findings".
+	result := llm.RichScanResult{
+		ProjectPath: opts.ProjectPath,
+		NFR:         []nfr.NFRFinding{},
+	}
 
 	// 1: Core SAST
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		start := time.Now()
 		r, err := scanner.Scan(ctx, opts.ProjectPath, scanner.ScanOptions{
 			ForceStack: opts.ForceStack,
 		})
-		if err == nil {
-			mu.Lock()
+		mu.Lock()
+		defer mu.Unlock()
+		if err != nil {
+			result.ScannerExecutions = append(result.ScannerExecutions, external.ScannerExecution{
+				Scanner: "aitriage", Status: external.StatusFailed,
+				DurationMs: time.Since(start).Milliseconds(), Error: redactScannerError(err),
+			})
+		} else {
 			result.Report = r
-			mu.Unlock()
+			result.ScannerExecutions = append(result.ScannerExecutions, external.ScannerExecution{
+				Scanner: "aitriage", Status: external.StatusCompleted,
+				Findings: len(r.Results), DurationMs: time.Since(start).Milliseconds(),
+			})
 		}
 	}()
 
-	// 2: External Scanners
+	// 2: External Scanners — every scanner records a typed execution status so a
+	// full audit can never silently skip a mandatory scanner. A missing binary is
+	// recorded as "missing" (not omitted); an error as "failed".
 	if opts.RunExternal {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			var scanners [][]external.UnifiedFinding
 			var swg sync.WaitGroup
 
-			if external.IsInstalled("semgrep") {
-				swg.Add(1)
-				go func() {
-					defer swg.Done()
-					start := time.Now()
-					findings, err := external.RunSemgrep(ctx, opts.ProjectPath, "auto")
-					if err == nil {
-						mu.Lock()
-						scanners = append(scanners, findings)
-						mu.Unlock()
-						fmt.Fprintf(os.Stderr, "   ▶ Semgrep ✓ %d findings (%.1fs)\n", len(findings), time.Since(start).Seconds())
-					} else {
-						fmt.Fprintf(os.Stderr, "   ▶ Semgrep ✗ error: %v\n", err)
-					}
-				}()
-			} else {
-				fmt.Fprintf(os.Stderr, "   ▶ Semgrep — not installed, skipping\n")
+			record := func(ex external.ScannerExecution) {
+				mu.Lock()
+				result.ScannerExecutions = append(result.ScannerExecutions, ex)
+				mu.Unlock()
 			}
-			if external.IsInstalled("gitleaks") {
-				swg.Add(1)
-				go func() {
-					defer swg.Done()
-					start := time.Now()
-					findings, err := external.RunGitleaks(ctx, opts.ProjectPath)
-					if err == nil {
-						mu.Lock()
-						scanners = append(scanners, findings)
-						mu.Unlock()
-						fmt.Fprintf(os.Stderr, "   ▶ Gitleaks ✓ %d findings (%.1fs)\n", len(findings), time.Since(start).Seconds())
-					} else {
-						fmt.Fprintf(os.Stderr, "   ▶ Gitleaks ✗ error: %v\n", err)
-					}
-				}()
-			} else {
-				fmt.Fprintf(os.Stderr, "   ▶ Gitleaks — not installed, skipping\n")
+			addFindings := func(f []external.UnifiedFinding) {
+				mu.Lock()
+				result.External = append(result.External, f...)
+				mu.Unlock()
 			}
-			if external.IsInstalled("bandit") {
-				swg.Add(1)
-				go func() {
-					defer swg.Done()
-					start := time.Now()
-					findings, err := external.RunBandit(ctx, opts.ProjectPath)
-					if err == nil {
-						mu.Lock()
-						scanners = append(scanners, findings)
-						mu.Unlock()
-						fmt.Fprintf(os.Stderr, "   ▶ Bandit ✓ %d findings (%.1fs)\n", len(findings), time.Since(start).Seconds())
-					} else {
-						fmt.Fprintf(os.Stderr, "   ▶ Bandit ✗ error: %v\n", err)
-					}
-				}()
-			} else {
-				fmt.Fprintf(os.Stderr, "   ▶ Bandit — not installed, skipping\n")
-			}
-			if external.IsInstalled("trivy") {
-				for _, scanType := range []string{"fs", "config"} {
-					st := scanType
-					swg.Add(1)
-					go func() {
-						defer swg.Done()
-						start := time.Now()
-						findings, err := external.RunTrivy(ctx, opts.ProjectPath, st)
-						if err == nil {
-							mu.Lock()
-							scanners = append(scanners, findings)
-							mu.Unlock()
-							fmt.Fprintf(os.Stderr, "   ▶ Trivy (%s) ✓ %d findings (%.1fs)\n", st, len(findings), time.Since(start).Seconds())
-						} else {
-							fmt.Fprintf(os.Stderr, "   ▶ Trivy (%s) ✗ error: %v\n", st, err)
-						}
-					}()
+			// run executes one scanner with a hard upper bound, records its status,
+			// and appends findings. Request cancellation still propagates through the
+			// parent context; an abandoned Web/MCP run cannot leak child processes.
+			run := func(name, label string, fn func(context.Context) ([]external.UnifiedFinding, error)) {
+				defer swg.Done()
+				if !external.IsInstalled(name) {
+					record(external.ScannerExecution{Scanner: label, Status: external.StatusMissing})
+					fmt.Fprintf(os.Stderr, "   ▶ %s — MISSING (not installed)\n", label)
+					return
 				}
-			} else {
-				fmt.Fprintf(os.Stderr, "   ▶ Trivy — not installed, skipping\n")
+				version := external.ToolVersion(ctx, name)
+				start := time.Now()
+				scanCtx, cancel := context.WithTimeout(ctx, externalScannerTimeout)
+				defer cancel()
+				findings, err := fn(scanCtx)
+				dur := time.Since(start).Milliseconds()
+				if err != nil {
+					status := external.StatusFailed
+					if scanCtx.Err() == context.DeadlineExceeded {
+						status = external.StatusTimedOut
+					}
+					record(external.ScannerExecution{Scanner: label, Status: status, Version: version, DurationMs: dur, Error: redactScannerError(err)})
+					fmt.Fprintf(os.Stderr, "   ▶ %s ✗ FAILED: %v\n", label, err)
+					return
+				}
+				findings = external.FilterTestLikeFindings(findings)
+				addFindings(findings)
+				record(external.ScannerExecution{Scanner: label, Status: external.StatusCompleted, Version: version, Findings: len(findings), DurationMs: dur})
+				fmt.Fprintf(os.Stderr, "   ▶ %s ✓ %d findings (%dms)\n", label, len(findings), dur)
+			}
+
+			swg.Add(1)
+			go run("semgrep", "semgrep", func(scanCtx context.Context) ([]external.UnifiedFinding, error) {
+				return external.RunSemgrep(scanCtx, opts.ProjectPath, "auto")
+			})
+			swg.Add(1)
+			go run("gitleaks", "gitleaks", func(scanCtx context.Context) ([]external.UnifiedFinding, error) {
+				return external.RunGitleaks(scanCtx, opts.ProjectPath)
+			})
+			swg.Add(1)
+			go run("bandit", "bandit", func(scanCtx context.Context) ([]external.UnifiedFinding, error) {
+				return external.RunBandit(scanCtx, opts.ProjectPath)
+			})
+			for _, scanType := range []string{"fs", "config"} {
+				st := scanType
+				swg.Add(1)
+				go run("trivy", "trivy_"+st, func(scanCtx context.Context) ([]external.UnifiedFinding, error) {
+					return external.RunTrivy(scanCtx, opts.ProjectPath, st)
+				})
 			}
 
 			swg.Wait()
-			mu.Lock()
-			for _, f := range scanners {
-				result.External = append(result.External, f...)
-			}
-			mu.Unlock()
 		}()
 	}
 
@@ -145,6 +167,9 @@ func RunAllScanners(ctx context.Context, opts Options) llm.RichScanResult {
 		defer wg.Done()
 		nfrFindings, err := nfr.CheckNFR(opts.ProjectPath)
 		if err == nil {
+			if nfrFindings == nil {
+				nfrFindings = []nfr.NFRFinding{}
+			}
 			mu.Lock()
 			result.NFR = nfrFindings
 			mu.Unlock()
@@ -216,5 +241,8 @@ func RunAllScanners(ctx context.Context, opts Options) llm.RichScanResult {
 	}()
 
 	wg.Wait()
+	sort.Slice(result.ScannerExecutions, func(i, j int) bool {
+		return result.ScannerExecutions[i].Scanner < result.ScannerExecutions[j].Scanner
+	})
 	return result
 }

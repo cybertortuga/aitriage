@@ -90,7 +90,7 @@ func (r *IgnoreRepository) List(ctx context.Context) ([]IgnoredFinding, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list ignored findings: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var entries []IgnoredFinding
 	for rows.Next() {

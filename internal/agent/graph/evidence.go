@@ -79,15 +79,18 @@ func validateLLMDisposition(projectPath string, finding EnrichedFinding, raw raw
 
 func validateFalsePositiveEvidence(projectPath string, finding EnrichedFinding, evidence *DispositionEvidence) error {
 	if evidence == nil {
-		return fmt.Errorf("False Positive has no evidence")
+		return fmt.Errorf("false positive has no evidence")
 	}
 	switch evidence.Basis {
 	case "test_only":
 		if !isTestPath(finding.File) {
 			return fmt.Errorf("test_only evidence does not reference a test finding")
 		}
-		if evidence.File == "" || normalizePath(evidence.File) != normalizePath(finding.File) {
-			return fmt.Errorf("test_only evidence file does not match finding file")
+		if evidence.File == "" {
+			return fmt.Errorf("test_only evidence file is missing")
+		}
+		if _, err := matchingProjectFile(projectPath, finding.File, evidence.File); err != nil {
+			return fmt.Errorf("test_only evidence file is invalid: %w", err)
 		}
 		if evidence.Line > 0 && finding.Line > 0 && evidence.Line != finding.Line {
 			return fmt.Errorf("test_only evidence line does not match finding line")
@@ -97,10 +100,11 @@ func validateFalsePositiveEvidence(projectPath string, finding EnrichedFinding, 
 		if evidence.File == "" || evidence.Line < 1 || len(strings.TrimSpace(evidence.Observed)) < 4 {
 			return fmt.Errorf("code_mitigation evidence is incomplete")
 		}
-		if finding.File == "" || normalizePath(evidence.File) != normalizePath(finding.File) {
-			return fmt.Errorf("code_mitigation evidence file does not match finding file")
+		path, err := matchingProjectFile(projectPath, finding.File, evidence.File)
+		if err != nil {
+			return fmt.Errorf("code_mitigation evidence file is invalid: %w", err)
 		}
-		line, err := readProjectLine(projectPath, evidence.File, evidence.Line)
+		line, err := readLine(path, evidence.Line)
 		if err != nil {
 			return fmt.Errorf("code_mitigation evidence is unreadable: %w", err)
 		}
@@ -109,7 +113,7 @@ func validateFalsePositiveEvidence(projectPath string, finding EnrichedFinding, 
 		}
 		return nil
 	default:
-		return fmt.Errorf("False Positive evidence basis %q is not deterministically verifiable", evidence.Basis)
+		return fmt.Errorf("false positive evidence basis %q is not deterministically verifiable", evidence.Basis)
 	}
 }
 
@@ -121,19 +125,61 @@ func isTestPath(path string) bool {
 		strings.Contains(base, ".test.") || strings.Contains(base, ".spec.")
 }
 
-func readProjectLine(projectPath, evidencePath string, lineNumber int) (string, error) {
-	if filepath.IsAbs(evidencePath) {
-		return "", fmt.Errorf("absolute evidence path is not allowed")
+// matchingProjectFile resolves both the scanner's finding path and the model's
+// evidence path to the same canonical file. Absolute paths are accepted only
+// when they remain inside the scanned project. This is necessary for container
+// scans, where findings intentionally use absolute /workspace paths, while still
+// rejecting traversal and symlink escapes.
+func matchingProjectFile(projectPath, findingPath, evidencePath string) (string, error) {
+	if strings.TrimSpace(findingPath) == "" || strings.TrimSpace(evidencePath) == "" {
+		return "", fmt.Errorf("finding and evidence paths are required")
 	}
+	findingResolved, err := resolveProjectFile(projectPath, findingPath)
+	if err != nil {
+		return "", fmt.Errorf("finding path: %w", err)
+	}
+	evidenceResolved, err := resolveProjectFile(projectPath, evidencePath)
+	if err != nil {
+		return "", fmt.Errorf("evidence path: %w", err)
+	}
+	if findingResolved != evidenceResolved {
+		return "", fmt.Errorf("evidence file does not match finding file")
+	}
+	return evidenceResolved, nil
+}
+
+func resolveProjectFile(projectPath, candidate string) (string, error) {
 	root, err := filepath.Abs(projectPath)
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(root, filepath.Clean(evidencePath))
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", err
+	}
+	path := candidate
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(root, filepath.Clean(path))
+	}
+	path, err = filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
 	rel, err := filepath.Rel(root, path)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("evidence path escapes project root")
+		return "", fmt.Errorf("path escapes project root")
 	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("path is not a regular file")
+	}
+	return path, nil
+}
+
+func readLine(path string, lineNumber int) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err

@@ -37,7 +37,7 @@ func (r *NotificationRepository) ListByUser(ctx context.Context, userID int64, u
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var notifs []models.Notification
 	for rows.Next() {

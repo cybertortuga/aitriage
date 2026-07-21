@@ -36,7 +36,7 @@ func (r *ChatRepository) ListSessions(ctx context.Context, userID int) ([]ChatSe
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var sessions []ChatSession
 	for rows.Next() {
 		var s ChatSession
@@ -82,7 +82,7 @@ func (r *ChatRepository) GetMessages(ctx context.Context, sessionID int) ([]Chat
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var msgs []ChatMessage
 	for rows.Next() {
 		var m ChatMessage

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -27,9 +28,10 @@ func (s *Server) runRunwaySession(session *models.RunwaySession, product *models
 		}
 	}
 
-	projectPath := "/host"
-	if product.RepoURL != nil && strings.TrimSpace(*product.RepoURL) != "" {
-		projectPath = *product.RepoURL
+	projectPath, err := s.resolveRunwayProjectPath(product)
+	if err != nil {
+		s.markRunwayFailed(ctx, session, err)
+		return
 	}
 
 	cfg := config.LoadConfig(".")
@@ -111,6 +113,18 @@ func (s *Server) runRunwaySession(session *models.RunwaySession, product *models
 	if err := s.runwayRepo.Update(ctx, session); err != nil {
 		slog.Error("Failed to persist runway session result", "session_id", session.ID, "error", err)
 	}
+}
+
+func (s *Server) resolveRunwayProjectPath(product *models.Product) (string, error) {
+	requested := "."
+	if product != nil && product.RepoURL != nil && strings.TrimSpace(*product.RepoURL) != "" {
+		requested = *product.RepoURL
+	}
+	resolved, err := s.resolveProjectPath(requested)
+	if err != nil {
+		return "", fmt.Errorf("runway project path rejected: %w", err)
+	}
+	return resolved, nil
 }
 
 func (s *Server) markRunwayFailed(ctx context.Context, session *models.RunwaySession, cause error) {

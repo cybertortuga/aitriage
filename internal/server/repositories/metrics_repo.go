@@ -113,7 +113,7 @@ func (r *MetricsRepository) GetDashboardMetrics(ctx context.Context) (*Dashboard
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var severity string
@@ -132,7 +132,7 @@ func (r *MetricsRepository) GetDashboardMetrics(ctx context.Context) (*Dashboard
 		WHERE status NOT IN ('resolved', 'closed')
 	`)
 	if err == nil {
-		defer hcRows.Close()
+		defer func() { _ = hcRows.Close() }()
 		for hcRows.Next() {
 			var src, class, sev, file, status string
 			var line int
@@ -167,7 +167,7 @@ func (r *MetricsRepository) GetDashboardMetrics(ctx context.Context) (*Dashboard
 		LIMIT 5
 	`)
 	if err == nil {
-		defer riskyRows.Close()
+		defer func() { _ = riskyRows.Close() }()
 		for riskyRows.Next() {
 			var name string
 			var count int
@@ -195,7 +195,7 @@ func (r *MetricsRepository) GetDashboardMetrics(ctx context.Context) (*Dashboard
 		LIMIT 5
 	`)
 	if err == nil {
-		defer engRows.Close()
+		defer func() { _ = engRows.Close() }()
 		for engRows.Next() {
 			var name, status, date string
 			if err := engRows.Scan(&name, &status, &date); err == nil {
@@ -217,7 +217,7 @@ func (r *MetricsRepository) GetDashboardMetrics(ctx context.Context) (*Dashboard
 		GROUP BY severity
 	`)
 	if err == nil {
-		defer mttrRows.Close()
+		defer func() { _ = mttrRows.Close() }()
 		for mttrRows.Next() {
 			var sev, avgTime string
 			if err := mttrRows.Scan(&sev, &avgTime); err == nil {
@@ -237,7 +237,7 @@ func (r *MetricsRepository) GetDashboardMetrics(ctx context.Context) (*Dashboard
 		LIMIT 8
 	`)
 	if err == nil {
-		defer fileRows.Close()
+		defer func() { _ = fileRows.Close() }()
 		for fileRows.Next() {
 			var path string
 			var count int
@@ -255,7 +255,7 @@ func (r *MetricsRepository) GetDashboardMetrics(ctx context.Context) (*Dashboard
 		ORDER BY COUNT(*) DESC
 	`)
 	if err == nil {
-		defer statusRows.Close()
+		defer func() { _ = statusRows.Close() }()
 		for statusRows.Next() {
 			var status string
 			var count int
@@ -274,7 +274,7 @@ func (r *MetricsRepository) GetDashboardMetrics(ctx context.Context) (*Dashboard
 		ORDER BY COUNT(*) DESC
 	`)
 	if err == nil {
-		defer stackRows.Close()
+		defer func() { _ = stackRows.Close() }()
 		for stackRows.Next() {
 			var stack string
 			var count int

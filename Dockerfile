@@ -2,12 +2,12 @@
 FROM node:22-bookworm AS web-builder
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
-RUN npm install
+RUN npm ci
 COPY web/ ./
 RUN npm run build
 
 # ─── Stage 2: Build Go binary ─────────────────────────────────────────────────
-FROM golang:1.25-bookworm AS go-builder
+FROM golang:1.25.12-bookworm AS go-builder
 WORKDIR /app
 ARG AITRIAGE_VERSION=dev
 
@@ -23,6 +23,36 @@ COPY . .
 # Synchronize web assets into the Go binary build context
 COPY --from=web-builder /web/dist /app/internal/server/ui/dist
 RUN CGO_ENABLED=1 go build -ldflags="-s -w -X main.Version=${AITRIAGE_VERSION}" -o /aitriage ./cmd/aitriage
+
+# Build the latest upstream Gitleaks release with patched Go dependencies. The
+# upstream v8.30.1 asset was built with Go 1.24.11 and x/crypto 0.35.0, both of
+# which now have fixable HIGH CVEs. Module source is authenticated by Go sumdb.
+FROM --platform=$BUILDPLATFORM golang:1.25.12-bookworm AS gitleaks-builder
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /src
+RUN go mod download github.com/zricethezav/gitleaks/v8@v8.30.1 && \
+    cp -a /go/pkg/mod/github.com/zricethezav/gitleaks/v8@v8.30.1/. /src/ && \
+    chmod -R u+w /src && \
+    go mod edit -require=golang.org/x/crypto@v0.52.0 && \
+    go mod tidy && \
+    CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+      go build -trimpath -ldflags="-s -w -X=github.com/zricethezav/gitleaks/v8/version.Version=v8.30.1" -o /gitleaks .
+
+# Trivy v0.72.0 was released with Go 1.26.4 and oras-go 2.6.0. Rebuilding the
+# exact tagged source on patched Go 1.26.5 + oras-go 2.6.1 removes the fixable
+# CVEs without changing Trivy's scanner version or behavior.
+FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS trivy-builder
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /src
+RUN go mod download github.com/aquasecurity/trivy@v0.72.0 && \
+    cp -a /go/pkg/mod/github.com/aquasecurity/trivy@v0.72.0/. /src/ && \
+    chmod -R u+w /src && \
+    go mod edit -require=oras.land/oras-go/v2@v2.6.1 && \
+    go mod tidy && \
+    GOEXPERIMENT=jsonv2 CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+      go build -trimpath -ldflags="-s -w -X github.com/aquasecurity/trivy/pkg/version/app.ver=0.72.0" -o /trivy ./cmd/trivy
 
 # ─── Stage 3: Runtime with all security tools ─────────────────────────────────
 FROM debian:bookworm-slim
@@ -42,23 +72,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── semgrep + bandit via pipx ─────────────────────────────────────────────────
 ENV PIPX_HOME=/opt/pipx
 ENV PIPX_BIN_DIR=/usr/local/bin
-RUN pip3 install --break-system-packages pipx && \
-    pipx install semgrep && \
-    pipx install bandit
+# Semgrep 1.170.1 pins mcp 1.23.3, which has three fixable HIGH CVEs.
+# AITriage never exposes Semgrep's MCP server; nevertheless, keep the
+# transitive package patched and prove CLI compatibility below and in E2E.
+RUN pip3 install --break-system-packages 'pipx==1.8.0' && \
+    pipx install 'semgrep==1.170.1' && \
+    pipx runpip semgrep install --no-cache-dir 'mcp==1.28.1' && \
+    pipx install 'bandit==1.9.4' && \
+    pipx upgrade-shared && \
+    /opt/pipx/shared/bin/python -m pip install --upgrade \
+      'setuptools==83.0.0' 'wheel==0.47.0' 'jaraco.context==6.1.2' && \
+    semgrep --version && semgrep scan --help >/dev/null && \
+    /opt/pipx/venvs/semgrep/bin/python -c \
+      "import importlib.metadata as m; assert m.version('mcp') == '1.28.1'" && \
+    bandit --version && \
+    rm -rf /root/.cache/pip
 
-# ── gitleaks v8.30.1 ──────────────────────────────────────────────────────────
-RUN ARCH="$(dpkg --print-architecture)" && \
-    if [ "$ARCH" = "amd64" ]; then GL_ARCH="x64"; else GL_ARCH="$ARCH"; fi && \
-    curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_${GL_ARCH}.tar.gz" \
-    | tar -xz -C /usr/local/bin gitleaks && \
-    chmod +x /usr/local/bin/gitleaks
+# ── Patched source-built external scanners ───────────────────────────────────
+COPY --from=gitleaks-builder /gitleaks /usr/local/bin/gitleaks
+COPY --from=trivy-builder /trivy /usr/local/bin/trivy
 
-# ── trivy v0.70.0 ────────────────────────────────────────────────────────────
-RUN ARCH="$(dpkg --print-architecture)" && \
-    if [ "$ARCH" = "amd64" ]; then TRIVY_ARCH="64bit"; elif [ "$ARCH" = "arm64" ]; then TRIVY_ARCH="ARM64"; fi && \
-    curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_Linux-${TRIVY_ARCH}.tar.gz" \
-    | tar -xz -C /usr/local/bin trivy && \
-    chmod +x /usr/local/bin/trivy
+# Build-only Python packaging tools are not needed at runtime. Removing the
+# distro setuptools metadata also removes two fixable CVEs from the final image.
+RUN apt-get purge -y \
+      python3-setuptools python3-pip python3-venv python3.11-venv \
+      python3-pip-whl python3-setuptools-whl && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/* /root/.cache
 
 # GitHub Action entrypoint wrapper (referenced by action.yml via `entrypoint:`)
 COPY entrypoint.sh /entrypoint.sh
@@ -77,11 +117,7 @@ RUN groupadd -g 1000 aitriage && \
 # USER aitriage
 WORKDIR /project
 
-# Health check for web mode
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-    CMD curl -f http://localhost:8080/api/health || exit 1
-
 EXPOSE 8080
 
 ENTRYPOINT ["aitriage"]
-CMD ["web", "--port", "8080"]
+CMD ["web", "--runtime", "native", "--port", "8080", "--host-prefix", "/workspace"]

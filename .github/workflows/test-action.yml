@@ -26,6 +26,18 @@ jobs:
       - name: Build action image
         run: docker build --build-arg AITRIAGE_VERSION=test-${{ github.sha }} -t aitriage:test .
 
+      - name: Verify scanner bundle inside the image
+        run: |
+          docker run --rm --entrypoint sh aitriage:test -c '
+            set -eu
+            aitriage version
+            semgrep --version
+            /opt/pipx/venvs/semgrep/bin/python -c "import importlib.metadata as m; assert m.version(\"mcp\") == \"1.28.1\""
+            trivy --version
+            gitleaks version
+            bandit --version
+          '
+
       - name: Run scan via entrypoint (SARIF gate)
         run: |
           docker run --rm -v "${{ github.workspace }}:/project" \

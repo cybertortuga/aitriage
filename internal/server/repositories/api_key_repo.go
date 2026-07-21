@@ -6,12 +6,12 @@ import (
 )
 
 type APIKey struct {
-	ID        int       `json:"id"`
-	Name      string    `json:"name"`
-	Prefix    string    `json:"prefix"`
-	Status    string    `json:"status"`
-	CreatedBy int       `json:"created_by"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        int        `json:"id"`
+	Name      string     `json:"name"`
+	Prefix    string     `json:"prefix"`
+	Status    string     `json:"status"`
+	CreatedBy int        `json:"created_by"`
+	CreatedAt time.Time  `json:"created_at"`
 	LastUsed  *time.Time `json:"last_used"`
 }
 
@@ -32,7 +32,7 @@ func (r *APIKeyRepository) List() ([]APIKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var keys []APIKey
 	for rows.Next() {

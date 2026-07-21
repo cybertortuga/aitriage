@@ -19,8 +19,14 @@ func RunGitleaks(ctx context.Context, path string) ([]UnifiedFinding, error) {
 	if !IsInstalled("gitleaks") {
 		return nil, fmt.Errorf("gitleaks not installed")
 	}
+	config, cleanup, err := newGitleaksConfig()
+	if err != nil {
+		return nil, fmt.Errorf("prepare gitleaks generated-artifact exclusion: %w", err)
+	}
+	defer cleanup()
 	result, err := RunTool(ctx, "gitleaks", "detect", "--source", path,
-		"--report-format", "json", "--report-path", "-", "--no-git")
+		"--config", config, "--report-format", "json", "--report-path", "-",
+		"--no-git", "--no-banner", "--redact=100")
 	if err != nil {
 		return nil, fmt.Errorf("gitleaks execution failed: %w", err)
 	}
@@ -33,6 +39,9 @@ func RunGitleaks(ctx context.Context, path string) ([]UnifiedFinding, error) {
 	}
 	findings := make([]UnifiedFinding, 0, len(output))
 	for _, r := range output {
+		if isGeneratedArtifactPath(r.File) {
+			continue
+		}
 		findings = append(findings, UnifiedFinding{
 			Source:   "gitleaks",
 			RuleID:   r.RuleID,

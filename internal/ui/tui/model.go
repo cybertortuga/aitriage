@@ -8,14 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/scanner"
-	"github.com/cybertortuga/aitriage/internal/scanner/deployaudit"
-	"github.com/cybertortuga/aitriage/internal/scanner/deps"
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
-	"github.com/cybertortuga/aitriage/internal/scanner/network"
-	"github.com/cybertortuga/aitriage/internal/scanner/nfr"
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -26,6 +18,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/cybertortuga/aitriage/internal/agent/llm"
+	"github.com/cybertortuga/aitriage/internal/engine/core"
+	"github.com/cybertortuga/aitriage/internal/scanner"
+	"github.com/cybertortuga/aitriage/internal/scanner/deployaudit"
+	"github.com/cybertortuga/aitriage/internal/scanner/deps"
+	"github.com/cybertortuga/aitriage/internal/scanner/external"
+	"github.com/cybertortuga/aitriage/internal/scanner/network"
+	"github.com/cybertortuga/aitriage/internal/scanner/nfr"
 )
 
 // ChatMessage represents a single message in the AI chat
@@ -904,7 +904,7 @@ func readCodeContext(filepath string, targetLine int, context int) string {
 	if err != nil {
 		return ""
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	currentLine := 1

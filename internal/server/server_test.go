@@ -69,6 +69,7 @@ func TestNewServer(t *testing.T) {
 
 	if s == nil {
 		t.Fatal("expected NewServer to return a non-nil Server")
+		return
 	}
 
 	if s.hostPrefix != hostPrefix {
@@ -111,6 +112,68 @@ func TestNewServer(t *testing.T) {
 
 	if rrUnknown.Code != http.StatusOK {
 		t.Errorf("expected unknown route to return 200 OK (fallback), got %d", rrUnknown.Code)
+	}
+}
+
+func TestServeHTTPCORSAllowsOnlyLoopbackOrigins(t *testing.T) {
+	s := setupTestServer(t)
+
+	allowed := httptest.NewRequest(http.MethodOptions, "/api/health", nil)
+	allowed.Header.Set("Origin", "http://localhost:5173")
+	allowedRecorder := httptest.NewRecorder()
+	s.ServeHTTP(allowedRecorder, allowed)
+	if allowedRecorder.Code != http.StatusNoContent {
+		t.Fatalf("loopback preflight status = %d, want %d", allowedRecorder.Code, http.StatusNoContent)
+	}
+	if got := allowedRecorder.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:5173" {
+		t.Fatalf("loopback Access-Control-Allow-Origin = %q", got)
+	}
+
+	rejected := httptest.NewRequest(http.MethodPost, "/api/admin/purge", nil)
+	rejected.Header.Set("Origin", "https://example.invalid")
+	rejectedRecorder := httptest.NewRecorder()
+	s.ServeHTTP(rejectedRecorder, rejected)
+	if rejectedRecorder.Code != http.StatusForbidden {
+		t.Fatalf("cross-origin destructive request status = %d, want %d", rejectedRecorder.Code, http.StatusForbidden)
+	}
+	if got := rejectedRecorder.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("rejected origin was reflected: %q", got)
+	}
+
+	plain := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	plainRecorder := httptest.NewRecorder()
+	s.ServeHTTP(plainRecorder, plain)
+	if plainRecorder.Code != http.StatusOK {
+		t.Fatalf("request without Origin status = %d, want %d", plainRecorder.Code, http.StatusOK)
+	}
+	if got := plainRecorder.Header().Get("Access-Control-Allow-Origin"); got == "*" {
+		t.Fatal("server must never emit wildcard CORS")
+	}
+}
+
+func TestDeleteRowsRollsBackOnFailure(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`CREATE TABLE items (id INTEGER PRIMARY KEY); INSERT INTO items (id) VALUES (1)`); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{db: db}
+	err = s.deleteRows(context.Background(), []deleteQuery{
+		{"items", "DELETE FROM items"},
+		{"missing", "DELETE FROM missing_table"},
+	})
+	if err == nil {
+		t.Fatal("deleteRows accepted a partial purge")
+	}
+	var count int
+	if err := db.QueryRow(`SELECT count(*) FROM items`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("failed transaction left %d rows, want rollback to 1", count)
 	}
 }
 
@@ -433,6 +496,124 @@ func TestHandleScan(t *testing.T) {
 	// scanResponse does not include Path — verify via scan_id presence
 	if resp.ScanID == "" {
 		t.Errorf("expected ScanID to be non-empty, got %q", resp.ScanID)
+	}
+}
+
+func TestHandleScanContainerModeFailsClosedWhenBundleExecutionsAreMissing(t *testing.T) {
+	t.Setenv("AITRIAGE_RUNTIME", "container")
+	// An empty PATH deterministically makes every external scanner unavailable.
+	t.Setenv("PATH", t.TempDir())
+	s := setupTestServer(t)
+	tempDir := t.TempDir()
+	body := []byte(`{"path":"` + tempDir + `"}`)
+	req, _ := http.NewRequest("POST", "/api/scan", bytes.NewBuffer(body))
+	rr := httptest.NewRecorder()
+	s.ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("container partial scan status = %d, want 503: %s", rr.Code, rr.Body.String())
+	}
+	for _, scanner := range []string{"semgrep", "trivy_fs", "trivy_config", "gitleaks", "bandit"} {
+		if !strings.Contains(rr.Body.String(), scanner) {
+			t.Errorf("fail-closed response does not name %s: %s", scanner, rr.Body.String())
+		}
+	}
+}
+
+func TestResolveProjectPathConfinesContainerWebToOpenedRoot(t *testing.T) {
+	s := setupTestServer(t)
+	root := t.TempDir()
+	s.hostPrefix = root
+	nested := filepath.Join(root, "synthetic", "app")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, _ = filepath.EvalSymlinks(root)
+	nested, _ = filepath.EvalSymlinks(nested)
+
+	for _, input := range []string{".", "/", "/project", "/host"} {
+		got, err := s.resolveProjectPath(input)
+		if err != nil || got != root {
+			t.Errorf("root alias %q = %q, %v; want %q", input, got, err, root)
+		}
+	}
+	for _, input := range []string{"synthetic/app", "/synthetic/app", "/project/synthetic/app", "/host/synthetic/app", nested} {
+		got, err := s.resolveProjectPath(input)
+		if err != nil || got != nested {
+			t.Errorf("nested path %q = %q, %v; want %q", input, got, err, nested)
+		}
+	}
+	if _, err := s.resolveProjectPath("../escape"); err == nil {
+		t.Fatal("parent traversal must be rejected")
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.resolveProjectPath("escape"); err == nil {
+		t.Fatal("symlink escape must be rejected")
+	}
+}
+
+func TestContainerWebEndpointsRejectTraversal(t *testing.T) {
+	s := setupTestServer(t)
+	s.hostPrefix = t.TempDir()
+
+	for _, tc := range []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodGet, "/api/browser?path=../", ""},
+		{http.MethodPost, "/api/scan", `{"path":"../"}`},
+		{http.MethodPost, "/api/securecoder/scan-directory", `{"path":"../"}`},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		s.ServeHTTP(rr, req)
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("%s %s status = %d, want 403: %s", tc.method, tc.path, rr.Code, rr.Body.String())
+		}
+	}
+}
+
+func TestManagedWebRebuildCannotKillServer(t *testing.T) {
+	s := setupTestServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/rebuild", nil)
+	addAuthCookie(req)
+	rr := httptest.NewRecorder()
+	s.ServeHTTP(rr, req)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("rebuild status = %d, want 409: %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "aitriage setup --repair") {
+		t.Fatalf("rebuild response is not actionable: %s", rr.Body.String())
+	}
+	if err := s.db.Ping(); err != nil {
+		t.Fatalf("server database unavailable after rejected rebuild: %v", err)
+	}
+}
+
+func TestRunwayProjectPathUsesSameContainerConfinement(t *testing.T) {
+	s := setupTestServer(t)
+	root := t.TempDir()
+	s.hostPrefix = root
+	nested := filepath.Join(root, "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repo := "nested"
+	got, err := s.resolveRunwayProjectPath(&models.Product{RepoURL: &repo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := filepath.EvalSymlinks(nested)
+	if got != want {
+		t.Fatalf("runway root = %q, want %q", got, want)
+	}
+	escape := "../escape"
+	if _, err := s.resolveRunwayProjectPath(&models.Product{RepoURL: &escape}); err == nil {
+		t.Fatal("runway path traversal must be rejected")
 	}
 }
 

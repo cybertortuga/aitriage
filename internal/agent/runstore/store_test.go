@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cybertortuga/aitriage/internal/agent/hostagent"
 	"github.com/cybertortuga/aitriage/internal/agent/llm"
@@ -296,5 +297,94 @@ func TestConcurrentSubmitTwoHandles(t *testing.T) {
 	}
 	if _, ok, _ := fresh.Response(idB); !ok {
 		t.Error("response B lost under concurrent submit")
+	}
+}
+
+func TestTreeFingerprintUsesContentNotMtime(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "app.go")
+	fixedTime := time.Unix(1_700_000_000, 0)
+	if err := os.WriteFile(path, []byte("AAAA"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, fixedTime, fixedTime); err != nil {
+		t.Fatal(err)
+	}
+	before, err := TreeFingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Preserve both size and mtime while changing the bytes. A metadata-only
+	// fingerprint would miss this pre-approval source edit.
+	if err := os.WriteFile(path, []byte("BBBB"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, fixedTime, fixedTime); err != nil {
+		t.Fatal(err)
+	}
+	after, err := TreeFingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before == after {
+		t.Fatal("tree fingerprint did not detect same-size, same-mtime content change")
+	}
+}
+
+func TestTreeFingerprintIsContentDeterministicAndSkipsReports(t *testing.T) {
+	left, right := t.TempDir(), t.TempDir()
+	for _, root := range []string{left, right} {
+		if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "src", "app.py"), []byte("print('ok')\n"), 0o640); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Different mtimes must not affect an identical source tree.
+	if err := os.Chtimes(filepath.Join(right, "src", "app.py"), time.Unix(1_600_000_000, 0), time.Unix(1_600_000_000, 0)); err != nil {
+		t.Fatal(err)
+	}
+	leftFP, _ := TreeFingerprint(left)
+	rightFP, _ := TreeFingerprint(right)
+	if leftFP != rightFP {
+		t.Fatalf("identical content fingerprints differ: %s != %s", leftFP, rightFP)
+	}
+
+	if err := os.MkdirAll(filepath.Join(left, "aitriage-reports"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(left, "aitriage-reports", "run.json"), []byte("generated"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	afterReports, _ := TreeFingerprint(left)
+	if leftFP != afterReports {
+		t.Fatal("generated aitriage-reports changed the source-tree fingerprint")
+	}
+}
+
+func TestTreeFingerprintDoesNotFollowSymlinks(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	outsideFile := filepath.Join(outside, "secret.txt")
+	if err := os.WriteFile(outsideFile, []byte("first"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideFile, filepath.Join(root, "external-link")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	before, err := TreeFingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outsideFile, []byte("second"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	after, err := TreeFingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Fatal("tree fingerprint followed a symlink outside the project")
 	}
 }

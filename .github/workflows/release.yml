@@ -21,6 +21,10 @@ jobs:
             goos: linux
             goarch: amd64
             binary_name: aitriage
+          - os: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            binary_name: aitriage
           - os: macos-latest
             goos: darwin
             goarch: amd64
@@ -41,6 +45,23 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build embedded Web UI
+        working-directory: web
+        run: |
+          npm ci
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Stage Web UI for Go embedding
+        shell: bash
+        run: node -e "const fs=require('fs'); fs.rmSync('internal/server/ui/dist',{recursive:true,force:true}); fs.cpSync('web/dist','internal/server/ui/dist',{recursive:true})"
+
       - name: Set up MSYS2 (Windows only)
         if: matrix.os == 'windows-latest'
         uses: msys2/setup-msys2@v2
@@ -58,7 +79,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           mkdir -p dist
-          go build -v -ldflags="-s -w" -o dist/${{ matrix.binary_name }} ./cmd/aitriage
+          go build -v -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o dist/${{ matrix.binary_name }} ./cmd/aitriage
 
       - name: Build (Unix)
         if: matrix.os != 'windows-latest'
@@ -68,22 +89,36 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           mkdir -p dist
-          go build -v -ldflags="-s -w" -o dist/${{ matrix.binary_name }} ./cmd/aitriage
+          go build -v -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o dist/${{ matrix.binary_name }} ./cmd/aitriage
+
+      - name: Verify embedded release version
+        shell: bash
+        run: |
+          actual=$(dist/${{ matrix.binary_name }} version)
+          expected="AITriage ${{ github.ref_name }}"
+          test "$actual" = "$expected" || {
+            echo "Expected '$expected', got '$actual'" >&2
+            exit 1
+          }
 
       - name: Package
         shell: bash
+        env:
+          BUILD_GOOS: ${{ matrix.goos }}
+          BUILD_GOARCH: ${{ matrix.goarch }}
+          BINARY_NAME: ${{ matrix.binary_name }}
         run: |
           cd dist
           VERSION="${{ github.ref_name }}"
           CLEAN_VER="${VERSION#v}"
-          OS_NAME=$(echo ${{ matrix.goos }} | awk '{print toupper(substr($0,1,1))substr($0,2)}')
-          ARCH_NAME="${{ matrix.goarch }}"
+          OS_NAME=$(printf '%s' "$BUILD_GOOS" | awk '{print toupper(substr($0,1,1))substr($0,2)}')
+          ARCH_NAME="$BUILD_GOARCH"
           if [ "$ARCH_NAME" = "amd64" ]; then ARCH_NAME="x86_64"; fi
-          
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            tar -a -c -f ../aitriage_${CLEAN_VER}_${OS_NAME}_${ARCH_NAME}.zip ${{ matrix.binary_name }}
+
+          if [ "$BUILD_GOOS" = "windows" ]; then
+            tar -a -c -f "../aitriage_${CLEAN_VER}_${OS_NAME}_${ARCH_NAME}.zip" "$BINARY_NAME"
           else
-            tar -czf ../aitriage_${CLEAN_VER}_${OS_NAME}_${ARCH_NAME}.tar.gz ${{ matrix.binary_name }}
+            tar -czf "../aitriage_${CLEAN_VER}_${OS_NAME}_${ARCH_NAME}.tar.gz" "$BINARY_NAME"
           fi
 
       - name: Upload Artifact
@@ -98,6 +133,11 @@ jobs:
     if: github.actor_id == '184216056'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -115,4 +155,5 @@ jobs:
           files: |
             dist/aitriage_*
             dist/checksums.txt
+            scripts/install.sh
           generate_release_notes: true

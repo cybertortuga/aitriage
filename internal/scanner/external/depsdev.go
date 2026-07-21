@@ -55,7 +55,7 @@ type depsDevFindings struct {
 	RecommendedVersions []struct {
 		VersionKey depsDevVersionKey `json:"versionKey"`
 	} `json:"recommendedVersions"`
-	PackageFindings []depsDevFindingItem `json:"packageFindings"`
+	PackageFindings  []depsDevFindingItem `json:"packageFindings"`
 	RequestedVersion struct {
 		Findings []depsDevFindingItem `json:"findings"`
 	} `json:"requestedVersion"`
@@ -139,7 +139,7 @@ func QueryDepsDev(ctx context.Context, registry string, packages []DepPackageReq
 	if err != nil {
 		return nil, fmt.Errorf("deps.dev request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("deps.dev API returned status %d", resp.StatusCode)

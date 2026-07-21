@@ -68,6 +68,38 @@ func TestNewWorkspace(t *testing.T) {
 	}
 }
 
+func TestNewWorkspaceTestClassificationDoesNotHideProductionSubstrings(t *testing.T) {
+	tmpDir := t.TempDir()
+	for _, name := range []string{"contest.go", "latest.py", "tests/test_auth.py"} {
+		path := filepath.Join(tmpDir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("content\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ws, err := core.NewWorkspace(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	want := map[string]bool{"contest.go": false, "latest.py": false, "test_auth.py": true}
+	for _, file := range ws.Files {
+		base := filepath.Base(file.Path)
+		if expected, ok := want[base]; ok {
+			if file.IsTest != expected {
+				t.Errorf("%s IsTest = %t, want %t", base, file.IsTest, expected)
+			}
+			delete(want, base)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("workspace did not load expected files: %v", want)
+	}
+}
+
 func TestFileInfo_GetContent(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "test.go")
@@ -219,6 +251,7 @@ func TestProjectContext_GetFile(t *testing.T) {
 	f := ctx.GetFile("src/main.go")
 	if f == nil {
 		t.Fatal("Expected to find file, got nil")
+		return
 	}
 
 	if f.Path != "/project/src/main.go" {

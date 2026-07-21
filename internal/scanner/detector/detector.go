@@ -34,6 +34,13 @@ func DetectProjects(ws *core.Workspace) []*core.ProjectContext {
 
 	// Step 1: Accumulate scores for each directory based on its files
 	for _, f := range ws.Files {
+		// Test, mock, fixture, and spec files are intentionally outside the
+		// production audit surface. They must not activate a framework rule pack:
+		// a fixture package.json under testdata/, for example, must not make an
+		// otherwise unrelated repository look like a Next.js project.
+		if f.IsTest {
+			continue
+		}
 		dir := filepath.Dir(f.Path)
 		base := filepath.Base(f.Path)
 
@@ -141,6 +148,12 @@ func DetectProjects(ws *core.Workspace) []*core.ProjectContext {
 
 	// Step 3: Assign files to the closest project root
 	for _, f := range ws.Files {
+		// Keep the same policy for rule execution as for stack detection. The
+		// workspace still indexes these files (and reports them in TotalFiles), but
+		// no deterministic production finding is created from their contents.
+		if f.IsTest {
+			continue
+		}
 		var bestProject *core.ProjectContext
 		bestLen := -1
 

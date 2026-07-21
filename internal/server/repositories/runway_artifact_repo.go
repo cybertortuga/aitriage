@@ -39,7 +39,7 @@ func (r *RunwayArtifactRepository) UpsertMany(ctx context.Context, artifacts []m
 	if err != nil {
 		return fmt.Errorf("prepare runway artifact upsert: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, artifact := range artifacts {
 		if !models.IsValidRunwayArtifactKind(artifact.Kind) {
@@ -84,7 +84,7 @@ func (r *RunwayArtifactRepository) ListMetadata(ctx context.Context, sessionID i
 	if err != nil {
 		return nil, fmt.Errorf("list runway artifacts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	artifacts := make([]models.RunwayArtifact, 0, 6)
 	for rows.Next() {

@@ -2,7 +2,7 @@
 # AITriage — GoReleaser Configuration
 # ==============================================================================
 # Builds cross-platform binaries, publishes to GitHub Releases,
-# generates checksums, and pushes Homebrew formula.
+# and generates checksums.
 # Triggered by: git tag v* → .github/workflows/release.yml
 # ==============================================================================
 
@@ -68,19 +68,6 @@ changelog:
       - '^chore:'
       - '^ci:'
 
-# ── Homebrew ──────────────────────────────────────────────────────────────────
-# Requires: cybertortuga/homebrew-aitriage repo + HOMEBREW_TAP_GITHUB_TOKEN secret
-# Users install via: brew install cybertortuga/aitriage/aitriage
-homebrew_casks:
-  - name: aitriage
-    repository:
-      owner: cybertortuga
-      name: homebrew-aitriage
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    homepage: "https://github.com/cybertortuga/aitriage"
-    description: "AI-Powered Security Audit Engine — 187 rules, 11 stacks, zero dependencies"
-    license: "MIT"
-
 # ── Release Notes ─────────────────────────────────────────────────────────────
 release:
   github:
@@ -94,8 +81,8 @@ release:
 
     ### Install
     ```bash
-    # macOS / Linux (Homebrew)
-    brew install cybertortuga/aitriage/aitriage
+    # macOS / Linux (official release + checksum verification + scanner setup)
+    curl -fsSL https://github.com/cybertortuga/aitriage/releases/latest/download/install.sh | sh
 
     # Go
     go install github.com/cybertortuga/aitriage/cmd/aitriage@v{{ .Version }}

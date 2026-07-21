@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/cybertortuga/aitriage/internal/engine/core"
+	"github.com/cybertortuga/aitriage/internal/scanner/external"
+	"github.com/cybertortuga/aitriage/internal/scanner/nfr"
 )
 
 func TestEnrichFindingsCanonicalizesOrderBeforeVulnIDs(t *testing.T) {
@@ -24,6 +26,46 @@ func TestEnrichFindingsCanonicalizesOrderBeforeVulnIDs(t *testing.T) {
 	gotB := enrichedOrderSignature(stateB.EnrichedFindings)
 	if !reflect.DeepEqual(gotA, gotB) {
 		t.Fatalf("canonical enriched order differs:\nA=%v\nB=%v", gotA, gotB)
+	}
+}
+
+func TestEnrichFindingsMergesSemanticAliasesAndKeepsOrigins(t *testing.T) {
+	state := &AgentState{
+		CoreFindings: []core.CheckResult{
+			{ID: "FAST-LAZY-EXC", Name: "Lazy Exception Handling", Evidence: "except pass", Severity: "HIGH", File: "app.py", Line: 10},
+			{ID: "FAST-AUTH", Name: "Missing Authentication", Evidence: "required pattern", Severity: "HIGH"},
+			{ID: "FAST-RATELIMIT", Name: "Missing Rate Limiting", Evidence: "required pattern", Severity: "HIGH"},
+		},
+		ExternalFindings: []external.UnifiedFinding{
+			{RuleID: "B110", Source: "bandit", Severity: "LOW", File: "app.py", Line: 10, Message: "try_except_pass"},
+		},
+		NFRFindings: []nfr.NFRFinding{
+			{RuleID: "NFR-API-003", Name: "Authentication Middleware Missing", Severity: "HIGH", Message: "No authentication middleware detected"},
+			{RuleID: "NFR-API-001", Name: "Rate Limiting Missing", Severity: "HIGH", Message: "No rate limiting detected"},
+		},
+	}
+
+	enrichFindings(state)
+	if len(state.EnrichedFindings) != 3 {
+		t.Fatalf("semantic findings = %d, want 3 instead of six aliases: %+v", len(state.EnrichedFindings), state.EnrichedFindings)
+	}
+	classes := map[string]EnrichedFinding{}
+	for _, finding := range state.EnrichedFindings {
+		classes[semanticFindingClass(finding)] = finding
+	}
+	for _, class := range []string{"exception_swallow", "missing_authentication", "missing_rate_limiting"} {
+		finding, ok := classes[class]
+		if !ok {
+			t.Fatalf("missing semantic class %q: %+v", class, state.EnrichedFindings)
+		}
+		if len(finding.Origins) != 2 {
+			t.Fatalf("%s origins = %+v, want both scanners", class, finding.Origins)
+		}
+	}
+
+	computeHealthCheck(state)
+	if state.HealthCheck.Breakdown.ActiveFindings != 3 {
+		t.Fatalf("health active findings = %d, want semantic count 3", state.HealthCheck.Breakdown.ActiveFindings)
 	}
 }
 

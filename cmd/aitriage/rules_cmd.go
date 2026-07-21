@@ -212,7 +212,7 @@ func runRulesInstall(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("download failed: HTTP %d (pack may not be published yet)", resp.StatusCode)
@@ -227,7 +227,7 @@ func runRulesInstall(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to decompress: %w", err)
 	}
-	defer gzr.Close()
+	defer func() { _ = gzr.Close() }()
 
 	tr := tar.NewReader(gzr)
 	fileCount := 0
@@ -256,7 +256,7 @@ func runRulesInstall(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			_, _ = io.Copy(f, tr)
-			f.Close()
+			_ = f.Close()
 			fileCount++
 		}
 	}

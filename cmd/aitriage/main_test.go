@@ -11,15 +11,25 @@ import (
 	"testing"
 )
 
-var binaryName = "aitriage-test-binary"
+var binaryPath string
 
 func TestMain(m *testing.M) {
+	buildDir, err := os.MkdirTemp("", "aitriage-test-binary-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not create test binary directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	binaryName := "aitriage-test-binary"
 	if runtime.GOOS == "windows" {
 		binaryName += ".exe"
 	}
+	binaryPath = filepath.Join(buildDir, binaryName)
 
-	// Build the binary
-	build := exec.Command("go", "build", "-o", binaryName, ".")
+	// Build into a process-unique directory. A fixed package-local path makes
+	// concurrent `go test` and `go test -race` invocations delete each other's
+	// executable and creates a false test failure unrelated to product code.
+	build := exec.Command("go", "build", "-o", binaryPath, ".")
 	if err := build.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Could not build binary for testing: %v\n", err)
 		os.Exit(1)
@@ -27,10 +37,8 @@ func TestMain(m *testing.M) {
 
 	// Run tests
 	exitCode := m.Run()
-
-	// Clean up
-	if err := os.Remove(binaryName); err != nil && !os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Failed to remove binary: %v\n", err)
+	if err := os.RemoveAll(buildDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to remove test binary directory: %v\n", err)
 	}
 
 	os.Exit(exitCode)
@@ -49,7 +57,7 @@ func TestScanCommand(t *testing.T) {
 
 	// We run `scan <tempDir> --format json`
 	// We might get a non-zero exit code if fail-on is triggered, but we mainly care about output parsing.
-	cmd := exec.Command("./"+binaryName, "scan", tempDir, "--format", "json", "--no-summary")
+	cmd := exec.Command(binaryPath, "scan", tempDir, "--format", "json", "--no-summary")
 
 	var out bytes.Buffer
 	var stderr bytes.Buffer
@@ -71,7 +79,7 @@ func TestScanCommand(t *testing.T) {
 
 func TestWebCommandHelp(t *testing.T) {
 	// Just test if `web --help` runs without panicking
-	cmd := exec.Command("./"+binaryName, "web", "--help")
+	cmd := exec.Command(binaryPath, "web", "--help")
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -82,7 +90,8 @@ func TestWebCommandHelp(t *testing.T) {
 	}
 
 	output := out.String()
-	if !strings.Contains(output, "Start a web server") {
+	if !strings.Contains(output, "Start the local AITriage browser dashboard") ||
+		!strings.Contains(output, "aitriage-reports") {
 		t.Errorf("Expected web help output, got: %s", output)
 	}
 }

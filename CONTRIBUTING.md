@@ -6,7 +6,7 @@ changes.
 
 ## Prerequisites
 
-- **Go 1.25.5+** — [go.dev/dl](https://go.dev/dl/)
+- **Go 1.25.12+** — [go.dev/dl](https://go.dev/dl/)
 - **Node.js 22+** — for the web frontend
 - **CGO enabled** — tree-sitter requires C compilation (`CGO_ENABLED=1`)
 - **git** — for version control and diff-based scanning tests

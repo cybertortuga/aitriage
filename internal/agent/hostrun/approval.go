@@ -75,6 +75,13 @@ func (m *Manager) Approve(runID string, selectedIDs []string) (*Progress, error)
 	if err != nil {
 		return nil, err
 	}
+	scannedTree := run.Manifest().Git.TreeFingerprint
+	if scannedTree == "" {
+		return nil, fmt.Errorf("run %s has no audited source-tree fingerprint; start a new AITriage audit before approving fixes", runID)
+	}
+	if before != scannedTree {
+		return nil, fmt.Errorf("project source changed after audit run %s; no approval was recorded. Start a new AITriage audit on the current tree, then approve before editing any file", runID)
+	}
 	approval := Approval{
 		RunID:             runID,
 		SelectedIDs:       selectedIDs,
@@ -136,6 +143,17 @@ func (m *Manager) Verify(ctx context.Context, parentRunID string, opts StartOpti
 	}
 	if parent.Status() != runstore.StatusFixing && parent.Status() != runstore.StatusVerifying {
 		return nil, fmt.Errorf("run %s is %q; verification requires the fixing state", parentRunID, parent.Status())
+	}
+	projectPath, err := m.projectPathForRun(parent)
+	if err != nil {
+		return nil, err
+	}
+	currentTree, err := runstore.TreeFingerprint(projectPath)
+	if err != nil {
+		return nil, err
+	}
+	if currentTree == approval.BeforeTree {
+		return nil, fmt.Errorf("run %s has no project changes after its recorded approval; apply the approved fixes before verification", parentRunID)
 	}
 	if err := parent.SetStatus(runstore.StatusVerifying); err != nil {
 		return nil, err

@@ -4,10 +4,17 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/cybertortuga/aitriage/internal/scanner/external"
 )
 
 func TestBuildAgentHandoffKeepsCIAndWebDataInParity(t *testing.T) {
 	state := &AgentState{
+		ScannerCoverage: "full",
+		ScannerExecutions: []external.ScannerExecution{
+			{Scanner: "aitriage", Status: external.StatusCompleted, Findings: 1},
+			{Scanner: "semgrep", Status: external.StatusCompleted},
+		},
 		EnrichedFindings: []EnrichedFinding{
 			{VulnID: "CS-AUTH-001", Severity: "CRITICAL", File: "auth.go", Line: 10, Message: "Hardcoded secret"},
 			{VulnID: "CS-MISC-002", Severity: "MEDIUM", File: "app.go", Line: 20, Message: "Manual review"},
@@ -41,6 +48,12 @@ func TestBuildAgentHandoffKeepsCIAndWebDataInParity(t *testing.T) {
 	}
 	if handoff.AgentData.ScanDate != "2026-07-15" {
 		t.Fatalf("scan date = %q", handoff.AgentData.ScanDate)
+	}
+	if handoff.AgentData.ScannerCoverage != "full" || len(handoff.AgentData.Scanners) != 2 {
+		t.Fatalf("scanner evidence missing from structured handoff: %+v", handoff.AgentData)
+	}
+	if !strings.Contains(handoff.SummaryMarkdown, "**Scanner coverage**: `FULL`") || !strings.Contains(handoff.SummaryMarkdown, "`semgrep`") {
+		t.Fatal("summary is missing scanner coverage evidence")
 	}
 }
 

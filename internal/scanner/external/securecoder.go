@@ -105,8 +105,8 @@ type secureCoderIgnoredResponse struct {
 }
 
 type fixCompletedRequest struct {
-	FindingsCountBefore    int    `json:"findingsCountBefore"`
-	FindingsCountAfter     int    `json:"findingsCountAfter"`
+	FindingsCountBefore     int    `json:"findingsCountBefore"`
+	FindingsCountAfter      int    `json:"findingsCountAfter"`
 	FindingsByFiletypeAfter string `json:"findingsByFiletypeAfter"`
 }
 
@@ -166,7 +166,7 @@ func IsSecureCoderRunning() bool {
 	if err != nil {
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode == http.StatusOK
 }
 
@@ -181,7 +181,7 @@ func SecureCoderBackend() string {
 	if err != nil {
 		return ""
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var cfg secureCoderConfigResponse
 	if json.NewDecoder(resp.Body).Decode(&cfg) != nil || cfg.ScannerBackend == nil {
 		return ""
@@ -210,7 +210,7 @@ func RunSecureCoder(ctx context.Context, filePath string) ([]UnifiedFinding, err
 	if err != nil {
 		return nil, fmt.Errorf("securecoder scan request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("securecoder returned status %d", resp.StatusCode)
@@ -266,7 +266,7 @@ func RunSecureCoderDeps(ctx context.Context, registry string, packages []DepPack
 	if err != nil {
 		return nil, fmt.Errorf("securecoder dependency scan failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("securecoder returned status %d", resp.StatusCode)
@@ -300,7 +300,7 @@ func IgnoreSecureCoderFinding(ctx context.Context, params IgnoreRequest) (*Ignor
 	if err != nil {
 		return nil, fmt.Errorf("securecoder ignore request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("securecoder returned status %d", resp.StatusCode)
@@ -330,7 +330,7 @@ func GetSecureCoderIgnored(ctx context.Context) ([]IgnoreEntry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("securecoder ignored list request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("securecoder returned status %d", resp.StatusCode)
@@ -353,8 +353,8 @@ func ReportFixCompleted(ctx context.Context, before, after int, byFiletypeAfter 
 	}
 
 	payload := fixCompletedRequest{
-		FindingsCountBefore:    before,
-		FindingsCountAfter:     after,
+		FindingsCountBefore:     before,
+		FindingsCountAfter:      after,
 		FindingsByFiletypeAfter: byFiletypeAfter,
 	}
 	body, _ := json.Marshal(payload)
@@ -369,7 +369,7 @@ func ReportFixCompleted(ctx context.Context, before, after int, byFiletypeAfter 
 	if err != nil {
 		return fmt.Errorf("securecoder fix_completed request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("securecoder returned status %d", resp.StatusCode)

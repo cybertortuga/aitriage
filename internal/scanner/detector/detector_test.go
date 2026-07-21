@@ -74,6 +74,7 @@ func TestDetectProjects_Isolation(t *testing.T) {
 
 	if nextProj == nil || expressProj == nil || fastapiProj == nil {
 		t.Fatal("One of the projects was not detected")
+		return
 	}
 
 	// Check isolation
@@ -135,6 +136,45 @@ func TestDetectProjects_ExpressDependencyNeedsRuntimeImport(t *testing.T) {
 	for _, project := range DetectProjects(ws) {
 		if project.Stack == string(Express) {
 			t.Fatal("unused express dependency must not activate Express rules")
+		}
+	}
+}
+
+func TestDetectProjects_TestFixturesCannotActivateStack(t *testing.T) {
+	tmpDir := t.TempDir()
+	files := map[string]string{
+		"main.go":                "package main\n",
+		"testdata/package.json":  `{"dependencies":{"next":"latest"}}`,
+		"tests/requirements.txt": "fastapi\n",
+		"__fixtures__/manage.py": "from django.core import management\n",
+		"src/contest.go":         "package main\n",
+		"src/latest.py":          "print('production')\n",
+	}
+	for path, content := range files {
+		fullPath := filepath.Join(tmpDir, path)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ws, err := core.NewWorkspace(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+
+	projects := DetectProjects(ws)
+	for _, project := range projects {
+		if project.Stack == string(NextJS) || project.Stack == string(FastAPI) || project.Stack == string(Django) {
+			t.Fatalf("test-only fixture activated production stack %q", project.Stack)
+		}
+		for _, file := range project.Files {
+			if file.IsTest {
+				t.Fatalf("test-like file assigned to production project: %s", file.Path)
+			}
 		}
 	}
 }

@@ -4,7 +4,6 @@ import { useViewModeStore } from '../store/ViewModeStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
-import Modal from './common/Modal';
 
 const PALETTES = [
   { id: 'violet', name: 'Obsidian Violet', hex: '#8b5cf6' },
@@ -35,9 +34,6 @@ export const Header: React.FC = () => {
   const [enableAnalytics, setEnableAnalytics] = React.useState(() => localStorage.getItem('aitriage_analytics') !== 'false');
   const [autoScan, setAutoScan] = React.useState(() => localStorage.getItem('aitriage_autoscan') === 'true');
   const { t, i18n } = useTranslation();
-  
-  const [showRebuildModal, setShowRebuildModal] = React.useState(false);
-  const [rebuildStatus, setRebuildStatus] = React.useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   
   const { mode, toggleMode } = useViewModeStore();
   const isCopilotOpen = useCopilotStore((state) => state.isOpen);
@@ -186,21 +182,6 @@ export const Header: React.FC = () => {
             title={t('components.theme_settings')}
           >
             <span className="material-symbols-outlined text-[18px]">settings</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setRebuildStatus('idle');
-              setShowRebuildModal(true);
-            }}
-            className={`flex items-center justify-center w-8 h-8 rounded-md bg-surface text-on-surface border border-[var(--accent-color-line)] hover:border-[var(--accent-color)] hover:bg-[var(--accent-color-soft)] text-[var(--accent-color)] transition-all duration-300 hover:-translate-y-[1px] ${
-              rebuildStatus === 'loading' ? 'pointer-events-none opacity-50' : ''
-            }`}
-            title={t('components.header.rebuild_title', 'Rebuild Container')}
-          >
-            <span className={`material-symbols-outlined text-[18px] ${rebuildStatus === 'loading' ? 'animate-spin' : ''}`}>
-              restart_alt
-            </span>
           </button>
 
           {mode === 'advanced' && (
@@ -543,103 +524,6 @@ export const Header: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <Modal
-        isOpen={showRebuildModal}
-        onClose={() => rebuildStatus !== 'loading' && setShowRebuildModal(false)}
-        title={t('components.header.rebuild_title', 'Rebuild Container')}
-        maxWidth="max-w-md"
-      >
-        <div className="flex flex-col gap-6 text-center py-4">
-          {rebuildStatus === 'idle' && (
-            <>
-              <div className="mx-auto w-12 h-12 rounded-full bg-[var(--accent-color-soft)] border border-[var(--accent-color-line)] flex items-center justify-center text-[var(--accent-color)] mb-2">
-                <span className="material-symbols-outlined text-[24px]">restart_alt</span>
-              </div>
-              <p className="text-sm text-v2-fg-2 leading-relaxed">
-                {t('components.header.rebuild_confirm_text', 'Are you sure you want to rebuild the container? This will stop and compile the environment.')}
-              </p>
-              <div className="flex justify-center gap-3 mt-4">
-                <button
-                  onClick={() => setShowRebuildModal(false)}
-                  className="v2-btn v2-btn-ghost px-5 py-2 font-mono text-[11px] uppercase tracking-wider"
-                >
-                  {t('components.header.rebuild_cancel', 'Cancel')}
-                </button>
-                <button
-                  onClick={async () => {
-                    setRebuildStatus('loading');
-                    try {
-                      await api.post('/admin/rebuild');
-                      setRebuildStatus('success');
-                    } catch (e) {
-                      console.error(e);
-                      setRebuildStatus('error');
-                    }
-                  }}
-                  className="v2-btn v2-btn-red px-5 py-2 font-mono text-[11px] uppercase tracking-wider"
-                >
-                  {t('components.header.rebuild_confirm', 'Rebuild')}
-                </button>
-              </div>
-            </>
-          )}
-
-          {rebuildStatus === 'loading' && (
-            <>
-              <div className="mx-auto w-12 h-12 rounded-full bg-[var(--accent-color-soft)] border border-[var(--accent-color-line)] flex items-center justify-center text-[var(--accent-color)] mb-2 animate-spin">
-                <span className="material-symbols-outlined text-[24px]">sync</span>
-              </div>
-              <p className="text-sm text-white font-mono uppercase tracking-widest animate-pulse">
-                {t('components.header.rebuilding', 'Rebuilding Environment...')}
-              </p>
-            </>
-          )}
-
-          {rebuildStatus === 'success' && (
-            <>
-              <div className="mx-auto w-12 h-12 rounded-full bg-success/10 border border-success/30 flex items-center justify-center text-success mb-2">
-                <span className="material-symbols-outlined text-[24px]">check_circle</span>
-              </div>
-              <p className="text-sm text-v2-fg-2">
-                {t('components.header.rebuild_success', 'Rebuild initiated successfully.')}
-              </p>
-              <div className="flex justify-center mt-4">
-                <button
-                  onClick={() => setShowRebuildModal(false)}
-                  className="v2-btn v2-btn-ghost px-5 py-2 font-mono text-[11px] uppercase tracking-wider"
-                >
-                  {t('components.header.rebuild_close', 'Close')}
-                </button>
-              </div>
-            </>
-          )}
-
-          {rebuildStatus === 'error' && (
-            <>
-              <div className="mx-auto w-12 h-12 rounded-full bg-error/10 border border-error/30 flex items-center justify-center text-error mb-2">
-                <span className="material-symbols-outlined text-[24px]">error</span>
-              </div>
-              <p className="text-sm text-v2-fg-2">
-                {t('components.header.rebuild_error', 'Failed to initiate rebuild or connection lost.')}
-              </p>
-              <div className="flex justify-center gap-3 mt-4">
-                <button
-                  onClick={() => setRebuildStatus('idle')}
-                  className="v2-btn v2-btn-ghost px-5 py-2 font-mono text-[11px] uppercase tracking-wider"
-                >
-                  {t('components.header.rebuild_retry', 'Retry')}
-                </button>
-                <button
-                  onClick={() => setShowRebuildModal(false)}
-                  className="v2-btn v2-btn-ghost px-5 py-2 font-mono text-[11px] uppercase tracking-wider"
-                >
-                  {t('components.header.rebuild_close', 'Close')}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </Modal>
     </header>
   );
 };

@@ -226,6 +226,7 @@ func enrichFindings(state *AgentState) {
 		})
 	}
 
+	enriched = mergeSemanticFindings(enriched)
 	sortEnrichedFindings(enriched)
 
 	// Assign CS-XXX-NNN vulnerability IDs after canonical sorting so IDs remain
@@ -261,73 +262,48 @@ func enrichFindings(state *AgentState) {
 // dispositions: findings classified as False Positive are excluded from the
 // penalty. The result becomes the canonical SecurityScore/SecurityGrade.
 func computeHealthCheck(state *AgentState) {
-	// Build the set of False-Positive locations from AI dispositions.
-	fp := make(map[string]bool)
+	// EnrichedFindings is the canonical, semantic-deduplicated inventory shown to
+	// the model and written to artifacts. Score that same inventory so the health
+	// gate cannot count Core/NFR/external aliases as separate vulnerabilities.
+	ignored := make(map[int]bool)
 	for _, d := range state.FindingDispositions {
-		if d.Disposition != "False Positive" {
-			continue
+		if d.Disposition == "False Positive" && d.FindingIndex >= 0 && d.FindingIndex < len(state.EnrichedFindings) {
+			ignored[d.FindingIndex] = true
 		}
-		if d.FindingIndex >= 0 && d.FindingIndex < len(state.EnrichedFindings) {
-			ef := state.EnrichedFindings[d.FindingIndex]
-			fp[hcKey(ef.ID, ef.File, ef.Line)] = true
+	}
+	ignoredCore := make(map[string]bool)
+	for _, finding := range state.CoreFindings {
+		if finding.AuditStatus == core.AuditStatusIgnored || finding.AuditStatus == core.AuditStatusTriage {
+			ignoredCore[hcKey(finding.ID, finding.File, finding.Line)] = true
 		}
 	}
 
 	in := healthcheck.Input{}
-
 	for _, r := range state.CoreFindings {
-		switch r.Status {
-		case core.Present:
+		if r.Status == core.Present {
 			in.Positives = append(in.Positives, healthcheck.Positive{ID: r.ID})
-		case core.Absent:
-			ignored := r.AuditStatus == core.AuditStatusIgnored ||
-				r.AuditStatus == core.AuditStatusTriage ||
-				fp[hcKey(r.ID, r.File, r.Line)]
-			in.Findings = append(in.Findings, healthcheck.Finding{
-				Source:   "core",
-				Class:    r.ID,
-				Severity: r.Severity,
-				File:     r.File,
-				Line:     r.Line,
-				Ignored:  ignored,
-			})
 		}
 	}
-	for _, f := range state.ExternalFindings {
+	for i, f := range state.EnrichedFindings {
+		source := strings.TrimSpace(f.Source)
+		if source == "" {
+			source = f.Type
+		}
+		class := semanticFindingClass(f)
+		if class == "" {
+			class = f.ID
+		}
+		isIgnored := ignored[i]
+		if !isIgnored && len(f.Origins) == 1 && f.Origins[0].Type == "core" {
+			isIgnored = ignoredCore[hcKey(f.Origins[0].RuleID, f.File, f.Line)]
+		}
 		in.Findings = append(in.Findings, healthcheck.Finding{
-			Source:   f.Source,
-			Class:    f.RuleID,
-			Severity: f.Severity,
-			File:     f.File,
-			Line:     f.Line,
-			Ignored:  fp[hcKey(f.RuleID, f.File, f.Line)],
-		})
-	}
-	for _, f := range state.NFRFindings {
-		in.Findings = append(in.Findings, healthcheck.Finding{
-			Source:   "nfr",
-			Class:    f.RuleID,
-			Severity: f.Severity,
-			Ignored:  fp[hcKey(f.RuleID, "", 0)],
-		})
-	}
-	for _, f := range state.DeployFindings {
-		in.Findings = append(in.Findings, healthcheck.Finding{
-			Source:   "deploy",
-			Class:    f.Issue,
-			Severity: f.Severity,
-			File:     f.File,
-			Line:     f.Line,
-			Ignored:  fp[hcKey(f.Issue, f.File, f.Line)],
-		})
-	}
-	for _, f := range state.NetworkFindings {
-		class := fmt.Sprintf("port-%d", f.Port)
-		in.Findings = append(in.Findings, healthcheck.Finding{
-			Source:   "network",
+			Source:   source,
 			Class:    class,
 			Severity: f.Severity,
-			Ignored:  fp[hcKey(class, "", 0)],
+			File:     f.File,
+			Line:     f.Line,
+			Ignored:  isIgnored,
 		})
 	}
 
@@ -335,6 +311,116 @@ func computeHealthCheck(state *AgentState) {
 	state.HealthCheck = res
 	state.SecurityScore = res.Score
 	state.SecurityGrade = res.Grade
+}
+
+func mergeSemanticFindings(findings []EnrichedFinding) []EnrichedFinding {
+	merged := make([]EnrichedFinding, 0, len(findings))
+	positions := make(map[string]int)
+	for _, finding := range findings {
+		finding.Origins = mergeOrigins(finding.Origins, []FindingOrigin{originOf(finding)})
+		key := semanticFindingKey(finding)
+		if key == "" {
+			merged = append(merged, finding)
+			continue
+		}
+		if pos, ok := positions[key]; ok {
+			current := merged[pos]
+			origins := mergeOrigins(current.Origins, finding.Origins)
+			if shouldPreferSemanticRepresentative(finding, current) {
+				finding.Origins = origins
+				merged[pos] = finding
+			} else {
+				current.Origins = origins
+				if severitySortRank(finding.Severity) < severitySortRank(current.Severity) {
+					current.Severity = finding.Severity
+				}
+				if current.File == "" && finding.File != "" {
+					current.File, current.Line, current.Snippet = finding.File, finding.Line, finding.Snippet
+				}
+				merged[pos] = current
+			}
+			continue
+		}
+		positions[key] = len(merged)
+		merged = append(merged, finding)
+	}
+	return merged
+}
+
+func semanticFindingClass(f EnrichedFinding) string {
+	switch strings.ToUpper(strings.TrimSpace(f.ID)) {
+	case "FAST-LAZY-EXC", "B110":
+		return "exception_swallow"
+	case "FAST-AUTH", "NFR-API-003":
+		return "missing_authentication"
+	case "FAST-RATELIMIT", "NFR-API-001":
+		return "missing_rate_limiting"
+	case "FAST-CORS", "NFR-API-002":
+		return "missing_cors_policy"
+	default:
+		return ""
+	}
+}
+
+func semanticFindingKey(f EnrichedFinding) string {
+	class := semanticFindingClass(f)
+	if class == "" {
+		return "exact|" + Fingerprint(f)
+	}
+	if f.File != "" || f.Line != 0 {
+		return class + "|" + normalizePath(f.File) + "|" + fmt.Sprint(f.Line)
+	}
+	return class + "|project"
+}
+
+func originOf(f EnrichedFinding) FindingOrigin {
+	source := strings.TrimSpace(f.Source)
+	if source == "" {
+		source = f.Type
+	}
+	return FindingOrigin{Type: f.Type, Source: source, RuleID: f.ID}
+}
+
+func mergeOrigins(groups ...[]FindingOrigin) []FindingOrigin {
+	seen := make(map[string]FindingOrigin)
+	for _, group := range groups {
+		for _, origin := range group {
+			key := strings.ToLower(origin.Type + "\x00" + origin.Source + "\x00" + origin.RuleID)
+			seen[key] = origin
+		}
+	}
+	keys := make([]string, 0, len(seen))
+	for key := range seen {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]FindingOrigin, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, seen[key])
+	}
+	return out
+}
+
+func shouldPreferSemanticRepresentative(candidate, current EnrichedFinding) bool {
+	priority := func(f EnrichedFinding) int {
+		switch strings.ToLower(f.Type) {
+		case "core":
+			return 3
+		case "external":
+			return 2
+		case "nfr":
+			return 1
+		default:
+			return 0
+		}
+	}
+	if priority(candidate) != priority(current) {
+		return priority(candidate) > priority(current)
+	}
+	if (candidate.File != "") != (current.File != "") {
+		return candidate.File != ""
+	}
+	return strings.ToLower(candidate.ID) < strings.ToLower(current.ID)
 }
 
 // hcKey builds a location key used to match AI dispositions to findings.
@@ -877,16 +963,31 @@ func writeHumanSummary(sb *strings.Builder, state *AgentState, actionable []acti
 	if !hc.Verdict.Passed {
 		verdict = "❌ FAILED"
 	}
-	sb.WriteString(fmt.Sprintf("**Score**: %d/100 (%s) | **Gate**: %s | **Policy**: `%s` (`fail_on=%s`)\n\n",
-		hc.Score, hc.Grade, verdict, hc.Policy.Profile, hc.Policy.FailOn))
+	_, _ = fmt.Fprintf(sb, "**Score**: %d/100 (%s) | **Gate**: %s | **Policy**: `%s` (`fail_on=%s`)\n\n",
+		hc.Score, hc.Grade, verdict, hc.Policy.Profile, hc.Policy.FailOn)
+
+	coverage := strings.ToUpper(strings.TrimSpace(state.ScannerCoverage))
+	if coverage == "" {
+		coverage = "PARTIAL"
+	}
+	_, _ = fmt.Fprintf(sb, "**Scanner coverage**: `%s`\n\n", coverage)
+	if len(state.ScannerExecutions) > 0 {
+		sb.WriteString("| Scanner | Status | Findings | Version |\n")
+		sb.WriteString("|---|---|---:|---|\n")
+		for _, scanner := range state.ScannerExecutions {
+			_, _ = fmt.Fprintf(sb, "| `%s` | `%s` | %d | %s |\n",
+				scanner.Scanner, scanner.Status, scanner.Findings, strings.ReplaceAll(scanner.Version, "|", "\\|"))
+		}
+		sb.WriteString("\n")
+	}
 
 	// ── Blocking Reasons ──────────────────────────────────────────────
 	if len(hc.Verdict.BlockingReasons) > 0 {
 		sb.WriteString("#### Blocking Reasons\n\n")
 		for _, reason := range hc.Verdict.BlockingReasons {
-			sb.WriteString(fmt.Sprintf("- `%s`: %s", reason.Code, reason.Message))
+			_, _ = fmt.Fprintf(sb, "- `%s`: %s", reason.Code, reason.Message)
 			if reason.Count != 0 || reason.Threshold != 0 {
-				sb.WriteString(fmt.Sprintf(" (count %d, threshold %d)", reason.Count, reason.Threshold))
+				_, _ = fmt.Fprintf(sb, " (count %d, threshold %d)", reason.Count, reason.Threshold)
 			}
 			sb.WriteString("\n")
 		}
@@ -911,15 +1012,15 @@ func writeHumanSummary(sb *strings.Builder, state *AgentState, actionable []acti
 	sb.WriteString("### Overview\n\n")
 	sb.WriteString("| | Critical | High | Medium | Low |\n")
 	sb.WriteString("|---|---|---|---|---|\n")
-	sb.WriteString(fmt.Sprintf("| True Positives | %d | %d | %d | %d |\n",
+	_, _ = fmt.Fprintf(sb, "| True Positives | %d | %d | %d | %d |\n",
 		sevByDisp["True Positive"]["CRITICAL"], sevByDisp["True Positive"]["HIGH"],
-		sevByDisp["True Positive"]["MEDIUM"], sevByDisp["True Positive"]["LOW"]))
-	sb.WriteString(fmt.Sprintf("| Needs Review | %d | %d | %d | %d |\n\n",
+		sevByDisp["True Positive"]["MEDIUM"], sevByDisp["True Positive"]["LOW"])
+	_, _ = fmt.Fprintf(sb, "| Needs Review | %d | %d | %d | %d |\n\n",
 		sevByDisp["Needs Manual Review"]["CRITICAL"], sevByDisp["Needs Manual Review"]["HIGH"],
-		sevByDisp["Needs Manual Review"]["MEDIUM"], sevByDisp["Needs Manual Review"]["LOW"]))
+		sevByDisp["Needs Manual Review"]["MEDIUM"], sevByDisp["Needs Manual Review"]["LOW"])
 
-	sb.WriteString(fmt.Sprintf("> **%d** findings analyzed · **%d** true positives · **%d** needs review · **%d** false positives suppressed\n\n",
-		len(state.EnrichedFindings), tp, nr, fp))
+	_, _ = fmt.Fprintf(sb, "> **%d** findings analyzed · **%d** true positives · **%d** needs review · **%d** false positives suppressed\n\n",
+		len(state.EnrichedFindings), tp, nr, fp)
 
 	// ── Top Critical Issues (max 5, CRITICAL first then HIGH) ─────────
 	if len(actionable) > 0 {
@@ -962,9 +1063,9 @@ func writeHumanSummary(sb *strings.Builder, state *AgentState, actionable []acti
 			}
 			displayMsg = strings.ReplaceAll(displayMsg, "\\|", "|")
 			if top[i].line > 0 {
-				sb.WriteString(fmt.Sprintf("%d. **[%s]** %s — `%s:%d`\n", i+1, top[i].severity, displayMsg, file, top[i].line))
+				_, _ = fmt.Fprintf(sb, "%d. **[%s]** %s — `%s:%d`\n", i+1, top[i].severity, displayMsg, file, top[i].line)
 			} else {
-				sb.WriteString(fmt.Sprintf("%d. **[%s]** %s — `%s`\n", i+1, top[i].severity, displayMsg, file))
+				_, _ = fmt.Fprintf(sb, "%d. **[%s]** %s — `%s`\n", i+1, top[i].severity, displayMsg, file)
 			}
 		}
 		sb.WriteString("\n")
@@ -978,8 +1079,8 @@ func writeHumanSummary(sb *strings.Builder, state *AgentState, actionable []acti
 		sb.WriteString("| Vulnerability | Severity | Conclusion |\n")
 		sb.WriteString("|---|---|---|\n")
 		for _, poc := range state.PoCResults {
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n",
-				poc.VulnerabilityType, poc.Severity, poc.Conclusion))
+			_, _ = fmt.Fprintf(sb, "| %s | %s | %s |\n",
+				poc.VulnerabilityType, poc.Severity, poc.Conclusion)
 		}
 		sb.WriteString("\n")
 	}
@@ -1006,9 +1107,9 @@ func writeAIRemediationPrompt(sb *strings.Builder, state *AgentState, actionable
 	sb.WriteString("Your goal is a secure, verified remediation — not merely a checklist. Follow every phase in order.\n\n")
 
 	sb.WriteString("## SCAN METADATA\n")
-	sb.WriteString(fmt.Sprintf("- Score: %d/100 (%s)\n", hc.Score, hc.Grade))
-	sb.WriteString(fmt.Sprintf("- Date: %s\n", generatedAt.Format("2006-01-02")))
-	sb.WriteString(fmt.Sprintf("- Gate: %s\n\n", strings.ToUpper(hc.Verdict.Status)))
+	_, _ = fmt.Fprintf(sb, "- Score: %d/100 (%s)\n", hc.Score, hc.Grade)
+	_, _ = fmt.Fprintf(sb, "- Date: %s\n", generatedAt.Format("2006-01-02"))
+	_, _ = fmt.Fprintf(sb, "- Gate: %s\n\n", strings.ToUpper(hc.Verdict.Status))
 
 	sb.WriteString("## VULNERABILITIES FOUND\n\n")
 	for i, f := range actionable {
@@ -1018,13 +1119,13 @@ func writeAIRemediationPrompt(sb *strings.Builder, state *AgentState, actionable
 		}
 		title := strings.ReplaceAll(f.message, "\\|", "|")
 		if f.line > 0 {
-			sb.WriteString(fmt.Sprintf("%d. [%s] %s | %s | %s:%d\n",
-				i+1, strings.ToUpper(f.severity), f.vulnID, title, file, f.line))
+			_, _ = fmt.Fprintf(sb, "%d. [%s] %s | %s | %s:%d\n",
+				i+1, strings.ToUpper(f.severity), f.vulnID, title, file, f.line)
 		} else {
-			sb.WriteString(fmt.Sprintf("%d. [%s] %s | %s | %s\n",
-				i+1, strings.ToUpper(f.severity), f.vulnID, title, file))
+			_, _ = fmt.Fprintf(sb, "%d. [%s] %s | %s | %s\n",
+				i+1, strings.ToUpper(f.severity), f.vulnID, title, file)
 		}
-		sb.WriteString(fmt.Sprintf("   Status: %s\n", f.disposition))
+		_, _ = fmt.Fprintf(sb, "   Status: %s\n", f.disposition)
 	}
 
 	sb.WriteString("\n## OPERATING CONTRACT\n\n")
@@ -1166,7 +1267,7 @@ func extractFullContext(projectPath, file string, line int) string {
 		sb.WriteString(fc.Imports)
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString(fmt.Sprintf("// Function: %s (lines %d-%d)\n", fc.Name, fc.StartLine, fc.EndLine))
+	_, _ = fmt.Fprintf(&sb, "// Function: %s (lines %d-%d)\n", fc.Name, fc.StartLine, fc.EndLine)
 	sb.WriteString(fc.Body)
 	return sb.String()
 }

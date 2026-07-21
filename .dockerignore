@@ -2,6 +2,7 @@
 .git
 .github
 .jules
+.notes
 .aitriage
 .gemini
 .codex-work
@@ -9,6 +10,7 @@
 CLAUDE.md
 LOCAL_DOCKER_DUAL_KEY_PLAN.md
 artifact-reuse-cache.md
+artifacts/
 bin/
 docs/
 reports/

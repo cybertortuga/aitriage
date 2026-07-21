@@ -75,17 +75,18 @@ func (h *FindingHandler) HandleUpdateFinding(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if req.Action == "status" {
+	switch req.Action {
+	case "status":
 		if err := h.repo.UpdateStatus(r.Context(), findingID, req.Status); err != nil {
 			utils.JSONError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-	} else if req.Action == "kanban" {
+	case "kanban":
 		if err := h.repo.UpdateKanbanColumn(r.Context(), findingID, req.KanbanColumn); err != nil {
 			utils.JSONError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-	} else {
+	default:
 		utils.JSONError(w, "invalid action", http.StatusBadRequest)
 		return
 	}

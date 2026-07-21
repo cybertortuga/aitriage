@@ -23,6 +23,7 @@ import (
 	"github.com/cybertortuga/aitriage/internal/agent/pipeline"
 	"github.com/cybertortuga/aitriage/internal/agent/runstore"
 	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
+	"github.com/cybertortuga/aitriage/internal/scanner/external"
 )
 
 // Manager owns one project's run store and executes host-agent runs.
@@ -57,6 +58,11 @@ type StartOptions struct {
 	// Intent is the user's declared intent: "audit" (default) or "audit_and_fix".
 	// It must come only from the actual user command and is never auto-escalated.
 	Intent string
+	// RequireFullScanners fails the run closed (before AI triage) if any mandatory
+	// external scanner did not run. It is set for the container runtime, where the
+	// full scanner bundle is guaranteed; native/dev mode leaves it false and the
+	// run is recorded as "partial" coverage rather than a full audit.
+	RequireFullScanners bool
 }
 
 // snapshot is the deterministic input persisted at scan time so a run rebuilds
@@ -88,6 +94,10 @@ type FinalResult struct {
 	Health        healthcheck.Result  `json:"health"`
 	TriageStatus  string              `json:"triage_status"`
 	ArtifactPaths map[string]string   `json:"artifact_paths"`
+	// ScannerCoverage is "full" when every required external scanner ran, else
+	// "partial". MissingScanners lists any mandatory scanner that did not run.
+	ScannerCoverage string   `json:"scanner_coverage,omitempty"`
+	MissingScanners []string `json:"missing_scanners,omitempty"`
 	// FixableFindingIDs are the canonical IDs the user may approve for fixing —
 	// confirmed True Positives only (never FP or Needs Manual Review).
 	FixableFindingIDs []string `json:"fixable_finding_ids"`
@@ -186,6 +196,22 @@ func (m *Manager) create(ctx context.Context, opts StartOptions, parentRunID str
 	cacheDir := m.effectiveCacheDir()
 	ensureCacheEnv(cacheDir)
 	_ = run.SetCacheDir(cacheDir)
+
+	// Scanner execution manifest — record exactly what ran BEFORE any AI triage.
+	missing := rich.MissingRequiredScanners()
+	coverage := "full"
+	if len(missing) > 0 {
+		coverage = "partial"
+	}
+	_ = run.SetScanners(rich.ScannerExecutions, coverage)
+	// Fail-closed: in a mode that guarantees the full bundle (container runtime),
+	// a missing/failed mandatory scanner is a hard error and never proceeds to AI
+	// triage — a partial scan must not be presented as a full audit.
+	if opts.RequireFullScanners && len(missing) > 0 {
+		_ = run.Fail(fmt.Sprintf("incomplete scanner bundle: %s did not run", strings.Join(missing, ", ")))
+		_ = run.AppendAudit(runstore.AuditEvent{Event: "scanner_bundle_incomplete", Status: run.Status(), Note: strings.Join(missing, ",")})
+		return nil, fmt.Errorf("full audit aborted: required scanner(s) not available: %s. Run `aitriage setup --full` to install the scanner runtime", strings.Join(missing, ", "))
+	}
 
 	snap := snapshot{ProjectPath: projectPath, Scan: scan, Target: opts.Target, LLM: opts.LLM, Rich: rich}
 	data, err := json.Marshal(snap)
@@ -349,10 +375,13 @@ func (m *Manager) finalize(run *runstore.Run, res *pipeline.Result) (*Progress, 
 	_ = run.AppendAudit(runstore.AuditEvent{Event: "finalized", Status: run.Status(), Note: artifact.TriageStatus})
 
 	fixable := fixableIDs(res.State)
+	mf := run.Manifest()
 	final := &FinalResult{
 		Gate:              res.Gate,
 		Health:            res.Health,
 		TriageStatus:      artifact.TriageStatus,
+		ScannerCoverage:   mf.ScannerCoverage,
+		MissingScanners:   scannerCoverageGaps(mf.Scanners),
 		FixableFindingIDs: fixable,
 		ArtifactPaths: map[string]string{
 			"triage":  artifactRelPath(run.ID(), "triage-findings.json"),
@@ -436,6 +465,20 @@ func (m *Manager) statusOf(run *runstore.Run) (*Progress, error) {
 		}
 	}
 	return p, nil
+}
+
+// scannerCoverageGaps lists mandatory scanners whose recorded status is not a
+// success (completed / not_applicable), for user-facing coverage reporting.
+func scannerCoverageGaps(execs []external.ScannerExecution) []string {
+	var gaps []string
+	for _, e := range execs {
+		switch e.Status {
+		case external.StatusCompleted, external.StatusNotApplicable:
+		default:
+			gaps = append(gaps, e.Scanner+":"+string(e.Status))
+		}
+	}
+	return gaps
 }
 
 // artifactRelPath is the single source of truth for a run artifact's

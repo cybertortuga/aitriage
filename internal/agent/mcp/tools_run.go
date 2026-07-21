@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/cybertortuga/aitriage/internal/agent/hostagent"
 	"github.com/cybertortuga/aitriage/internal/agent/hostrun"
@@ -55,6 +56,10 @@ func registerRunTools(srv *mcp.Server, guard *PathGuard, version string) {
 			Policy:      hostrun.AuditPolicy(projectPath),
 			Scan:        pipeline.ScanOptions{RunExternal: true},
 			LLM:         pipeline.LLMIdentity{Provider: input.Provider, Model: input.Model, BatchSize: input.BatchSize},
+			// Inside the verified container the full scanner bundle is guaranteed,
+			// so a missing scanner is a hard fail-closed error (never a partial
+			// audit presented as full). Native/dev mode records partial coverage.
+			RequireFullScanners: containerBundleRequired(),
 		}
 		prog, err := mgr.Start(ctx, opts)
 		if err != nil {
@@ -129,7 +134,7 @@ func registerRunTools(srv *mcp.Server, guard *PathGuard, version string) {
 	// ── aitriage_run_approve ──────────────────────────────────────────────────
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "aitriage_run_approve",
-		Description: "Record the USER's explicit decision to fix specific findings. Call ONLY after the user has seen the gate and canonical finding IDs and chosen. selected_ids must be canonical fixable IDs from the result. This authorises YOU to apply the fix spec for those IDs; AITriage never edits source itself. Then call aitriage_run_verify.",
+		Description: "Record the USER's explicit decision to fix specific findings. After a completed audit, this MUST be your FIRST action after the user's decision: call it BEFORE planning a patch, editing any file, running a formatter, or generating code. selected_ids must be the exact canonical fixable IDs chosen by the user. Proceed only when it returns status=fixing and fix_context. Project drift since the audit is rejected and requires a new audit; approval can never be recorded retroactively. AITriage never edits source itself. After applying only the approved fixes, call aitriage_run_verify.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input runApproveInput) (*mcp.CallToolResult, hostrun.Progress, error) {
 		mgr, err := newManager()
 		if err != nil {
@@ -161,15 +166,16 @@ func registerRunTools(srv *mcp.Server, guard *PathGuard, version string) {
 	// ── aitriage_run_verify ───────────────────────────────────────────────────
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "aitriage_run_verify",
-		Description: "After you have applied the approved fixes, start a linked verification run on the current tree. Allowed only once an approval record exists. Answer its requests like a normal run; when it finalizes, the before/after gate is recorded.",
+		Description: "After you have applied the approved fixes, start a linked verification run on the current tree. The recorded approval must predate the edits and at least one project change must exist after approval; otherwise verification fails closed. Answer its requests like a normal run; when it finalizes, per-approved-TP resolution and the separate overall gate are recorded.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input runIDInput) (*mcp.CallToolResult, hostrun.Progress, error) {
 		mgr, err := newManager()
 		if err != nil {
 			return nil, hostrun.Progress{}, err
 		}
 		opts := hostrun.StartOptions{
-			Policy: hostrun.AuditPolicy(root),
-			Scan:   pipeline.ScanOptions{RunExternal: true},
+			Policy:              hostrun.AuditPolicy(root),
+			Scan:                pipeline.ScanOptions{RunExternal: true},
+			RequireFullScanners: containerBundleRequired(),
 		}
 		prog, err := mgr.Verify(ctx, input.RunID, opts)
 		if err != nil {
@@ -177,6 +183,10 @@ func registerRunTools(srv *mcp.Server, guard *PathGuard, version string) {
 		}
 		return nil, *prog, nil
 	})
+}
+
+func containerBundleRequired() bool {
+	return os.Getenv("AITRIAGE_RUNTIME") == "container"
 }
 
 // ── tool input types ──────────────────────────────────────────────────────────

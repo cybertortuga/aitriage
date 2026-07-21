@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/cybertortuga/aitriage/internal/scanner/external"
 )
 
 // AgentHandoffSchemaVersion versions the Web/CI handoff envelope. It is
@@ -23,11 +25,13 @@ type AgentHandoff struct {
 }
 
 type AIAgentData struct {
-	ScanDate   string `json:"scan_date"`
-	Score      int    `json:"score"`
-	Grade      string `json:"grade"`
-	GateStatus string `json:"gate_status"`
-	Policy     struct {
+	ScanDate        string                      `json:"scan_date"`
+	Score           int                         `json:"score"`
+	Grade           string                      `json:"grade"`
+	GateStatus      string                      `json:"gate_status"`
+	ScannerCoverage string                      `json:"scanner_coverage"`
+	Scanners        []external.ScannerExecution `json:"scanners,omitempty"`
+	Policy          struct {
 		Profile string `json:"profile"`
 		FailOn  string `json:"fail_on"`
 	} `json:"policy"`
@@ -129,11 +133,20 @@ func collectActionableFindings(state *AgentState) ([]actionableFinding, int, int
 }
 
 func buildAIAgentData(state *AgentState, actionable []actionableFinding, tp, fp, nr int, generatedAt time.Time) AIAgentData {
+	scanners := append([]external.ScannerExecution(nil), state.ScannerExecutions...)
+	// Wall-clock durations remain in manifest.json for observability, but they
+	// are normalized out of the canonical handoff so direct CI and deferred IDE
+	// executions remain byte-for-byte comparable.
+	for i := range scanners {
+		scanners[i].DurationMs = 0
+	}
 	data := AIAgentData{
-		ScanDate: generatedAt.Format("2006-01-02"),
-		Score:    state.HealthCheck.Score,
-		Grade:    state.HealthCheck.Grade,
-		Findings: make([]AIAgentFinding, 0, len(actionable)),
+		ScanDate:        generatedAt.Format("2006-01-02"),
+		Score:           state.HealthCheck.Score,
+		Grade:           state.HealthCheck.Grade,
+		ScannerCoverage: state.ScannerCoverage,
+		Scanners:        scanners,
+		Findings:        make([]AIAgentFinding, 0, len(actionable)),
 	}
 	if state.HealthCheck.Verdict.Passed {
 		data.GateStatus = "PASSED"
@@ -184,19 +197,19 @@ func writeAIAgentData(sb *strings.Builder, data AIAgentData) {
 func writeAgentHandoffFooter(sb *strings.Builder, state *AgentState, fpCount int) {
 	sb.WriteString("\n---\n")
 	if fpCount > 0 {
-		sb.WriteString(fmt.Sprintf("\n_%d false positive(s) suppressed. Download `report.md` artifact for the full audit trail with FP rationale._\n", fpCount))
+		_, _ = fmt.Fprintf(sb, "\n_%d false positive(s) suppressed. Download `report.md` artifact for the full audit trail with FP rationale._\n", fpCount)
 	}
 	if state.TotalUsage.TotalTokens > 0 {
-		sb.WriteString(fmt.Sprintf("\n_LLM usage (provider reported): %s. Cost is not estimated because it depends on provider, model, caching, and billing tier._\n", formatLLMUsage(state.TotalUsage)))
+		_, _ = fmt.Fprintf(sb, "\n_LLM usage (provider reported): %s. Cost is not estimated because it depends on provider, model, caching, and billing tier._\n", formatLLMUsage(state.TotalUsage))
 	}
 	if state.VerdictCacheStats.Enabled {
-		sb.WriteString(fmt.Sprintf("\n_AITriage verdict cache: %d hits · %d misses · %d stored · %d sensitive skipped · %d stale FP invalidated · saved=%t._\n",
+		_, _ = fmt.Fprintf(sb, "\n_AITriage verdict cache: %d hits · %d misses · %d stored · %d sensitive skipped · %d stale FP invalidated · saved=%t._\n",
 			state.VerdictCacheStats.Hits,
 			state.VerdictCacheStats.Misses,
 			state.VerdictCacheStats.Stores,
 			state.VerdictCacheStats.SkippedSensitive,
 			state.VerdictCacheStats.InvalidatedFalsePositives,
-			state.VerdictCacheStats.Saved))
+			state.VerdictCacheStats.Saved)
 	}
 	if state.ArtifactCacheStats.Enabled {
 		status := "miss"
@@ -207,7 +220,7 @@ func writeAgentHandoffFooter(sb *strings.Builder, state *AgentState, fpCount int
 		if missReason == "" {
 			missReason = "n/a"
 		}
-		sb.WriteString(fmt.Sprintf("\n_AITriage artifact cache: %s · restored poc=%t report=%t fixspec=%t · stored=%d · sensitive skipped=%d · corrupt ignored=%t · miss_reason=%s · saved=%t · uncached verdicts=%d · eligibility skipped=%t · integrity failed=%t._\n",
+		_, _ = fmt.Fprintf(sb, "\n_AITriage artifact cache: %s · restored poc=%t report=%t fixspec=%t · stored=%d · sensitive skipped=%d · corrupt ignored=%t · miss_reason=%s · saved=%t · uncached verdicts=%d · eligibility skipped=%t · integrity failed=%t._\n",
 			status,
 			state.ArtifactCacheStats.RestoredPoC,
 			state.ArtifactCacheStats.RestoredReport,
@@ -219,6 +232,6 @@ func writeAgentHandoffFooter(sb *strings.Builder, state *AgentState, fpCount int
 			state.ArtifactCacheStats.Saved,
 			state.ArtifactCacheStats.UncachedVerdicts,
 			state.ArtifactCacheStats.EligibilitySkipped,
-			state.ArtifactCacheStats.IntegrityFailed))
+			state.ArtifactCacheStats.IntegrityFailed)
 	}
 }

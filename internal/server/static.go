@@ -29,7 +29,7 @@ func handleUI(w http.ResponseWriter, r *http.Request) {
 		r.URL.Path = "/"
 	} else {
 		// File exists, but if it's a directory, let FileServer handle it normally
-		f.Close()
+		_ = f.Close()
 	}
 
 	http.FileServer(http.FS(sub)).ServeHTTP(w, r)

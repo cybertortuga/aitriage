@@ -512,10 +512,15 @@ as the requested review.
 
 Set intent only from the user's actual words; a red gate or existing
 summary.md/fixspec.md is NOT permission to fix. Answer each request with the same
-request_id via ` + "`aitriage_run_submit`" + `. To fix, open the approved run's
-` + "`summary.md`" + ` and follow its AI Remediation Prompt / Operating Contract; fix
+request_id via ` + "`aitriage_run_submit`" + `. For intent=audit_and_fix, AITriage
+records approval before returning fix_context. If the user chooses fixes after a
+completed audit, your FIRST action must be ` + "`aitriage_run_approve`" + ` with the
+exact selected TP IDs—before planning or editing anything. Proceed only after it
+returns status=fixing and fix_context; project drift requires a new audit. Then
+open the returned ` + "`summary_path`" + ` and follow its AI Remediation Prompt / Operating Contract; fix
 ONLY approved True Positives (never FP or Needs-Manual-Review), run tests, then
-call ` + "`aitriage_run_verify`" + `. All artifacts live in ` + "`aitriage-reports/`" + `.
+call ` + "`aitriage_run_verify`" + `. Verification requires a project change made
+after approval. All artifacts live in ` + "`aitriage-reports/`" + `.
 
 ## When to run a scan (mandatory)
 
@@ -566,10 +571,15 @@ as the requested review.
 
 Set intent only from the user's actual words; a red gate or existing
 summary.md/fixspec.md is NOT permission to fix. Answer each request with the same
-request_id via ` + "`aitriage_run_submit`" + `. To fix, open the approved run's
-` + "`summary.md`" + ` and follow its AI Remediation Prompt / Operating Contract; fix
+request_id via ` + "`aitriage_run_submit`" + `. For intent=audit_and_fix, AITriage
+records approval before returning fix_context. If the user chooses fixes after a
+completed audit, your FIRST action must be ` + "`aitriage_run_approve`" + ` with the
+exact selected TP IDs—before planning or editing anything. Proceed only after it
+returns status=fixing and fix_context; project drift requires a new audit. Then
+open the returned ` + "`summary_path`" + ` and follow its AI Remediation Prompt / Operating Contract; fix
 ONLY approved True Positives (never FP or Needs-Manual-Review), run tests, then
-call ` + "`aitriage_run_verify`" + `. All artifacts live in ` + "`aitriage-reports/`" + `.
+call ` + "`aitriage_run_verify`" + `. Verification requires a project change made
+after approval. All artifacts live in ` + "`aitriage-reports/`" + `.
 
 ## When to run a scan (mandatory)
 

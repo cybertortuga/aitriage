@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 type banditOutput struct {
@@ -22,7 +23,8 @@ func RunBandit(ctx context.Context, path string) ([]UnifiedFinding, error) {
 	if !IsInstalled("bandit") {
 		return nil, fmt.Errorf("bandit not installed")
 	}
-	result, err := RunTool(ctx, "bandit", "-r", path, "-f", "json", "-q")
+	excluded := generatedArtifactPaths(path)
+	result, err := RunTool(ctx, "bandit", "-r", path, "-f", "json", "-q", "-x", strings.Join(excluded, ","))
 	if err != nil {
 		return nil, fmt.Errorf("bandit execution failed: %w", err)
 	}
@@ -32,6 +34,9 @@ func RunBandit(ctx context.Context, path string) ([]UnifiedFinding, error) {
 	}
 	findings := make([]UnifiedFinding, 0, len(output.Results))
 	for _, r := range output.Results {
+		if isGeneratedArtifactPath(r.Filename) {
+			continue
+		}
 		line := 0
 		if len(r.LineRange) > 0 {
 			line = r.LineRange[0]
