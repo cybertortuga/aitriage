@@ -41,10 +41,21 @@ Open the project root in Codex or Claude Code and paste this exact request:
 Set up AITriage for this project using the official instructions:
 https://github.com/cybertortuga/aitriage
 
-Install AITriage if needed, then connect it to this AI IDE for the current
-project. Preserve my existing settings and files. Do not scan or modify the
-project yet. Verify the installation and tell me when I need to open a new
-task/session.
+AITriage is a system tool, not a dependency of my project. Never clone or copy
+the AITriage repository inside the project currently open in this AI IDE.
+Install the released CLI separately with Homebrew or `go install`, then connect
+that CLI to the current project. If source code must be cloned for development,
+put it outside this project, for example as a sibling directory:
+
+GitHub/
+├── aitriage/          # the AITriage source repository
+└── my-vibe-project/   # the project being checked
+
+Preserve my existing settings and source files. Only add the project-local MCP
+configuration, managed AI instructions, `/aitriage-reports/` gitignore entry,
+and generated reports required by the official installer. Do not start a scan
+or modify source code yet. Verify the connection and tell me when I must open a
+new task/session.
 ```
 
 After setup, open a **new** task/session in the same project and paste:
@@ -55,6 +66,8 @@ in plain language and show me where the report was saved.
 ```
 
 That is enough. The installer adds the exact MCP workflow contract for the AI IDE; the user does not need to know internal tool names.
+
+AITriage itself is installed outside the checked project. The installer writes only the small project-local integration files needed by Codex or Claude Code; it never vendors the AITriage source tree into the project.
 
 ## Quick start
 
