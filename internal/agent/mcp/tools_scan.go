@@ -14,18 +14,22 @@ type scanInput struct {
 	UniversalOnly bool   `json:"universal_only,omitempty"`
 }
 
-func registerScanTool(srv *mcp.Server) {
+func registerScanTool(srv *mcp.Server, guard *PathGuard) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "aitriage_scan",
 		Description: "Run a full deterministic security scan on a project directory. Uses AST analysis, Shannon Entropy for secrets, and Entropy Code detection. No LLM required. Returns structured JSON report.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input scanInput) (*mcp.CallToolResult, scanner.ScanReport, error) {
+		var empty scanner.ScanReport
+		path, err := guard.Resolve(input.Path)
+		if err != nil {
+			return nil, empty, err
+		}
 		opts := scanner.ScanOptions{
 			ForceStack:    input.Stack,
 			UniversalOnly: input.UniversalOnly,
 		}
-		report, err := scanner.Scan(ctx, input.Path, opts)
+		report, err := scanner.Scan(ctx, path, opts)
 		if err != nil {
-			var empty scanner.ScanReport
 			return nil, empty, fmt.Errorf("scan failed: %w", err)
 		}
 		return nil, report, nil

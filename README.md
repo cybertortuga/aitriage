@@ -25,6 +25,7 @@
 ## At a Glance
 
 - **Deterministic evidence first:** 187 built-in rules and integrated external scanners collect findings, SARIF, annotations, and artifacts without failing a trusted CI run on untriaged results.
+- **Hardcoded-secret & leak blocking:** deterministic signatures for common credential formats (AWS/GitHub/Slack/Stripe/OpenAI/Google/SendGrid/npm/Twilio tokens, private-key blocks, JWTs) plus credentialed connection strings and a keyword-guarded assignment heuristic — all reported as CRITICAL so the `--staged` pre-commit hook and CI gate block them before push. Evidence is redacted; the full secret is never re-emitted.
 - **Mandatory AI gate in the primary CI workflow:** AI triage removes false positives, writes the authoritative summary, then is the sole policy gate. If the AI provider or agent fails, the workflow fails closed.
 - **Deterministic AI caching:** verdict and artifact-bundle caches make repeat CI runs on the same code cheap — cached verdicts skip per-finding LLM classification, and an exact artifact hit skips PoC/report/fixspec generation entirely.
 - **Built for local development and CI:** run a deterministic scan locally without an LLM, use the hardened GitHub Actions workflow for trusted code, or expose security context through MCP.
@@ -72,8 +73,9 @@ Scan ──► Context Enrichment ──► Threat Model (TP/FP/NR) ──► Po
 | :--- | :--- |
 | **AST Analysis** | Tree-sitter powered scanning for Go, Python, and TypeScript/JavaScript. Tracks SQLi, XSS, CSRF, and path traversal at the syntax level. |
 | **Entropy Engine** | Shannon Entropy analysis catches high-entropy variables, hardcoded keys, and AI chat remnants. |
+| **Secret & Leak Detection** | Vendor-format signatures (AWS, GitHub, Slack, Stripe, OpenAI, Anthropic, Google, SendGrid, npm, Twilio), private-key blocks, JWTs, and credentialed connection strings (postgres/mysql/mongodb/redis/…), reported as CRITICAL with redacted evidence. Detection escalates when a secret is also written to a log/print sink. |
 | **Interactive TUI** | Professional terminal dashboard for audit triage, code browsing, and real-time review. |
-| **MCP Server** | Model Context Protocol server exposing 13 security tools and 2 resources to AI assistants (Cursor, Claude, Windsurf). |
+| **MCP Server** | Model Context Protocol server exposing 18 security tools and 2 resources to AI assistants (Cursor, Claude, Windsurf). |
 | **External Orchestration** | Wraps and unifies findings from Semgrep, Trivy, Gitleaks, and Bandit into a single consolidated stream. |
 | **AI Agent Mode** | LLM-driven triage that classifies every finding, suppresses false positives, and produces a full report, actionable summary, fix specification, and canonical JSON inventory. |
 | **AI Response Caching** | Two deterministic cache layers keyed by content fingerprints: per-finding verdict reuse plus exact reuse of the PoC/report/fixspec bundle on identical re-runs. |
@@ -412,25 +414,36 @@ llm:
 
 ## MCP Server
 
-AITriage exposes a Model Context Protocol server with 13 security tools and 2 resources, allowing AI assistants like Claude, Cursor, and Windsurf to query security context directly.
+AITriage exposes a Model Context Protocol server with 18 security tools and 2 resources, allowing AI assistants like Claude, Cursor, and Windsurf to query security context directly.
 
 ### Tools
 
+All tools perform read-only security analysis except:
+- `securecoder_ignore` — mutates suppression state (suppresses a finding); requires explicit approval.
+- `aitriage_diff` — runs a scan and persists a snapshot under the project's own `.aitriage/history/` so it can diff against next time. It never edits your source or suppresses findings; the only write is that local scan-history cache.
+
+The `safe` server profile (see `aitriage serve --profile safe`) forbids finding suppression and any change to your source: the mutating `securecoder_ignore` is not registered. It still permits the benign local scan-history cache used by `aitriage_diff` (written only under the project's own `.aitriage/history/`). Every path argument is confined to a single project directory.
+
 | Tool | Description |
 | :--- | :--- |
-| `scan` | Run a security scan on a project path |
-| `secrets` | Detect hardcoded secrets and high-entropy strings |
-| `entropy_check` | Shannon entropy analysis for a specific file |
-| `architecture` | Analyze project architecture and security posture |
-| `fix_plan` | Generate a remediation plan for findings |
-| `scanners_list` | List available external scanners and their status |
-| `external_scan` | Run external scanner (Semgrep, Trivy, Gitleaks, Bandit) |
-| `securecoder_scan` | Full SecureCoder scan with unified findings |
-| `securecoder_deps` | Check dependency safety against advisories |
-| `deploy` | Audit deployment configuration (Docker, IaC) |
-| `nfr` | Non-functional requirements security check |
-| `diagram` | Generate an architecture diagram |
-| `history` | Scan Git history for leaked secrets |
+| `aitriage_scan` | Run a full deterministic security scan (AST + Shannon entropy). No LLM required; returns structured JSON |
+| `aitriage_secrets` | Detect hardcoded secrets via entropy analysis (API keys, tokens, passwords) |
+| `aitriage_entropy_check` | Detect chat residue in comments, missing error handling, God Files, TODO stubs, `.cursorrules` tampering |
+| `aitriage_architecture` | Analyze project structure and tech stacks (call this first) |
+| `generate_fix_plan` | Generate a markdown fix plan with actionable prompts per finding |
+| `list_available_scanners` | Report which external scanners are installed in PATH |
+| `run_semgrep` | Run Semgrep (requires it installed) |
+| `run_gitleaks` | Run Gitleaks to detect hardcoded secrets |
+| `run_trivy` | Run Trivy for dependency/IaC vulnerabilities (`fs` or `config`) |
+| `run_bandit` | Run Bandit on Python projects |
+| `run_securecoder` | Full SecureCoder scan with unified findings |
+| `run_securecoder_deps` | Check packages for known vulnerabilities before importing |
+| `securecoder_ignore` | **(mutating)** Suppress a SecureCoder finding as FP / accepted risk / won't fix |
+| `aitriage_deploy_audit` | Audit Dockerfile / docker-compose for root, privileged mode, hardcoded secrets |
+| `aitriage_nfr_check` | Check NFR compliance: rate limiting, CORS, unprotected routes |
+| `aitriage_diagram` | Generate a Mermaid architecture diagram |
+| `aitriage_last_scan` | Show the most recent saved scan result and SecurityScore |
+| `aitriage_diff` | Run a fresh scan and diff it against the previous saved scan |
 
 ### Resources
 
@@ -554,7 +567,7 @@ aitriage/
 │   ├── agent/             # AI agent: graph orchestrator, LLM clients, MCP server
 │   │   ├── graph/         # Multi-stage triage pipeline (classify, PoC, report, fixspec)
 │   │   ├── llm/           # Provider-agnostic LLM client (Gemini, OpenAI, Anthropic, Ollama, Groq)
-│   │   ├── mcp/           # MCP server with 13 tools and 2 resources
+│   │   ├── mcp/           # MCP server with 18 tools and 2 resources
 │   │   ├── remedy/        # Deterministic autofix engine and spec generation
 │   │   └── architect/     # Threat modeling and architecture diagrams
 │   ├── engine/            # Core audit engine, baseline, history, orchestrator

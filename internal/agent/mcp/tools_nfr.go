@@ -17,12 +17,16 @@ type nfrResult struct {
 	Count    int              `json:"count"`
 }
 
-func registerNFRTool(srv *mcp.Server) {
+func registerNFRTool(srv *mcp.Server, guard *PathGuard) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "aitriage_nfr_check",
 		Description: "Check Non-Functional Requirements (NFR) compliance, such as missing Rate Limiting, CORS, or unprotected routes.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input nfrInput) (*mcp.CallToolResult, nfrResult, error) {
-		findings, err := nfr.CheckNFR(input.Path)
+		path, err := guard.Resolve(input.Path)
+		if err != nil {
+			return nil, nfrResult{}, err
+		}
+		findings, err := nfr.CheckNFR(path)
 		if err != nil {
 			return nil, nfrResult{}, fmt.Errorf("could not run NFR check: %v", err)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.org/x/time/rate"
@@ -12,17 +13,45 @@ import (
 type Server struct {
 	version string
 	srv     *mcp.Server
+	profile Profile
+	guard   *PathGuard
 }
 
+// NewServer builds a server with the full profile and no path confinement.
+// Backward-compatible entry point (e.g. Claude Desktop via `serve`).
 func NewServer(version string) *Server {
-	s := &Server{version: version}
+	s, err := NewServerWithConfig(version, Config{Profile: ProfileFull})
+	if err != nil {
+		// The full profile builds no guard, so this cannot fail; panic guards
+		// against a future regression rather than a runtime condition.
+		panic(fmt.Sprintf("NewServer: %v", err))
+	}
+	return s
+}
+
+// NewServerWithConfig builds a server with an explicit profile and optional
+// scan-root confinement.
+func NewServerWithConfig(version string, cfg Config) (*Server, error) {
+	if cfg.Profile == "" {
+		cfg.Profile = ProfileFull
+	}
+	var guard *PathGuard
+	if strings.TrimSpace(cfg.ScanRoot) != "" {
+		g, err := NewPathGuard(cfg.ScanRoot)
+		if err != nil {
+			return nil, err
+		}
+		guard = g
+	}
+
+	s := &Server{version: version, profile: cfg.Profile, guard: guard}
 	s.srv = mcp.NewServer(&mcp.Implementation{
 		Name:    "aitriage",
 		Version: version,
 	}, nil)
 	s.registerTools()
 	s.registerResources()
-	return s
+	return s, nil
 }
 
 func (s *Server) Run(ctx context.Context, transport string, port int) error {
@@ -62,18 +91,18 @@ func (s *Server) Run(ctx context.Context, transport string, port int) error {
 }
 
 func (s *Server) registerTools() {
-	registerScanTool(s.srv)
-	registerSecretsTool(s.srv)
-	registerEntropyCheckTool(s.srv)
-	registerArchitectureTool(s.srv)
-	registerFixPlanTool(s.srv)
+	registerScanTool(s.srv, s.guard)
+	registerSecretsTool(s.srv, s.guard)
+	registerEntropyCheckTool(s.srv, s.guard)
+	registerArchitectureTool(s.srv, s.guard)
+	registerFixPlanTool(s.srv, s.guard)
 	registerScannersListTool(s.srv)
-	registerExternalTools(s.srv)
-	registerSecureCoderTools(s.srv)
-	registerDeployTool(s.srv)
-	registerNFRTool(s.srv)
-	registerDiagramTool(s.srv)
-	registerHistoryTool(s.srv)
+	registerExternalTools(s.srv, s.guard, s.profile == ProfileSafe)
+	registerSecureCoderTools(s.srv, s.guard, s.profile.allowsMutation())
+	registerDeployTool(s.srv, s.guard)
+	registerNFRTool(s.srv, s.guard)
+	registerDiagramTool(s.srv, s.guard)
+	registerHistoryTool(s.srv, s.guard)
 }
 
 func (s *Server) registerResources() {

@@ -48,11 +48,9 @@ aitriage.yaml
 aitriage.yml
 
 # Local-only working docs, plans, notes & scan artifacts (NEVER commit — public repo).
-# ALL internal documentation, plans and notes live under .notes/ and are
-# intentionally untracked. Only README.md and LICENSE are public.
-/AITRIAGE_CACHE_BENCHMARK_HANDOFF.md
-/WEB_AUDIT_HANDOFF.md
-/web-ai-remediation-handoff-plan.md
+# Internal working documentation, plans, and notes live under .notes/ and are
+# intentionally untracked. Public project docs stay at the repository root.
+/AITRIAGE_DISTRIBUTION_AND_AGENT_ROADMAP.md
 /.notes/
 /local/
 /artifacts/

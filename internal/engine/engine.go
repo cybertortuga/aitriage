@@ -401,6 +401,7 @@ func (e *Engine) evaluateProjectRule(rule Rule, ctx *core.ProjectContext, result
 
 	if rule.Condition == "required_pattern" && rule.CompiledPattern != nil {
 		found := false
+		examined := 0 // number of candidate target files actually present
 		for _, ext := range rule.Extensions {
 			files := ctx.FindFilesByExtension(ext)
 			for _, f := range files {
@@ -410,6 +411,7 @@ func (e *Engine) evaluateProjectRule(rule Rule, ctx *core.ProjectContext, result
 				if matchesExcludedPath(rule, f) {
 					continue
 				}
+				examined++
 				var b []byte
 				switch rule.Target {
 				case "code":
@@ -429,7 +431,11 @@ func (e *Engine) evaluateProjectRule(rule Rule, ctx *core.ProjectContext, result
 			}
 		}
 
-		if !found {
+		// A required-pattern rule only fires when the target file EXISTS but lacks
+		// the pattern. With no target file present (e.g. no Dockerfile at all),
+		// there is nothing to require — otherwise every project without that file
+		// would be flagged, blocking clean scans.
+		if examined > 0 && !found {
 			mu.Lock()
 			*results = append(*results, core.CheckResult{
 				ID: rule.ID, Name: rule.Name, Status: core.Absent,
@@ -441,28 +447,40 @@ func (e *Engine) evaluateProjectRule(rule Rule, ctx *core.ProjectContext, result
 	}
 }
 
-// secretAssignRegex matches: const API_KEY = "xxx", secret: "xxx", token="xxx" etc.
-// Only triggers when the variable name suggests a secret AND the value is a high-entropy string.
 var placeholderRegex = regexp.MustCompile(`(?i)(todo|fixme|temporary|tempVar|result\d|var\d|placeholder)`)
 
-var secretAssignRegex = regexp.MustCompile(
-	`(?i)(?:^|[\s,({])(api[_-]?key|secret|token|password|passwd|private[_-]?key|auth[_-]?key|access[_-]?key|client[_-]?secret|signing[_-]?key)\s*[=:]\s*["']([a-zA-Z0-9+/=_\-]{32,})["']`,
-)
-
-// entropyAllowedExts — only scan actual code and .env files, never configs or docs.
+// entropyAllowedExts — code and .env files, where the keyword-guarded assignment
+// heuristic (`api_key = "…"`) is meaningful.
 var entropyAllowedExts = map[string]bool{
 	".go": true, ".py": true,
 	".ts": true, ".tsx": true, ".js": true, ".jsx": true,
 	".env": true,
 }
 
+// secretConfigExts — structured config where vendor-format signatures still run
+// (a leaked AWS key or connection string in YAML/JSON is a real leak) but the
+// noisier assignment heuristic is not applied.
+var secretConfigExts = map[string]bool{
+	".yaml": true, ".yml": true, ".json": true, ".toml": true,
+	".tf": true, ".ini": true, ".cfg": true, ".conf": true,
+	".properties": true, ".xml": true,
+}
+
+// leakSinkRegexCache avoids recompiling the per-variable leak regex repeatedly.
 func (e *Engine) evaluateEntropy(f *core.FileInfo) []core.CheckResult {
-	// Only scan code files — skip json, yaml, md, toml, etc.
-	if !entropyAllowedExts[f.Extension] {
+	// Skip test files — fixtures legitimately contain dummy tokens.
+	if f.IsTest {
 		return nil
 	}
-	// Skip test files — test fixtures legitimately contain dummy tokens
-	if f.IsTest {
+	if isVendoredPath(f.Path) {
+		return nil
+	}
+
+	base := strings.ToLower(filepath.Base(f.Path))
+	isEnv := strings.Contains(base, ".env")
+	scanAssign := entropyAllowedExts[f.Extension] || isEnv
+	scanSignatures := scanAssign || secretConfigExts[f.Extension]
+	if !scanSignatures {
 		return nil
 	}
 
@@ -471,79 +489,50 @@ func (e *Engine) evaluateEntropy(f *core.FileInfo) []core.CheckResult {
 		return nil
 	}
 	src := string(content)
+	lowerSrc := strings.ToLower(src)
 
-	matches := secretAssignRegex.FindAllStringSubmatchIndex(src, -1)
-	for _, loc := range matches {
-		if len(loc) < 6 {
-			continue
-		}
-		fullMatch := src[loc[0]:loc[1]]
-		// Group 1 = variable name, Group 2 = value
-		_ = fullMatch
-		varName := src[loc[2]:loc[3]]
-		val := src[loc[4]:loc[5]]
+	var results []core.CheckResult
+	for _, h := range detectSecretHits(src, scanAssign) {
+		id, name, severity := h.id, h.name, h.severity
+		suggestion := "CRITICAL: hardcoded credential in source. Remove it, load the value from a secret manager or environment variable, and rotate the exposed credential."
 
-		// Must be genuinely high entropy — eliminates CSS classes, package names, URLs
-		if !IsHighEntropy(val) {
-			continue
-		}
-
-		// Skip strings that look like module paths or URLs (contain slashes)
-		if strings.Contains(val, "/") {
-			continue
-		}
-
-		// Skip obvious placeholder values
-		lower := strings.ToLower(val)
-		if strings.HasPrefix(lower, "your_") || strings.HasPrefix(lower, "change_me") ||
-			strings.HasPrefix(lower, "replace_") || lower == "xxx" || lower == "secret" {
-			continue
-		}
-
-		lineNumber := strings.Count(src[:loc[0]], "\n") + 1
-
-		// Check inline suppression
-		if e.isLineIgnored(f, lineNumber, "ENTROPY-SECRET") {
-			continue
-		}
-
-		isLeaked := false
-		lowerSrc := strings.ToLower(src)
-		if strings.Contains(lowerSrc, "log") || strings.Contains(lowerSrc, "print") {
-			leakRegex := regexp.MustCompile(`(?i)(?:log|print|console)\w*\s*\([^)]*` + regexp.QuoteMeta(varName) + `[^)]*\)`)
-			if leakRegex.MatchString(src) {
-				isLeaked = true
+		// Escalate when the secret is not only hardcoded but written to a log/print sink.
+		if h.varName != "" && (strings.Contains(lowerSrc, "log") || strings.Contains(lowerSrc, "print") || strings.Contains(lowerSrc, "console")) {
+			leakRe := regexp.MustCompile(`(?i)(?:log|print|console)\w*\s*\([^)]*` + regexp.QuoteMeta(h.varName) + `[^)]*\)`)
+			if leakRe.MatchString(src) {
+				id, name, severity = "SECRET-LEAK-LOG", "Hardcoded Secret Leaked to Logger", "CRITICAL"
+				suggestion = "CRITICAL: secret is hardcoded AND passed to a log/print sink. Remove the secret, remove the log statement, and rotate the credential immediately."
 			}
 		}
 
-		if isLeaked {
-			if e.isLineIgnored(f, lineNumber, "ENTROPY-SECRET-LEAK") {
-				continue
-			}
-			return []core.CheckResult{{
-				ID:         "ENTROPY-SECRET-LEAK",
-				Name:       "Hardcoded Secret Leaked to Logger",
-				Status:     core.Absent,
-				File:       f.Path,
-				Line:       lineNumber,
-				Evidence:   fmt.Sprintf("Secret '%s' is not only hardcoded but also passed to a print/log function.", varName),
-				Suggestion: "CRITICAL: Hardcoded secret is being logged. Remove the secret, remove the log statement, and rotate the credentials immediately.",
-				Severity:   "CRITICAL",
-			}}
+		// Inline suppression: honour both the specific id and the legacy alias.
+		if e.isLineIgnored(f, h.line, id) || e.isLineIgnored(f, h.line, "ENTROPY-SECRET") {
+			continue
 		}
 
-		return []core.CheckResult{{
-			ID:         "ENTROPY-SECRET",
-			Name:       "Hardcoded Secret Detected",
+		results = append(results, core.CheckResult{
+			ID:         id,
+			Name:       name,
 			Status:     core.Absent,
 			File:       f.Path,
-			Line:       lineNumber,
-			Evidence:   fmt.Sprintf("Potential hardcoded secret in variable '%s': %s...", varName, val[:min(8, len(val))]),
-			Suggestion: "CRITICAL: Hardcoded secret found in source code. Move to environment variables and rotate the value immediately.",
-			Severity:   "CRITICAL",
-		}}
+			Line:       h.line,
+			Evidence:   fmt.Sprintf("%s (%s)", name, h.evidence),
+			Suggestion: suggestion,
+			Severity:   severity,
+		})
 	}
-	return nil
+	return results
+}
+
+// isVendoredPath reports whether a path is inside a dependency/VCS directory
+// where hits are noise rather than the user's own leaked credentials.
+func isVendoredPath(path string) bool {
+	for _, seg := range []string{"/node_modules/", "/vendor/", "/.git/", "/dist/", "/build/", "/.next/"} {
+		if strings.Contains(path, seg) {
+			return true
+		}
+	}
+	return false
 }
 
 func min(a, b int) int {

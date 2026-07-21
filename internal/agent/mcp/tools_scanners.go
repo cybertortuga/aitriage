@@ -9,11 +9,11 @@ import (
 )
 
 type scannersResult struct {
-	Semgrep      bool   `json:"semgrep"`
-	Gitleaks     bool   `json:"gitleaks"`
-	Trivy        bool   `json:"trivy"`
-	Bandit       bool   `json:"bandit"`
-	SecureCoder  bool   `json:"securecoder"`
+	Semgrep            bool   `json:"semgrep"`
+	Gitleaks           bool   `json:"gitleaks"`
+	Trivy              bool   `json:"trivy"`
+	Bandit             bool   `json:"bandit"`
+	SecureCoder        bool   `json:"securecoder"`
 	SecureCoderBackend string `json:"securecoder_backend,omitempty"`
 }
 

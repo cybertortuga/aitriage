@@ -32,13 +32,17 @@ type diffResult struct {
 	Summary       string              `json:"summary"`
 }
 
-func registerHistoryTool(srv *mcp.Server) {
+func registerHistoryTool(srv *mcp.Server, guard *PathGuard) {
 	// Show last scan
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "aitriage_last_scan",
 		Description: "Show the most recent saved scan result for a project. Returns scan timestamp and SecurityScore.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input historyInput) (*mcp.CallToolResult, historyResult, error) {
-		rec, err := history.LoadLast(input.Path)
+		path, err := guard.Resolve(input.Path)
+		if err != nil {
+			return nil, historyResult{}, err
+		}
+		rec, err := history.LoadLast(path)
 		if err != nil {
 			return nil, historyResult{}, fmt.Errorf("history error: %w", err)
 		}
@@ -61,21 +65,25 @@ func registerHistoryTool(srv *mcp.Server) {
 		Name:        "aitriage_diff",
 		Description: "Run a fresh scan and diff it against the previous saved scan. Shows new findings and what was fixed since last run.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input diffInput) (*mcp.CallToolResult, diffResult, error) {
+		path, err := guard.Resolve(input.Path)
+		if err != nil {
+			return nil, diffResult{}, err
+		}
 		// Load previous
-		prev, err := history.LoadLast(input.Path)
+		prev, err := history.LoadLast(path)
 		if err != nil {
 			return nil, diffResult{}, fmt.Errorf("history load error: %w", err)
 		}
 		// Run current scan
-		currReport, err := scanner.Scan(ctx, input.Path, scanner.ScanOptions{})
+		currReport, err := scanner.Scan(ctx, path, scanner.ScanOptions{})
 		if err != nil {
 			return nil, diffResult{}, fmt.Errorf("scan error: %w", err)
 		}
 		// Save current
-		history.Save(input.Path, currReport) //nolint:errcheck
+		history.Save(path, currReport) //nolint:errcheck
 
 		if prev == nil {
-			history.Save(input.Path, currReport) //nolint:errcheck
+			history.Save(path, currReport) //nolint:errcheck
 			return nil, diffResult{
 				CurrentScore: currReport.SecurityScore,
 				Summary:      "No previous scan to compare against. This scan has been saved as the baseline.",

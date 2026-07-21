@@ -19,12 +19,16 @@ type secretsResult struct {
 	Summary string             `json:"summary"`
 }
 
-func registerSecretsTool(srv *mcp.Server) {
+func registerSecretsTool(srv *mcp.Server, guard *PathGuard) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "aitriage_secrets",
 		Description: "Scan for hardcoded secrets using Shannon Entropy analysis. Finds API keys, tokens, passwords even with non-obvious variable names. Returns only secret-related findings.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input secretsInput) (*mcp.CallToolResult, secretsResult, error) {
-		report, err := scanner.Scan(ctx, input.Path, scanner.ScanOptions{})
+		path, err := guard.Resolve(input.Path)
+		if err != nil {
+			return nil, secretsResult{}, err
+		}
+		report, err := scanner.Scan(ctx, path, scanner.ScanOptions{})
 		if err != nil {
 			return nil, secretsResult{}, fmt.Errorf("scan failed: %w", err)
 		}

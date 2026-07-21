@@ -25,23 +25,27 @@ type archResult struct {
 	Summary         string          `json:"summary"`
 }
 
-func registerArchitectureTool(srv *mcp.Server) {
+func registerArchitectureTool(srv *mcp.Server, guard *PathGuard) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "aitriage_architecture",
 		Description: "Analyze project structure: detect tech stacks, count files by extension, check for key files (Dockerfile, docker-compose.yml, .env, Makefile, nginx.conf, terraform/*.tf, go.mod, package.json, requirements.txt). Call this FIRST before any scan.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input archInput) (*mcp.CallToolResult, archResult, error) {
-		ws, err := core.NewWorkspace(input.Path)
+		path, err := guard.Resolve(input.Path)
+		if err != nil {
+			return nil, archResult{}, err
+		}
+		ws, err := core.NewWorkspace(path)
 		if err != nil {
 			return nil, archResult{}, fmt.Errorf("failed to read workspace: %w", err)
 		}
 
-		diag, err := architect.GenerateMermaidDiagram(input.Path)
+		diag, err := architect.GenerateMermaidDiagram(path)
 		if err != nil {
 			return nil, archResult{}, fmt.Errorf("failed to generate architecture diagram: %v", err)
 		}
 
-		components := architect.DetectComponents(input.Path)
-		tm := architect.GenerateThreatModel(components, input.Path)
+		components := architect.DetectComponents(path)
+		tm := architect.GenerateThreatModel(components, path)
 		tmJSON, _ := json.MarshalIndent(tm, "", "  ")
 
 		stacks := detector.DetectProjects(ws)
@@ -51,16 +55,16 @@ func registerArchitectureTool(srv *mcp.Server) {
 			byExt[ext]++
 		}
 		keyFiles := map[string]bool{
-			"Dockerfile":         fileExists(filepath.Join(input.Path, "Dockerfile")),
-			"docker-compose.yml": fileExists(filepath.Join(input.Path, "docker-compose.yml")),
-			".env":               fileExists(filepath.Join(input.Path, ".env")),
-			".env.example":       fileExists(filepath.Join(input.Path, ".env.example")),
-			"Makefile":           fileExists(filepath.Join(input.Path, "Makefile")),
-			"nginx.conf":         fileExists(filepath.Join(input.Path, "nginx.conf")),
-			"go.mod":             fileExists(filepath.Join(input.Path, "go.mod")),
-			"package.json":       fileExists(filepath.Join(input.Path, "package.json")),
-			"requirements.txt":   fileExists(filepath.Join(input.Path, "requirements.txt")),
-			"terraform":          dirExists(filepath.Join(input.Path, "terraform")),
+			"Dockerfile":         fileExists(filepath.Join(path, "Dockerfile")),
+			"docker-compose.yml": fileExists(filepath.Join(path, "docker-compose.yml")),
+			".env":               fileExists(filepath.Join(path, ".env")),
+			".env.example":       fileExists(filepath.Join(path, ".env.example")),
+			"Makefile":           fileExists(filepath.Join(path, "Makefile")),
+			"nginx.conf":         fileExists(filepath.Join(path, "nginx.conf")),
+			"go.mod":             fileExists(filepath.Join(path, "go.mod")),
+			"package.json":       fileExists(filepath.Join(path, "package.json")),
+			"requirements.txt":   fileExists(filepath.Join(path, "requirements.txt")),
+			"terraform":          dirExists(filepath.Join(path, "terraform")),
 		}
 		stackNames := make([]string, 0, len(stacks))
 		for _, s := range stacks {

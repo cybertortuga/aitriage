@@ -62,6 +62,16 @@ func Scan(ctx context.Context, projectPath string, opts ScanOptions) (ScanReport
 		return empty, fmt.Errorf("path %q is not a valid directory", projectPath)
 	}
 
+	// Resolve to an absolute path so per-file content reads, project grouping,
+	// and the --staged/--diff file filter (which compares absolute paths) all
+	// work identically whether the caller passed ".", "./", or an absolute path.
+	// Without this, `aitriage scan .` — the exact form used by the pre-commit
+	// hook and CI — would run project-level checks but silently skip per-file
+	// analysis (including secret detection).
+	if abs, err := filepath.Abs(projectPath); err == nil {
+		projectPath = abs
+	}
+
 	// Check context cancellation
 	select {
 	case <-ctx.Done():

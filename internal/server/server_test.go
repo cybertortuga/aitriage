@@ -241,7 +241,7 @@ func TestHandleSummaryUsesSecureCoderEvidenceContract(t *testing.T) {
 	projectDir := t.TempDir()
 
 	if err := os.WriteFile(filepath.Join(projectDir, "package.json"), []byte(`{
-  "name": "ait-dodo-landing",
+  "name": "sample-landing",
   "scripts": {"build": "tsc -b && vite build"},
   "dependencies": {"react": "19.2.6", "react-dom": "19.2.6"},
   "devDependencies": {"vite": "8.0.12", "@vitejs/plugin-react": "6.0.1"}
@@ -270,7 +270,7 @@ Rate Limiting Missing: false positive for the current repository.
 		t.Fatal(err)
 	}
 
-	res, err := s.db.Exec(`INSERT INTO products (name, repo_url, tech_stack, business_criticality, lifecycle) VALUES (?, ?, ?, ?, ?)`, "ait-dodo-landing", projectDir, "Vite + React", "medium", "production")
+	res, err := s.db.Exec(`INSERT INTO products (name, repo_url, tech_stack, business_criticality, lifecycle) VALUES (?, ?, ?, ?, ?)`, "sample-landing", projectDir, "Vite + React", "medium", "production")
 	if err != nil {
 		t.Fatalf("failed to insert product: %v", err)
 	}
@@ -331,7 +331,7 @@ Rate Limiting Missing: false positive for the current repository.
 
 	userPrompt := capture.messages[1].Content
 	for _, want := range []string{
-		"Product: ait-dodo-landing",
+		"Product: sample-landing",
 		"Active findings: 1",
 		"Non-active/suppressed findings: 1",
 		"Detected project markers: package.json, vite.config.ts, src/main.tsx, src/App.tsx",

@@ -24,7 +24,7 @@ type secureCoderScanResult struct {
 }
 
 type secureCoderDepsInput struct {
-	Registry string                      `json:"registry"`
+	Registry string                       `json:"registry"`
 	Packages []external.DepPackageRequest `json:"packages"`
 }
 
@@ -50,7 +50,12 @@ type secureCoderIgnoreResult struct {
 
 // ── Registration ─────────────────────────────────────────────────────────────
 
-func registerSecureCoderTools(srv *mcp.Server) {
+// registerSecureCoderTools registers the SecureCoder tools. The read-only scan
+// tools (run_securecoder, run_securecoder_deps) are always registered. The
+// mutating securecoder_ignore is registered only when allowMutation is true;
+// the safe profile passes false so safe-profile installs cannot silently suppress
+// findings.
+func registerSecureCoderTools(srv *mcp.Server, guard *PathGuard, allowMutation bool) {
 	// run_securecoder — scan file or directory
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "run_securecoder",
@@ -62,24 +67,29 @@ func registerSecureCoderTools(srv *mcp.Server) {
 			return nil, secureCoderScanResult{}, fmt.Errorf("SecureCoder is not running. Ensure Antigravity IDE is open with SecureCoder enabled")
 		}
 
+		scanPath, err := guard.Resolve(input.Path)
+		if err != nil {
+			return nil, secureCoderScanResult{}, err
+		}
+
 		var allFindings []external.UnifiedFinding
 
 		// Check if path is a file or directory
-		info, err := statPath(input.Path)
+		info, err := statPath(scanPath)
 		if err != nil {
 			return nil, secureCoderScanResult{}, fmt.Errorf("cannot access path: %w", err)
 		}
 
 		if !info.IsDir() {
 			// Single file scan
-			findings, err := external.RunSecureCoder(ctx, input.Path)
+			findings, err := external.RunSecureCoder(ctx, scanPath)
 			if err != nil {
 				return nil, secureCoderScanResult{}, fmt.Errorf("securecoder scan error: %w", err)
 			}
 			allFindings = findings
 		} else {
 			// Directory scan — walk and scan each file
-			err := filepath.WalkDir(input.Path, func(path string, d fs.DirEntry, err error) error {
+			err := filepath.WalkDir(scanPath, func(path string, d fs.DirEntry, err error) error {
 				if err != nil {
 					return nil // skip inaccessible files
 				}
@@ -137,7 +147,12 @@ func registerSecureCoderTools(srv *mcp.Server) {
 		}, nil
 	})
 
-	// securecoder_ignore — suppress a finding
+	// securecoder_ignore — suppress a finding (MUTATING).
+	// Not registered under the safe profile: safe-profile installs must not be able to
+	// silently mark security findings as ignored.
+	if !allowMutation {
+		return
+	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "securecoder_ignore",
 		Description: "Suppress a SecureCoder finding as false positive, accepted risk, or won't fix. " +
@@ -148,8 +163,13 @@ func registerSecureCoderTools(srv *mcp.Server) {
 			return nil, secureCoderIgnoreResult{}, fmt.Errorf("SecureCoder is not running. Ensure Antigravity IDE is open with SecureCoder enabled")
 		}
 
+		filePath, err := guard.Resolve(input.FilePath)
+		if err != nil {
+			return nil, secureCoderIgnoreResult{}, err
+		}
+
 		result, err := external.IgnoreSecureCoderFinding(ctx, external.IgnoreRequest{
-			FilePath:           input.FilePath,
+			FilePath:           filePath,
 			RuleID:             input.RuleID,
 			CodeSnippet:        input.CodeSnippet,
 			LineNumber:         input.LineNumber,

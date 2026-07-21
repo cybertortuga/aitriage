@@ -21,12 +21,16 @@ type entropyResult struct {
 	Summary string             `json:"summary"`
 }
 
-func registerEntropyCheckTool(srv *mcp.Server) {
+func registerEntropyCheckTool(srv *mcp.Server, guard *PathGuard) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "aitriage_entropy_check",
 		Description: "Check for entropy issues: chat residue in comments, missing error handling, God Files (>1500 lines), TODO stubs, and .cursorrules manipulation attempts.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input entropyInput) (*mcp.CallToolResult, entropyResult, error) {
-		report, err := scanner.Scan(ctx, input.Path, scanner.ScanOptions{})
+		path, err := guard.Resolve(input.Path)
+		if err != nil {
+			return nil, entropyResult{}, err
+		}
+		report, err := scanner.Scan(ctx, path, scanner.ScanOptions{})
 		if err != nil {
 			return nil, entropyResult{}, fmt.Errorf("scan failed: %w", err)
 		}
