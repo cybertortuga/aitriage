@@ -91,6 +91,39 @@ The released executable is self-contained:
 
 External tools such as Semgrep, Trivy, Gitleaks, and Bandit are not embedded in the host executable. Use the published Docker image when you want those tools preinstalled. Provider credentials are never bundled.
 
+### Install the full scanner container through your AI IDE
+
+The container includes AITriage plus Semgrep, Trivy, Gitleaks, and Bandit. Paste this into Codex or Claude Code:
+
+```text
+Install the official AITriage container once on this computer.
+Container: ghcr.io/cybertortuga/aitriage:latest
+
+1. Run `docker --version` and confirm that the Docker engine is running.
+2. If Docker is unavailable, stop and tell me to install Docker Desktop or
+   Docker Engine from https://docs.docker.com/get-docker/. Do not install Docker
+   from an unofficial source.
+3. Run `docker pull ghcr.io/cybertortuga/aitriage:latest`.
+4. Verify the downloaded image with
+   `docker image inspect ghcr.io/cybertortuga/aitriage:latest`.
+5. Report the image ID and downloaded tag. Do not start a container, mount a
+   project, run a scan, or modify source code during this installation step.
+```
+
+### Install the full scanner container manually
+
+Install and start [Docker Desktop or Docker Engine](https://docs.docker.com/get-docker/), then download the published image:
+
+```bash
+docker pull ghcr.io/cybertortuga/aitriage:latest
+docker image inspect ghcr.io/cybertortuga/aitriage:latest
+```
+
+Docker stores the image in its local image cache. You do not clone the AITriage repository and no files are copied into the project being checked.
+
+> [!NOTE]
+> The current Codex and Claude Code project connectors use the native host CLI. The Docker image is the complete scanner bundle for Web UI, CLI, and CI/CD. Using the container as the AI IDE MCP runtime is not yet a one-command supported path.
+
 ## Use AITriage
 
 Choose one interface:
