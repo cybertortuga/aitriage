@@ -72,6 +72,56 @@ Use this mode when you want Codex or Claude Code to run the complete AITriage pi
 > [!IMPORTANT]
 > An audit stops before source changes. The agent may fix only the confirmed finding IDs that you explicitly approve.
 
+### Set up through your AI IDE
+
+Open your project in Codex or Claude Code and paste:
+
+```text
+Configure AITriage MCP for the repository currently open in this AI IDE. Work
+from the repository root.
+
+Rules:
+- AITriage is a system CLI, not a dependency of this repository. Never clone or
+  copy https://github.com/cybertortuga/aitriage inside the current repository.
+- Preserve all source files, existing agent instructions, MCP servers, and
+  `.gitignore` entries.
+- Do not scan the repository and do not modify source code during setup.
+
+Do the following:
+1. Check whether `aitriage` is available and print `aitriage version`.
+2. If it is missing, install the official release with
+   `brew install cybertortuga/aitriage/aitriage`. If Homebrew is unavailable but
+   Go 1.25.5+ is installed, use
+   `go install github.com/cybertortuga/aitriage/cmd/aitriage@latest`. If neither
+   method is available, stop and explain what is missing.
+3. Detect the current AI IDE and run exactly one project installer:
+   - Codex: `aitriage install-codex .`
+   - Claude Code: `aitriage install-claude-code .`
+4. Verify the generated project-local MCP configuration and managed instruction
+   block. Ensure `/aitriage-reports/` appears once in `.gitignore`.
+5. Report the installed AITriage version, command executed, files changed, and
+   verification result. Do not claim the MCP server is connected if only its
+   configuration was written.
+6. Stop. Tell me to open a new task/session so the AI IDE loads the MCP server.
+```
+
+After setup, open a new task/session in the same project and paste:
+
+```text
+Check this project with AITriage through its MCP workflow. Do not use a raw
+`aitriage scan` as the final result. Do not fix anything yet. Complete the AI
+triage, explain the verdict in plain language, and show me where the reports
+were saved.
+```
+
+To approve selected fixes later:
+
+```text
+Fix confirmed AITriage findings CS-AUTH-001 and CS-AUTHZ-001. Do not change
+false positives or uncertain findings. Run the required tests and verify the
+fixes with AITriage.
+```
+
 ### Set up manually
 
 Open a terminal in the root of the project you want to check.
@@ -88,39 +138,7 @@ For Claude Code:
 aitriage install-claude-code .
 ```
 
-The installer adds only the project-local MCP configuration and managed agent instructions. It preserves unrelated MCP servers and existing instruction text. Open a **new** Codex task or Claude Code session after installation.
-
-Then ask:
-
-```text
-Check this project with AITriage. Do not fix anything yet. Explain the result
-in plain language and show me where the report was saved.
-```
-
-To approve selected fixes later:
-
-```text
-Fix confirmed AITriage findings CS-AUTH-001 and CS-AUTHZ-001. Do not change
-false positives or uncertain findings. Run the required tests and verify the
-fixes with AITriage.
-```
-
-### Set up through your AI IDE
-
-Open your project in Codex or Claude Code and paste:
-
-```text
-Set up AITriage for the project currently open in this AI IDE using the official
-instructions: https://github.com/cybertortuga/aitriage
-
-AITriage is a system tool, not a project dependency. Never clone or copy its
-repository inside my project. Install the released CLI separately if needed,
-then run the installer for this AI IDE against the current project. Preserve
-all existing settings and source files. Do not scan or modify source code yet.
-Verify the project-local MCP connection and tell me when to open a new session.
-```
-
-In the new session, use the normal audit request shown above. The managed agent instructions contain the internal MCP tool sequence; users do not need to call those tools manually.
+The installer adds only the project-local MCP configuration and managed agent instructions. It preserves unrelated MCP servers and existing instruction text. Open a **new** Codex task or Claude Code session after installation, then use the audit request above.
 
 ### AI IDE files
 
@@ -142,12 +160,6 @@ aitriage install-claude-code . --uninstall
 ## Web UI
 
 Use this mode when you want to select projects, start scans, and read reports in a browser. Web AI features use a provider API key; the Web UI cannot use a Codex or Claude subscription.
-
-<p align="center">
-  <img src="artifacts/aitriage-screenshots-20260708/19-vulnerability-detail-agent-prompt.png" alt="AITriage Web UI showing findings, evidence, and the AI agent handoff" width="100%">
-  <br>
-  <sub>Findings, evidence, agent handoff, and verification in one view. Shown in the Russian locale.</sub>
-</p>
 
 ### Start manually
 
