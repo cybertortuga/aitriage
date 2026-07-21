@@ -1,4 +1,25 @@
-# AITriage
+<div align="center">
+  <img src="web/public/favicon.svg" width="88" height="88" alt="AITriage logo">
+  <h1>AITriage</h1>
+  <p><strong>Security scan → SecureCoder AI triage → human approval → verified fixes</strong></p>
+  <p>Use Codex or Claude Code subscriptions locally. Run the same analysis pipeline in CI/CD.</p>
+
+  <p>
+    <a href="https://github.com/cybertortuga/aitriage/releases"><img src="https://img.shields.io/github/v/release/cybertortuga/aitriage?style=for-the-badge&color=2563eb" alt="Latest release"></a>
+    <a href="https://github.com/cybertortuga/aitriage/actions"><img src="https://img.shields.io/github/actions/workflow/status/cybertortuga/aitriage/ci.yml?branch=main&style=for-the-badge&label=build" alt="Build status"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/cybertortuga/aitriage?style=for-the-badge" alt="MIT license"></a>
+    <a href="https://github.com/cybertortuga/aitriage/pkgs/container/aitriage"><img src="https://img.shields.io/badge/GHCR-container-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="GHCR container"></a>
+  </p>
+
+  <p>
+    <a href="#the-easiest-way-let-your-ai-ide-set-it-up"><strong>AI IDE setup</strong></a> ·
+    <a href="#quick-start"><strong>Quick start</strong></a> ·
+    <a href="#where-are-the-results"><strong>Reports</strong></a> ·
+    <a href="#cicd"><strong>CI/CD</strong></a>
+  </p>
+</div>
+
+---
 
 AITriage checks a codebase for security problems, asks an AI coding agent to verify every finding, and prepares safe fix instructions.
 
