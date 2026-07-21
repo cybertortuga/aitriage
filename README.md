@@ -161,6 +161,25 @@ aitriage install-claude-code . --uninstall
 
 Use this mode when you want to select projects, start scans, and read reports in a browser. Web AI features use a provider API key; the Web UI cannot use a Codex or Claude subscription.
 
+### Start through your AI IDE
+
+Paste this into Codex or Claude Code:
+
+```text
+Start the AITriage Web UI for the repository currently open in this AI IDE.
+
+Do not clone AITriage inside this repository. Check whether the system command
+`aitriage` is installed. If it is missing, install the official release using
+the installation methods documented at
+https://github.com/cybertortuga/aitriage#install-once.
+
+Run `aitriage web --port 8080` locally. Do not expose the server to the network
+and do not write API keys to files. If no supported provider key is already in
+the environment, start Web without AI features and tell me which environment
+variable enables them. Confirm that http://localhost:8080 responds, then show
+me the URL and the exact command needed to stop the server.
+```
+
 ### Start manually
 
 No source checkout is required:
@@ -200,20 +219,6 @@ Open `http://localhost:8080` and select the mounted project at `/host`. Pass a p
 
 </details>
 
-### Start through your AI IDE
-
-Paste this into Codex or Claude Code:
-
-```text
-Start the AITriage Web UI for the project currently open in this AI IDE.
-Official instructions: https://github.com/cybertortuga/aitriage#web-ui
-
-Do not clone AITriage inside my project. Use the installed CLI; install the
-released CLI first if it is missing. Start the Web UI locally on port 8080,
-do not expose it to the network, and do not store API keys in project files.
-Tell me the local URL and how to stop the server.
-```
-
 The current Web UI has no enforced login. Keep it on a trusted local machine or isolated network; do not expose it directly to the Internet.
 
 ---
@@ -221,6 +226,25 @@ The current Web UI has no enforced login. Keep it on a trusted local machine or 
 ## CI/CD
 
 Use this mode to run AITriage automatically on pushes, pull requests, and manual GitHub Actions runs. The canonical organization setup keeps scan logic and SecureCoder prompts in one centrally maintained reusable workflow.
+
+### Configure through your AI IDE
+
+Paste this into Codex or Claude Code:
+
+```text
+Configure AITriage CI/CD for this repository using the canonical reusable
+workflow documented at https://github.com/cybertortuga/aitriage#cicd.
+
+Preserve every existing workflow. Create or update only
+`.github/workflows/aitriage.yml`. First identify the approved reusable workflow
+repository and the allowed GitHub Secret name from existing repository or
+organization configuration. If either value cannot be confirmed, stop and ask
+me instead of guessing.
+
+Never put an API key in YAML or source code. Validate the completed workflow,
+show me the exact diff, and explain which GitHub Secret must exist. Do not
+commit, push, or run the workflow until I explicitly approve those actions.
+```
 
 ### Configure manually
 
@@ -296,21 +320,6 @@ Then:
 
 Standalone workflow examples are available in [`examples/github-actions/`](examples/github-actions/).
 
-### Configure through your AI IDE
-
-Paste this into Codex or Claude Code:
-
-```text
-Configure AITriage CI/CD for this repository using the canonical reusable
-workflow documented at https://github.com/cybertortuga/aitriage#cicd
-
-Preserve existing workflows. Create or update only
-`.github/workflows/aitriage.yml`. Use our approved reusable security-workflow
-repository and existing GitHub Secret names; never put an API key in YAML or
-source code. Validate the workflow syntax and show me the exact diff. Do not
-commit, push, or run the workflow until I approve the changes.
-```
-
 The AI IDE may need you to provide the organization’s reusable-workflow repository and allowed secret name. Those values must not be guessed.
 
 ---
@@ -318,6 +327,29 @@ The AI IDE may need you to provide the organization’s reusable-workflow reposi
 ## CLI
 
 Use this mode for direct terminal commands, scripts, and local automation.
+
+### Run through your AI IDE
+
+For a raw scan without AI triage:
+
+```text
+Run `aitriage scan .` in this repository. Do not modify source code. Explain
+the findings and clearly label them as raw, deterministic results that have not
+been verified by AI triage.
+```
+
+For full CLI triage with a provider key already available in the environment:
+
+```text
+Run the full AITriage CLI agent for this repository. Use only provider
+credentials already present in the environment. Never ask me to paste a secret
+into chat and never write credentials to files.
+
+Save `triage-findings.json`, `summary.md`, `report.md`, and `fixspec.md` under
+`aitriage-reports/`. Do not modify source code. Explain the final AI-triaged
+gate and link every generated artifact. If no supported provider key is
+available, stop and tell me the required environment variable.
+```
 
 ### Run manually without AI
 
@@ -361,26 +393,6 @@ aitriage agent . --no-chat \
 ```
 
 </details>
-
-### Run through your AI IDE
-
-For a raw scan without connecting MCP:
-
-```text
-Run `aitriage scan .` in this project. Do not change source code. Explain the
-raw findings and clearly state that they have not been AI-triaged.
-```
-
-For full CLI triage with an existing provider key:
-
-```text
-Run the full AITriage CLI agent for this project using the provider credentials
-already present in my environment. Do not ask me to paste a secret into chat
-and do not write secrets to project files. Save the canonical outputs under
-`aitriage-reports/`, make no source changes, and explain the final gate.
-If no supported provider key is available, stop and tell me which environment
-variable is required.
-```
 
 If you want to use the Codex or Claude subscription instead of a provider API key, use the [AI IDE](#ai-ide) integration, not `aitriage agent`.
 
