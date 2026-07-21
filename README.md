@@ -11,22 +11,47 @@ It works with:
 
 AITriage does not silently fix code. It first shows the result. Source changes begin only after the user explicitly asks to fix selected findings.
 
-## The easiest way: give this repository to your AI IDE
+## The easiest way: let your AI IDE set it up
 
-Open your project in Codex or Claude Code and paste this message:
+Open the project root in Codex or Claude Code and paste this exact request:
 
 ```text
-Install and configure AITriage for this repository using:
-https://github.com/cybertortuga/aitriage
+Set up AITriage in the repository currently open in this AI IDE.
+Official repository: https://github.com/cybertortuga/aitriage
 
-Preserve my existing files and settings. After installation, start a security audit,
-do not change source code, and explain the result in plain language.
+Do the setup yourself:
+1. Read the current AITriage README from the official repository.
+2. Check whether `aitriage` is installed. If it is missing, install the latest
+   official release with Homebrew. If Homebrew is unavailable, use `go install`
+   as documented in the README. Do not download binaries from any other source.
+3. Detect which client you are running in:
+   - Codex: run `aitriage install-codex .`
+   - Claude Code: run `aitriage install-claude-code .`
+4. Preserve all existing project instructions, MCP servers, and `.gitignore`
+   entries. Add `/aitriage-reports/` to `.gitignore` only if it is missing.
+5. Verify that the project-local AITriage MCP configuration was created.
+6. Do not run a raw scan and do not change source code.
+7. Tell me exactly what you changed and whether I must open a new task/session
+   before the MCP server becomes available. Never claim the setup works unless
+   the configuration check passed.
 ```
 
-The AI IDE should install AITriage, connect its MCP server, run the SecureCoder workflow, and show the report. If it asks you to restart the task/session, do that once and repeat:
+After setup, open a **new** task/session in the same project and paste:
 
 ```text
-Check this repository with AITriage. Do not fix anything yet.
+Run a complete AITriage security audit of this repository through the AITriage
+MCP workflow. Start with `aitriage_run_start` using path `.` and intent `audit`.
+
+For every deferred SecureCoder request returned by AITriage:
+1. Answer the supplied prompt with your current subscription model.
+2. Submit that answer with `aitriage_run_submit`, using the same `run_id` and
+   `request_id` returned by AITriage.
+3. Continue until AITriage reports that triage is complete.
+
+Do not substitute `aitriage scan` or your own security review for this workflow.
+Do not modify source code. When complete, show me the final verdict, confirmed
+findings, uncertain findings, false positives, and paths to `summary.md`,
+`report.md`, and `fixspec.md` under `aitriage-reports/`.
 ```
 
 ## Quick start
