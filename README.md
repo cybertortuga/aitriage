@@ -12,6 +12,7 @@
   </p>
 
   <p>
+    <a href="#full-installation"><strong>Installation</strong></a>&nbsp;&nbsp;&nbsp;
     <a href="#ai-ide"><strong>AI IDE</strong></a>&nbsp;&nbsp;&nbsp;
     <a href="#web-ui"><strong>Web UI</strong></a>&nbsp;&nbsp;&nbsp;
     <a href="#cicd"><strong>CI/CD</strong></a>&nbsp;&nbsp;&nbsp;
@@ -23,9 +24,9 @@
 
 AITriage scans source code, runs every finding through the bundled SecureCoder prompts, separates confirmed vulnerabilities from false positives, and prepares fix instructions. It never treats a failed security check as permission to change source code.
 
-## Install once
+## Full installation
 
-AITriage is installed **once on the computer**. It is not copied into every project and must never be cloned inside the project being checked.
+AITriage is installed **once on the computer**. After that, the same installation powers AI IDE, Web UI, and CLI usage. It is not copied into every project and must never be cloned inside the project being checked.
 
 ```text
 GitHub/
@@ -33,13 +34,40 @@ GitHub/
 └── my-project/        # the project being checked
 ```
 
-Most users do not need the `aitriage/` source directory at all. Install the released CLI:
+Most users do not need the `aitriage/` source directory at all.
+
+### Install through your AI IDE
+
+Paste this into Codex or Claude Code from any working directory:
+
+```text
+Install the official AITriage release once on this computer.
+Official repository: https://github.com/cybertortuga/aitriage
+
+AITriage must be installed as a system command. Never clone or copy its source
+repository inside my current project.
+
+1. Check whether `aitriage` is already available. If it is, print
+   `aitriage version` and do not reinstall it.
+2. If it is missing and Homebrew is available, run
+   `brew install cybertortuga/aitriage/aitriage`.
+3. If Homebrew is unavailable but Go 1.25.5+ is installed, run
+   `go install github.com/cybertortuga/aitriage/cmd/aitriage@latest`.
+4. If neither method is available, stop and explain what must be installed.
+5. Verify `aitriage version` and `aitriage --help`.
+6. Report the installed version and executable path. Do not connect a project,
+   start Web, run a scan, or modify source code during this installation step.
+```
+
+### Install manually
+
+With Homebrew:
 
 ```bash
 brew install cybertortuga/aitriage/aitriage
 ```
 
-Or, with Go 1.25.5+:
+Or with Go 1.25.5+:
 
 ```bash
 go install github.com/cybertortuga/aitriage/cmd/aitriage@latest
@@ -50,6 +78,20 @@ Verify it once:
 ```bash
 aitriage version
 ```
+
+### What the installation contains
+
+The released executable is self-contained:
+
+- AITriage CLI commands;
+- built-in security rules and deterministic scanners;
+- the MCP server used by Codex and Claude Code;
+- the local Web UI and API server;
+- report generation and policy checks.
+
+External tools such as Semgrep, Trivy, Gitleaks, and Bandit are not embedded in the host executable. Use the published Docker image when you want those tools preinstalled. Provider credentials are never bundled.
+
+## Use AITriage
 
 Choose one interface:
 
@@ -69,10 +111,12 @@ Choose one interface:
 
 Use this mode when you want Codex or Claude Code to run the complete AITriage pipeline with the model included in your existing subscription. No separate LLM API key is required.
 
+Connecting a project is not another installation. It only writes the small project-local MCP configuration needed to confine AITriage to that repository.
+
 > [!IMPORTANT]
 > An audit stops before source changes. The agent may fix only the confirmed finding IDs that you explicitly approve.
 
-### Set up through your AI IDE
+### Connect through your AI IDE
 
 Open your project in Codex or Claude Code and paste:
 
@@ -89,12 +133,9 @@ Rules:
 
 Do the following:
 1. Check whether `aitriage` is available and print `aitriage version`.
-2. If it is missing, install the official release with
-   `brew install cybertortuga/aitriage/aitriage`. If Homebrew is unavailable but
-   Go 1.25.5+ is installed, use
-   `go install github.com/cybertortuga/aitriage/cmd/aitriage@latest`. If neither
-   method is available, stop and explain what is missing.
-3. Detect the current AI IDE and run exactly one project installer:
+2. If it is missing, stop and tell me to complete the one-time installation at
+   https://github.com/cybertortuga/aitriage#full-installation.
+3. Detect the current AI IDE and run exactly one project connector:
    - Codex: `aitriage install-codex .`
    - Claude Code: `aitriage install-claude-code .`
 4. Verify the generated project-local MCP configuration and managed instruction
@@ -122,7 +163,7 @@ false positives or uncertain findings. Run the required tests and verify the
 fixes with AITriage.
 ```
 
-### Set up manually
+### Connect manually
 
 Open a terminal in the root of the project you want to check.
 
@@ -138,11 +179,11 @@ For Claude Code:
 aitriage install-claude-code .
 ```
 
-The installer adds only the project-local MCP configuration and managed agent instructions. It preserves unrelated MCP servers and existing instruction text. Open a **new** Codex task or Claude Code session after installation, then use the audit request above.
+The command name contains `install`, but it does not reinstall AITriage. It adds only the project-local MCP configuration and managed agent instructions. It preserves unrelated MCP servers and existing instruction text. Open a **new** Codex task or Claude Code session after connection, then use the audit request above.
 
 ### AI IDE files
 
-Depending on the client, the installer may update:
+Depending on the client, the project connector may update:
 
 - `.codex/config.toml` and `AGENTS.md` for Codex;
 - the project-local Claude MCP configuration and `CLAUDE.md` for Claude Code;
@@ -161,6 +202,8 @@ aitriage install-claude-code . --uninstall
 
 Use this mode when you want to select projects, start scans, and read reports in a browser. Web AI features use a provider API key; the Web UI cannot use a Codex or Claude subscription.
 
+Web uses the same installed `aitriage` executable. Starting the server does not install another copy.
+
 ### Start through your AI IDE
 
 Paste this into Codex or Claude Code:
@@ -169,9 +212,9 @@ Paste this into Codex or Claude Code:
 Start the AITriage Web UI for the repository currently open in this AI IDE.
 
 Do not clone AITriage inside this repository. Check whether the system command
-`aitriage` is installed. If it is missing, install the official release using
-the installation methods documented at
-https://github.com/cybertortuga/aitriage#install-once.
+`aitriage` is installed. If it is missing, stop and tell me to complete the
+one-time installation documented at
+https://github.com/cybertortuga/aitriage#full-installation.
 
 Run `aitriage web --port 8080` locally. Do not expose the server to the network
 and do not write API keys to files. If no supported provider key is already in
@@ -226,6 +269,8 @@ The current Web UI has no enforced login. Keep it on a trusted local machine or 
 ## CI/CD
 
 Use this mode to run AITriage automatically on pushes, pull requests, and manual GitHub Actions runs. The canonical organization setup keeps scan logic and SecureCoder prompts in one centrally maintained reusable workflow.
+
+CI/CD runs its own copy inside a GitHub Actions runner. The developer's local AITriage installation is not used by CI.
 
 ### Configure through your AI IDE
 
@@ -430,9 +475,9 @@ Add `/aitriage-reports/` to `.gitignore`. AITriage excludes this directory from 
 
 | Problem | What to do |
 | :--- | :--- |
-| Codex or Claude cannot see AITriage | Run the matching installer from the project root, then open a new task/session |
+| Codex or Claude cannot see AITriage | Run the matching project connector from the repository root, then open a new task/session |
 | Claude shows MCP approval as pending | Open the project in Claude Code and approve the `aitriage` MCP server |
-| A subfolder is rejected | Confirm it is a real folder inside the root used during installation |
+| A subfolder is rejected | Confirm it is a real folder inside the repository root used during connection |
 | The agent runs only `aitriage scan` | Ask it to use the AITriage MCP workflow; raw scan is not full triage |
 | Web AI features are unavailable | Set a supported provider API key before starting `aitriage web` |
 | Full triage fails | Keep the failure visible; do not substitute raw scan output as the verdict |
