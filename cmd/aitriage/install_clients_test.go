@@ -20,6 +20,9 @@ func TestTomlSetServerOnEmpty(t *testing.T) {
 	if !strings.Contains(got, `"serve", "--profile", "safe", "--scan-root", "/proj"`) {
 		t.Fatalf("missing safe args:\n%s", got)
 	}
+	if !strings.Contains(got, "enabled = true") {
+		t.Fatalf("project-local install must override a disabled user-level entry:\n%s", got)
+	}
 }
 
 func TestTomlSetServerPreservesOthersAndIsIdempotent(t *testing.T) {
