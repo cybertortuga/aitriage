@@ -163,24 +163,24 @@ func main() {
   ${env:ProgramFiles(x86)} = $emptyPrograms
   $missing = Invoke-CLI @('setup', '--status', '--json')
   $missingJSON = $missing.Out | ConvertFrom-Json
-  Check ($missing.Exit -ne 0 -and $missingJSON.error.code -eq 'docker_not_installed') 'setup status reports Docker not installed'
+  Check ($missing.Exit -ne 0 -and $missingJSON.status -eq 'action_required' -and $missingJSON.code -eq 'docker_not_installed') 'setup status reports Docker not installed'
 
   $env:PATH = $shim
   $env:AITRIAGE_FAKE_DOCKER_MODE = 'stopped'
   $stopped = Invoke-CLI @('setup', '--status', '--json')
   $stoppedJSON = $stopped.Out | ConvertFrom-Json
-  Check ($stopped.Exit -ne 0 -and $stoppedJSON.error.code -eq 'docker_not_running') 'setup status distinguishes Docker stopped'
+  Check ($stopped.Exit -ne 0 -and $stoppedJSON.status -eq 'action_required' -and $stoppedJSON.code -eq 'docker_not_running') 'setup status distinguishes Docker stopped'
 
   $env:AITRIAGE_FAKE_DOCKER_MODE = 'image-missing'
   $imageMissing = Invoke-CLI @('setup', '--status', '--json')
   $imageMissingJSON = $imageMissing.Out | ConvertFrom-Json
-  Check ($imageMissing.Exit -ne 0 -and $imageMissingJSON.error.code -eq 'image_missing') 'setup status distinguishes missing scanner image'
+  Check ($imageMissing.Exit -ne 0 -and $imageMissingJSON.status -eq 'action_required' -and $imageMissingJSON.code -eq 'image_missing') 'setup status distinguishes missing scanner image'
 
   $env:AITRIAGE_FAKE_DOCKER_MODE = 'healthy'
   $env:AITRIAGE_FAKE_BUNDLE_VERSION = $hostVersion
   $healthy = Invoke-CLI @('setup', '--status', '--json')
   $healthyJSON = $healthy.Out | ConvertFrom-Json
-  Check ($healthy.Exit -eq 0 -and $healthyJSON.ok -eq $true) 'setup status accepts a complete scanner bundle'
+  Check ($healthy.Exit -eq 0 -and $healthyJSON.status -eq 'ok') 'setup status accepts a complete scanner bundle'
   Check (@($healthyJSON.bundle | Where-Object { $_.ok }).Count -eq 5) 'setup status reports all five bundled tools healthy'
 } finally {
   $env:PATH = $savedPath
