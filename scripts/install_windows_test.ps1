@@ -94,8 +94,19 @@ try {
 
 # ── Child-process invocation helper ──────────────────────────────────────────
 function Invoke-Installer([string[]]$InstallerArgs) {
-  $out = & $HostExe -NoProfile -File $Installer @InstallerArgs 2>&1 | Out-String
-  return [pscustomobject]@{ Exit = $LASTEXITCODE; Out = $out }
+  # Windows PowerShell 5.1 wraps a native process' stderr in a non-terminating
+  # NativeCommandError. With the suite-wide Stop preference that would abort
+  # the harness before it can assert an intentionally failing installer case.
+  # Capture the process result, then restore strict error handling immediately.
+  $savedErrorPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $out = & $HostExe -NoProfile -File $Installer @InstallerArgs 2>&1 | Out-String
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $savedErrorPreference
+  }
+  return [pscustomobject]@{ Exit = $exitCode; Out = $out }
 }
 
 if (-not $OnWindows) {
