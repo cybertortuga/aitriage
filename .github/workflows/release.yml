@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  packages: read
 
 jobs:
   build:
@@ -148,6 +149,31 @@ jobs:
         run: |
           cd dist
           sha256sum aitriage_* > checksums.txt
+
+      # The released CLI pins setup to the image tag matching its own version.
+      # Do not expose a downloadable release while that image is still being
+      # built by docker-publish.yml: the documented one-command installation
+      # must either work completely or the release must remain unpublished.
+      - name: Wait for matching multi-arch scanner image
+        timeout-minutes: 60
+        env:
+          RELEASE_IMAGE: ghcr.io/cybertortuga/aitriage:${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            if manifest=$(docker buildx imagetools inspect "$RELEASE_IMAGE" --raw 2>/dev/null); then
+              platforms=$(printf '%s' "$manifest" | jq -r '.manifests[]?.platform | "\(.os)/\(.architecture)"')
+              if printf '%s\n' "$platforms" | grep -qx 'linux/amd64' && \
+                 printf '%s\n' "$platforms" | grep -qx 'linux/arm64'; then
+                echo "Verified $RELEASE_IMAGE for linux/amd64 and linux/arm64."
+                exit 0
+              fi
+            fi
+            echo "Waiting for $RELEASE_IMAGE ($attempt/120)..."
+            sleep 30
+          done
+          echo "Timed out waiting for the matching multi-arch scanner image." >&2
+          exit 1
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
