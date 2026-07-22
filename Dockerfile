@@ -9,7 +9,6 @@ RUN npm run build
 # ─── Stage 2: Build Go binary ─────────────────────────────────────────────────
 FROM golang:1.25.12-bookworm AS go-builder
 WORKDIR /app
-ARG AITRIAGE_VERSION=dev
 
 # C deps for tree-sitter CGO
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,6 +21,7 @@ RUN go mod download
 COPY . .
 # Synchronize web assets into the Go binary build context
 COPY --from=web-builder /web/dist /app/internal/server/ui/dist
+ARG AITRIAGE_VERSION=dev
 RUN CGO_ENABLED=1 go build -ldflags="-s -w -X main.Version=${AITRIAGE_VERSION}" -o /aitriage ./cmd/aitriage
 
 # Build the latest upstream Gitleaks release with patched Go dependencies. The
@@ -57,12 +57,10 @@ RUN go mod download github.com/aquasecurity/trivy@v0.72.0 && \
 
 # ─── Stage 3: Runtime with all security tools ─────────────────────────────────
 FROM debian:bookworm-slim
-ARG AITRIAGE_VERSION=dev
 
 LABEL org.opencontainers.image.title="AITriage"
 LABEL org.opencontainers.image.description="AI-powered security scanner — all tools included"
 LABEL org.opencontainers.image.source="https://github.com/cybertortuga/aitriage"
-ENV AITRIAGE_VERSION=${AITRIAGE_VERSION}
 
 # System deps + runtime C libs (merged into single layer for cache)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -106,6 +104,8 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # ── AITriage binary (LAST — changes every build, everything above is cached) ─
+ARG AITRIAGE_VERSION=dev
+ENV AITRIAGE_VERSION=${AITRIAGE_VERSION}
 COPY --from=go-builder /aitriage /usr/local/bin/aitriage
 
 # Create non-root user

@@ -129,7 +129,25 @@ jobs:
         shell: pwsh
         run: .\scripts\windows_process_test.ps1 -AitriageBin .\dist\aitriage.exe
 
-      - name: Package
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        env:
+          BINARY_NAME: ${{ matrix.binary_name }}
+        run: |
+          $cleanVersion = '${{ github.ref_name }}'.TrimStart('v')
+          $archive = "aitriage_${cleanVersion}_Windows_x86_64.zip"
+          Compress-Archive -LiteralPath "dist\$env:BINARY_NAME" -DestinationPath $archive -Force
+          $checkDir = Join-Path $env:RUNNER_TEMP 'aitriage-package-check'
+          Remove-Item -Recurse -Force -LiteralPath $checkDir -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath $archive -DestinationPath $checkDir
+          $actual = & (Join-Path $checkDir $env:BINARY_NAME) version
+          if ($actual -ne 'AITriage ${{ github.ref_name }}') {
+            throw "Packaged Windows binary version mismatch: $actual"
+          }
+
+      - name: Package (Unix)
+        if: matrix.os != 'windows-latest'
         shell: bash
         env:
           BUILD_GOOS: ${{ matrix.goos }}
@@ -143,11 +161,7 @@ jobs:
           ARCH_NAME="$BUILD_GOARCH"
           if [ "$ARCH_NAME" = "amd64" ]; then ARCH_NAME="x86_64"; fi
 
-          if [ "$BUILD_GOOS" = "windows" ]; then
-            tar -a -c -f "../aitriage_${CLEAN_VER}_${OS_NAME}_${ARCH_NAME}.zip" "$BINARY_NAME"
-          else
-            tar -czf "../aitriage_${CLEAN_VER}_${OS_NAME}_${ARCH_NAME}.tar.gz" "$BINARY_NAME"
-          fi
+          tar -czf "../aitriage_${CLEAN_VER}_${OS_NAME}_${ARCH_NAME}.tar.gz" "$BINARY_NAME"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -179,6 +193,18 @@ jobs:
           # Checksum the release binaries AND both official installers so their
           # integrity is independently verifiable from the same manifest.
           sha256sum aitriage_* install.sh install.ps1 > checksums.txt
+
+      - name: Verify release payload
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -c checksums.txt
+          unzip -t aitriage_*_Windows_x86_64.zip
+          test "$(unzip -Z1 aitriage_*_Windows_x86_64.zip)" = "aitriage.exe"
+          for archive in aitriage_*.tar.gz; do
+            gzip -t "$archive"
+            test "$(tar -tzf "$archive")" = "aitriage"
+          done
 
       # The released CLI pins setup to the image tag matching its own version.
       # Do not expose a downloadable release while that image is still being
