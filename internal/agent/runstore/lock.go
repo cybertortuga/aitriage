@@ -3,7 +3,6 @@ package runstore
 import (
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 // lockRun acquires an exclusive, advisory, cross-process lock for a run bundle.
@@ -22,12 +21,12 @@ func lockRun(dir string) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+	if err := lockFile(f); err != nil {
 		_ = f.Close()
 		return nil, err
 	}
 	return func() {
-		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = unlockFile(f)
 		_ = f.Close()
 	}, nil
 }
