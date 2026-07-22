@@ -221,9 +221,13 @@ function Invoke-Uninstall([string]$Dir) {
 
 function Get-AITriageVersion([string]$Binary) {
   try {
-    $output = (& $Binary version 2>$null | Select-Object -First 1)
-    if ($LASTEXITCODE -ne 0) { Fail "binary version check failed with exit code $LASTEXITCODE" }
-    return [string]$output
+    # Keep the native process out of a PowerShell pipeline. In PowerShell 7.6,
+    # piping the first native invocation can leave LASTEXITCODE undefined under
+    # StrictMode even though the executable ran successfully.
+    $output = @(& $Binary version 2>$null)
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) { Fail "binary version check failed with exit code $exitCode" }
+    return [string]($output | Select-Object -First 1)
   } catch {
     Fail "could not run the downloaded AITriage binary: $($_.Exception.Message)"
   }
