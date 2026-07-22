@@ -16,6 +16,10 @@ import (
 
 var containerSequence uint64
 
+// dockerExecutable is indirect so process-lifecycle tests can use a controlled
+// child process on every OS without installing Docker.
+var dockerExecutable = rt.DockerExecutable
+
 func managedContainerName(kind string) string {
 	return fmt.Sprintf("aitriage-%s-%d-%d", kind, os.Getpid(), atomic.AddUint64(&containerSequence, 1))
 }
@@ -38,7 +42,8 @@ func runManagedContainer(parent context.Context, args []string, name string) err
 	ctx, stopSignals := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 
-	cmd := exec.Command("docker", args...)
+	docker := dockerExecutable()
+	cmd := exec.Command(docker, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -55,13 +60,13 @@ func runManagedContainer(parent context.Context, args []string, name string) err
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if name != "" {
-			_ = exec.CommandContext(cleanupCtx, "docker", "stop", "--time", "10", name).Run()
+			_ = exec.CommandContext(cleanupCtx, docker, "stop", "--time", "10", name).Run()
 		}
 		select {
 		case <-done:
 		case <-cleanupCtx.Done():
 			if name != "" {
-				_ = exec.Command("docker", "rm", "-f", name).Run()
+				_ = exec.Command(docker, "rm", "-f", name).Run()
 			}
 			_ = cmd.Process.Kill()
 			<-done

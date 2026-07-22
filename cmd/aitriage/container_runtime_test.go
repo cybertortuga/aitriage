@@ -3,21 +3,31 @@ package main
 import (
 	"context"
 	"errors"
-	"os"
 	"os/exec"
-	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestRunManagedContainerPreservesChildExitCode(t *testing.T) {
-	binDir := t.TempDir()
-	docker := filepath.Join(binDir, "docker")
-	if err := os.WriteFile(docker, []byte("#!/bin/sh\nexit 42\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	previous := dockerExecutable
+	t.Cleanup(func() { dockerExecutable = previous })
 
-	err := runManagedContainer(context.Background(), []string{"run", "image"}, "")
+	var command string
+	var args []string
+	if runtime.GOOS == "windows" {
+		var err error
+		command, err = exec.LookPath("cmd.exe")
+		if err != nil {
+			t.Fatal(err)
+		}
+		args = []string{"/d", "/c", "exit 42"}
+	} else {
+		command = "/bin/sh"
+		args = []string{"-c", "exit 42"}
+	}
+	dockerExecutable = func() string { return command }
+
+	err := runManagedContainer(context.Background(), args, "")
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) {
 		t.Fatalf("error = %T %v, want *exec.ExitError", err, err)

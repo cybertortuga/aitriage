@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	rt "github.com/cybertortuga/aitriage/internal/runtime"
 )
 
 const (
@@ -25,7 +27,7 @@ func needsDocker() bool {
 
 // hasDocker checks if Docker is available and running.
 func hasDocker() bool {
-	cmd := exec.Command("docker", "info")
+	cmd := exec.Command(rt.DockerExecutable(), "info")
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	return cmd.Run() == nil
@@ -86,7 +88,7 @@ func dockerEscalate(projectPath string) bool {
 // tryRunInDocker attempts to pull and run the published image.
 func tryRunInDocker(image, absPath string) bool {
 	args := buildDockerArgs(image, absPath)
-	cmd := exec.Command("docker", args...)
+	cmd := exec.Command(rt.DockerExecutable(), args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -108,7 +110,7 @@ func tryLocalBuild(absPath string) bool {
 	}
 
 	fmt.Fprintf(os.Stderr, "\033[38;2;0;245;255m🔨\033[0m \033[38;2;220;228;228mBuilding Docker image locally...\033[0m\n")
-	build := exec.Command("docker", "build", "-t", "aitriage:local", dockerfileDir)
+	build := exec.Command(rt.DockerExecutable(), "build", "-t", "aitriage:local", dockerfileDir)
 	build.Stdout = os.Stderr
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {
@@ -116,7 +118,7 @@ func tryLocalBuild(absPath string) bool {
 	}
 
 	args := buildDockerArgs("aitriage:local", absPath)
-	cmd := exec.Command("docker", args...)
+	cmd := exec.Command(rt.DockerExecutable(), args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

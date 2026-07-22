@@ -250,7 +250,7 @@ func TestContainerScanRootRejectsSymlinkEscape(t *testing.T) {
 	outside := t.TempDir()
 	link := filepath.Join(root, "escape")
 	if err := os.Symlink(outside, link); err != nil {
-		t.Fatal(err)
+		t.Skipf("symlinks unavailable: %v", err)
 	}
 	if _, err := ContainerScanRoot(root, link); err == nil {
 		t.Fatal("symlink escape above root must be rejected")

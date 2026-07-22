@@ -84,9 +84,13 @@ func dockerInstallURL() string {
 }
 
 func errDockerNotInstalled() *SetupError {
+	msg := "Docker is not installed. AITriage uses Docker to run the complete scanner bundle safely and consistently."
+	if runtime.GOOS == "windows" {
+		msg += " If you just installed Docker Desktop, close and reopen your terminal or AI IDE so it picks up the new PATH, then run the same command again."
+	}
 	return &SetupError{
 		Code:         "docker_not_installed",
-		Message:      "Docker is not installed. AITriage uses Docker to run the complete scanner bundle safely and consistently.",
+		Message:      msg,
 		ActionURL:    dockerInstallURL(),
 		RetryCommand: retryFull,
 	}

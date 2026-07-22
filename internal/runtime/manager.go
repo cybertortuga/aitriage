@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -83,6 +84,14 @@ func EnsureScannerCacheDir() (string, error) {
 // Matching the caller prevents root-owned artifacts and makes owner-only report
 // and cache directories writable on native Linux Docker hosts.
 func HostUser() string {
+	// Docker Desktop on Windows manages file ownership through its Linux VM and a
+	// Windows account SID is not a numeric uid, so a --user mapping is both
+	// meaningless and harmful there. Guard it explicitly rather than relying only
+	// on the SID failing to parse as an integer below. (macOS keeps its existing,
+	// verified behaviour.)
+	if runtime.GOOS == "windows" {
+		return ""
+	}
 	current, err := user.Current()
 	if err != nil {
 		return ""

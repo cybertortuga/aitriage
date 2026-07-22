@@ -102,6 +102,33 @@ jobs:
             exit 1
           }
 
+      - name: Vet and test native Windows code
+        if: matrix.os == 'windows-latest'
+        shell: msys2 {0}
+        env:
+          CGO_ENABLED: 1
+        run: |
+          go vet ./...
+          go test ./...
+
+      # Publish gate: the PowerShell installer must pass its own tests under both
+      # Windows PowerShell 5.1 and PowerShell 7 before any Windows asset ships. A
+      # failure fails this build job, so the dependent release job never runs.
+      - name: PowerShell installer tests (Windows PowerShell 5.1)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: .\scripts\install_windows_test.ps1
+
+      - name: PowerShell installer tests (PowerShell 7)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: .\scripts\install_windows_test.ps1
+
+      - name: Native Windows CLI process tests
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: .\scripts\windows_process_test.ps1 -AitriageBin .\dist\aitriage.exe
+
       - name: Package
         shell: bash
         env:
@@ -147,8 +174,11 @@ jobs:
 
       - name: Generate Checksums
         run: |
+          cp scripts/install.sh scripts/install.ps1 dist/
           cd dist
-          sha256sum aitriage_* > checksums.txt
+          # Checksum the release binaries AND both official installers so their
+          # integrity is independently verifiable from the same manifest.
+          sha256sum aitriage_* install.sh install.ps1 > checksums.txt
 
       # The released CLI pins setup to the image tag matching its own version.
       # Do not expose a downloadable release while that image is still being
@@ -182,4 +212,5 @@ jobs:
             dist/aitriage_*
             dist/checksums.txt
             scripts/install.sh
+            scripts/install.ps1
           generate_release_notes: true

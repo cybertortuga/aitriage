@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -14,13 +17,68 @@ type execDocker struct{}
 // NewDocker returns the real docker-CLI-backed Docker.
 func NewDocker() Docker { return execDocker{} }
 
+// dockerBin resolves the docker executable. Normally it is on PATH. On Windows,
+// a freshly installed Docker Desktop puts docker.exe on the system PATH, but a
+// terminal/AI IDE started before that install has a stale PATH; in that case we
+// fall back to Docker Desktop's official install location ONLY. We never search
+// the current project or arbitrary writable directories for a docker binary.
+func dockerBin() string {
+	if p, err := exec.LookPath("docker"); err == nil {
+		return p
+	}
+	if runtime.GOOS == "windows" {
+		if p := firstExistingFile(windowsDockerCandidates()); p != "" {
+			return p
+		}
+	}
+	return "docker"
+}
+
+// DockerExecutable returns the trusted Docker CLI path used by all host-side
+// container launches. Keeping this resolution in one place prevents setup from
+// succeeding via Docker Desktop's standard Windows location while MCP, Web or
+// agent launch later fails because an older terminal has a stale PATH.
+func DockerExecutable() string { return dockerBin() }
+
+// windowsDockerCandidates lists the official Docker Desktop docker.exe locations
+// under the trusted Program Files roots. Order is deterministic; only absolute
+// system paths are considered.
+func windowsDockerCandidates() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, env := range []string{"ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"} {
+		root := strings.TrimSpace(os.Getenv(env))
+		if root == "" || seen[root] {
+			continue
+		}
+		seen[root] = true
+		out = append(out, filepath.Join(root, "Docker", "Docker", "resources", "bin", "docker.exe"))
+	}
+	return out
+}
+
+// firstExistingFile returns the first path that exists and is a regular file.
+func firstExistingFile(paths []string) string {
+	for _, p := range paths {
+		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
+			return p
+		}
+	}
+	return ""
+}
+
 func (execDocker) Installed() bool {
-	_, err := exec.LookPath("docker")
-	return err == nil
+	if _, err := exec.LookPath("docker"); err == nil {
+		return true
+	}
+	if runtime.GOOS == "windows" {
+		return firstExistingFile(windowsDockerCandidates()) != ""
+	}
+	return false
 }
 
 func (execDocker) Info(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "docker", "info", "--format", "{{.ServerVersion}}")
+	cmd := exec.CommandContext(ctx, dockerBin(), "info", "--format", "{{.ServerVersion}}")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -33,11 +91,11 @@ func (execDocker) Info(ctx context.Context) error {
 }
 
 func (execDocker) ImageExists(ctx context.Context, image string) bool {
-	return exec.CommandContext(ctx, "docker", "image", "inspect", image).Run() == nil
+	return exec.CommandContext(ctx, dockerBin(), "image", "inspect", image).Run() == nil
 }
 
 func (execDocker) Pull(ctx context.Context, image string) error {
-	cmd := exec.CommandContext(ctx, "docker", "pull", image)
+	cmd := exec.CommandContext(ctx, dockerBin(), "pull", image)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -50,7 +108,7 @@ func (execDocker) Pull(ctx context.Context, image string) error {
 }
 
 func (execDocker) Digest(ctx context.Context, image string) string {
-	out, err := exec.CommandContext(ctx, "docker", "image", "inspect",
+	out, err := exec.CommandContext(ctx, dockerBin(), "image", "inspect",
 		"--format", "{{index .RepoDigests 0}}", image).Output()
 	if err != nil {
 		return ""
@@ -59,7 +117,7 @@ func (execDocker) Digest(ctx context.Context, image string) string {
 }
 
 func (execDocker) RemoveImage(ctx context.Context, image string) error {
-	cmd := exec.CommandContext(ctx, "docker", "image", "rm", image)
+	cmd := exec.CommandContext(ctx, dockerBin(), "image", "rm", image)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -92,7 +150,7 @@ func warmRuntimeContainerCommand(ctx context.Context, image, script string) ([]b
 		args = append(args, "--user", hostUser)
 	}
 	args = append(args, "-v", cache+":"+containerCache+":rw", "-e", "HOME=/home/aitriage/.cache", "--entrypoint", "sh", image, "-c", script)
-	return exec.CommandContext(ctx, "docker", args...).CombinedOutput()
+	return exec.CommandContext(ctx, dockerBin(), args...).CombinedOutput()
 }
 
 func (execDocker) Warm(ctx context.Context, image string) error {
@@ -114,7 +172,7 @@ func (execDocker) Verify(ctx context.Context, image string) ([]BundleStatus, err
 	// Verification is deliberately network-free and mount-free: `setup
 	// --status` must not create or update scanner caches.
 	args := []string{"run", "--rm", "--security-opt", "no-new-privileges", "--cap-drop", "ALL", "--entrypoint", "sh", image, "-c", bundleCheckScript}
-	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
+	out, err := exec.CommandContext(ctx, dockerBin(), args...).CombinedOutput()
 	if err != nil {
 		detail := strings.TrimSpace(string(out))
 		if len(detail) > 2000 {

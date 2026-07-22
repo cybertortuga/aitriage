@@ -73,7 +73,7 @@ func TestAgentContainerRejectsReportSymlinkEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(t.TempDir(), filepath.Join(reports, "escape")); err != nil {
-		t.Fatal(err)
+		t.Skipf("symlinks unavailable: %v", err)
 	}
 	if _, err := containerReportPath(root, filepath.Join(reports, "escape", "report.md")); err == nil {
 		t.Fatal("report symlink escape must be rejected")

@@ -75,3 +75,83 @@ jobs:
         with:
           version: latest
           args: check
+
+  windows-build-test:
+    name: Windows Build & Test (preview)
+    # Same owner-only gate as the Linux job. Native Windows is preview: this job
+    # validates the installer, Go runtime logic, config generation and process
+    # behaviour on windows-latest. It intentionally does NOT run a live Docker
+    # Desktop / Codex / Claude Code flow; README labels native Windows preview.
+    if: github.actor_id == '184216056'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build embedded Web UI
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Stage Web UI for Go embedding
+        shell: bash
+        run: node -e "const fs=require('fs'); fs.rmSync('internal/server/ui/dist',{recursive:true,force:true}); fs.cpSync('web/dist','internal/server/ui/dist',{recursive:true})"
+
+      - name: Set up MSYS2 (CGO for tree-sitter)
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          path-type: inherit
+          install: mingw-w64-ucrt-x86_64-gcc
+
+      - name: Build
+        shell: msys2 {0}
+        env:
+          CGO_ENABLED: 1
+        run: go build -v ./...
+
+      - name: Vet
+        shell: msys2 {0}
+        env:
+          CGO_ENABLED: 1
+        run: go vet ./...
+
+      - name: Test
+        shell: msys2 {0}
+        env:
+          CGO_ENABLED: 1
+        run: go test ./...
+
+      - name: Build aitriage.exe and verify version runs as a process
+        shell: msys2 {0}
+        env:
+          CGO_ENABLED: 1
+        run: |
+          mkdir -p dist
+          go build -o dist/aitriage.exe ./cmd/aitriage
+          ./dist/aitriage.exe version
+
+      - name: Native Windows CLI process tests
+        shell: pwsh
+        run: .\scripts\windows_process_test.ps1 -AitriageBin .\dist\aitriage.exe
+
+      - name: PowerShell installer tests (Windows PowerShell 5.1)
+        shell: powershell
+        run: .\scripts\install_windows_test.ps1
+
+      - name: PowerShell installer tests (PowerShell 7)
+        shell: pwsh
+        run: .\scripts\install_windows_test.ps1

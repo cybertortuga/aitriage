@@ -547,7 +547,7 @@ func TestResolveProjectPathConfinesContainerWebToOpenedRoot(t *testing.T) {
 	}
 	outside := t.TempDir()
 	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
-		t.Fatal(err)
+		t.Skipf("symlinks unavailable: %v", err)
 	}
 	if _, err := s.resolveProjectPath("escape"); err == nil {
 		t.Fatal("symlink escape must be rejected")

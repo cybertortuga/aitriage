@@ -38,19 +38,28 @@ Install the official released AITriage CLI on this computer and prepare its
 complete scanner bundle. Official project: https://github.com/cybertortuga/aitriage
 
 Do not clone AITriage into my current repository and do not change its source.
-If `aitriage` is missing, install the latest official release with
-`curl -fsSL https://github.com/cybertortuga/aitriage/releases/latest/download/install.sh | sh`.
-This installer verifies the release checksum and prepares the complete scanner
-bundle. Do not download a binary from any other source.
+If `aitriage` is missing, detect the host operating system and run exactly one
+official installer:
+- Native Windows PowerShell:
+  `irm https://github.com/cybertortuga/aitriage/releases/latest/download/install.ps1 | iex`
+- macOS or Linux shell:
+  `curl -fsSL https://github.com/cybertortuga/aitriage/releases/latest/download/install.sh | sh`
+
+Do not run the Unix installer on native Windows. Do not run the Windows
+installer inside WSL. The installer verifies the release checksum and prepares
+the complete scanner bundle. Do not download a binary from any other source.
 
 Read the installer output. If the system executable directory needs an
 administrator password but this AI IDE has no interactive terminal, the
-installer safely uses `$HOME/.local/bin/aitriage`. Use that exact executable
-path for the remaining commands when `aitriage` is not yet on `PATH`; do not
-rerun the installer and do not edit shell startup files without asking me.
+installer safely uses `$HOME/.local/bin/aitriage`. On native Windows the
+installer uses
+`$env:LOCALAPPDATA\Programs\AITriage\bin\aitriage.exe` and updates User PATH.
+Use the applicable exact executable path for the remaining commands when
+`aitriage` is not yet on `PATH`; do not rerun the installer and do not edit
+shell startup files without asking me.
 
-Then run `aitriage version` (or `$HOME/.local/bin/aitriage version`) and
-`aitriage setup --status --json` using the same executable.
+Then run `aitriage version` and `aitriage setup --status --json` using the same
+executable (absolute path if the current terminal has not picked up PATH yet).
 If setup returns `action_required`, show me its message, official Docker URL,
 and retry command, then stop. Never install Docker from another source.
 If setup returns `ok`, run `aitriage setup --status --json` and tell me the
@@ -60,7 +69,7 @@ scanner. Do not connect a project or run an audit yet.
 
 The result is one host CLI plus one verified Docker image. The source repository is unnecessary for normal use.
 
-### Set up manually
+### Set up manually on macOS or Linux
 
 Requirements: macOS or Linux, and a running [Docker Desktop or Docker Engine](https://docs.docker.com/get-started/get-docker/).
 
@@ -92,6 +101,72 @@ aitriage setup --full
 ```
 
 If Docker is missing or stopped, setup exits without scanning and prints one official installation link plus the same command to retry. It does not silently install Docker or individual scanners.
+
+### Windows (native, preview)
+
+> **Preview.** The Windows installer, binary, container paths and MCP
+> configuration are covered by the required `windows-latest` CI job. The full
+> Docker Desktop + Codex/Claude Code flow has **not** been run manually on
+> Windows yet. Native Windows is x86_64 only; Windows ARM64 is not yet published.
+
+Requirements: Windows 10/11 x86_64, PowerShell 5.1 or 7, and a running
+[Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
+in **Linux-container** mode. AITriage uses the same Linux scanner image as
+macOS/Linux and does **not** install Docker Desktop for you.
+
+In PowerShell (no administrator required):
+
+```powershell
+irm https://github.com/cybertortuga/aitriage/releases/latest/download/install.ps1 | iex
+```
+
+Inspect-first (recommended):
+
+```powershell
+irm https://github.com/cybertortuga/aitriage/releases/latest/download/install.ps1 -OutFile install.ps1
+# review install.ps1, then:
+$installer = [ScriptBlock]::Create((Get-Content -Raw .\install.ps1))
+& $installer
+```
+
+The installer verifies the release SHA-256, installs
+`%LOCALAPPDATA%\Programs\AITriage\bin\aitriage.exe` for the current user, adds it
+to your **User PATH**, and runs `aitriage setup --full`. It installs only the CLI
+and the official version-pinned scanner image — nothing else. Open a **new**
+terminal so the PATH update applies, then:
+
+```powershell
+aitriage setup --status
+```
+
+Connect a project with the **same** commands as macOS/Linux:
+
+```powershell
+aitriage install-codex .
+aitriage install-claude-code .
+```
+
+For setup through an AI IDE, use the OS-aware prompt at the beginning of this
+section. It selects `install.ps1` on native Windows without manual ZIP handling
+or PATH editing.
+
+Uninstall (removes only the AITriage CLI and its User PATH entry; add
+`-RemoveImage` to also remove the downloaded scanner image):
+
+```powershell
+$installer = [ScriptBlock]::Create((irm https://github.com/cybertortuga/aitriage/releases/latest/download/install.ps1))
+& $installer -Uninstall
+```
+
+#### WSL2 fallback
+
+As an alternative to native Windows, use a WSL2 Linux distribution with Docker
+Desktop's WSL integration enabled and run the **Linux** installer inside WSL. Do
+not mix native Windows and WSL paths, binaries or MCP configs in one project:
+
+```bash
+curl -fsSL https://github.com/cybertortuga/aitriage/releases/latest/download/install.sh | sh
+```
 
 ### What is installed
 
