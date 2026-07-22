@@ -193,6 +193,9 @@ try {
   # Fresh install.
   $r = Invoke-Installer @('-Version', '9.9.9', '-InstallDir', $dirA, '-SkipSetup')
   $exeA = Join-Path $dirA 'aitriage.exe'
+  if ($r.Exit -ne 0) {
+    Write-Host "    fresh install output:`n$($r.Out)" -ForegroundColor DarkYellow
+  }
   Check ($r.Exit -eq 0) "fresh install exits 0"
   Check (Test-Path $exeA) "fresh install places aitriage.exe"
   if (Test-Path $exeA) { Check ((& $exeA version) -eq 'AITriage 9.9.9') "installed binary reports 9.9.9" }
