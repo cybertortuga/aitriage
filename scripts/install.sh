@@ -4,6 +4,7 @@ set -eu
 
 repository=${AITRIAGE_REPOSITORY:-cybertortuga/aitriage}
 install_dir=${AITRIAGE_INSTALL_DIR:-/usr/local/bin}
+user_install_dir=${AITRIAGE_USER_INSTALL_DIR:-${HOME:?HOME is required}/.local/bin}
 skip_setup=${AITRIAGE_SKIP_SETUP:-0}
 
 fail() {
@@ -78,15 +79,27 @@ fi
 
 if [ -d "$install_dir" ] && [ -w "$install_dir" ]; then
   install -m 0755 "$temporary_dir/aitriage" "$install_dir/aitriage"
-elif command -v sudo >/dev/null 2>&1; then
+elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+  printf 'Using pre-authorized administrator access for %s.\n' "$install_dir"
+  sudo -n install -d "$install_dir"
+  sudo -n install -m 0755 "$temporary_dir/aitriage" "$install_dir/aitriage"
+elif command -v sudo >/dev/null 2>&1 &&
+  [ "${AITRIAGE_NONINTERACTIVE:-0}" != 1 ] &&
+  (: </dev/tty) 2>/dev/null; then
   printf 'Administrator access is required to install into %s.\n' "$install_dir"
   sudo install -d "$install_dir"
   sudo install -m 0755 "$temporary_dir/aitriage" "$install_dir/aitriage"
 else
-  install_dir=${HOME:?HOME is required}/.local/bin
-  install -d "$install_dir"
-  install -m 0755 "$temporary_dir/aitriage" "$install_dir/aitriage"
-  printf 'Installed into %s. Add this directory to PATH if necessary.\n' "$install_dir"
+  install_dir=$user_install_dir
+  install -d "$install_dir" || fail "could not create user install directory: $install_dir"
+  install -m 0755 "$temporary_dir/aitriage" "$install_dir/aitriage" || \
+    fail "could not install into user directory: $install_dir"
+  printf 'No interactive administrator access is available.\n'
+  printf 'AITriage was installed for the current user: %s\n' "$install_dir/aitriage"
+  case :${PATH:-}: in
+    *:"$install_dir":*) ;;
+    *) printf 'For future shells, add %s to PATH.\n' "$install_dir" ;;
+  esac
 fi
 
 binary=$install_dir/aitriage

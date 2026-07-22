@@ -43,7 +43,14 @@ If `aitriage` is missing, install the latest official release with
 This installer verifies the release checksum and prepares the complete scanner
 bundle. Do not download a binary from any other source.
 
-Then run `aitriage version` and `aitriage setup --status --json`.
+Read the installer output. If the system executable directory needs an
+administrator password but this AI IDE has no interactive terminal, the
+installer safely uses `$HOME/.local/bin/aitriage`. Use that exact executable
+path for the remaining commands when `aitriage` is not yet on `PATH`; do not
+rerun the installer and do not edit shell startup files without asking me.
+
+Then run `aitriage version` (or `$HOME/.local/bin/aitriage version`) and
+`aitriage setup --status --json` using the same executable.
 If setup returns `action_required`, show me its message, official Docker URL,
 and retry command, then stop. Never install Docker from another source.
 If setup returns `ok`, run `aitriage setup --status --json` and tell me the
@@ -71,6 +78,11 @@ curl -fsSLO https://github.com/cybertortuga/aitriage/releases/latest/download/in
 less install.sh
 sh install.sh
 ```
+
+In a non-interactive environment where the system executable directory needs
+administrator approval, the installer falls back to `$HOME/.local/bin` and
+prints the exact executable path. Add that directory to `PATH` for future
+shells if it is not already present.
 
 Go 1.25.12 or newer remains a developer fallback:
 

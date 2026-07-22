@@ -2,7 +2,7 @@
 
 set -eu
 
-repository_root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+repository_root=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 test_root=$(mktemp -d "${TMPDIR:-/tmp}/aitriage-installer-test.XXXXXX")
 trap 'rm -rf "$test_root"' EXIT HUP INT TERM
 
@@ -52,6 +52,29 @@ AITRIAGE_SKIP_SETUP=1 \
 
 test -d "$install_dir"
 test "$("$install_dir/aitriage" version)" = "AITriage $version"
+
+# AI IDEs commonly have no controlling terminal. If the system destination is
+# not writable and sudo cannot run non-interactively, installation must fall
+# back to a per-user path instead of hanging or failing at a password prompt.
+restricted_dir=$test_root/restricted-bin
+fallback_dir=$test_root/user-bin
+fake_bin=$test_root/fake-bin
+mkdir -p "$restricted_dir" "$fake_bin"
+chmod 0555 "$restricted_dir"
+cat >"$fake_bin/sudo" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+chmod +x "$fake_bin/sudo"
+PATH="$fake_bin:$PATH" \
+AITRIAGE_VERSION=$version \
+AITRIAGE_RELEASE_BASE_URL=file://$test_root/releases \
+AITRIAGE_INSTALL_DIR=$restricted_dir \
+AITRIAGE_USER_INSTALL_DIR=$fallback_dir \
+AITRIAGE_NONINTERACTIVE=1 \
+AITRIAGE_SKIP_SETUP=1 \
+  sh "$repository_root/scripts/install.sh"
+test "$("$fallback_dir/aitriage" version)" = "AITriage $version"
 
 printf 'corrupt' >>"$release_dir/$asset"
 if AITRIAGE_VERSION=$version \
