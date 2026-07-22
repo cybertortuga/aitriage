@@ -24,7 +24,7 @@ asset=aitriage_${version}_${release_os}_${release_arch}.tar.gz
 release_dir=$test_root/releases/download/$tag
 payload_dir=$test_root/payload
 install_dir=$test_root/bin
-mkdir -p "$release_dir" "$payload_dir" "$install_dir"
+mkdir -p "$release_dir" "$payload_dir"
 
 cat >"$payload_dir/aitriage" <<'EOF'
 #!/bin/sh
@@ -50,6 +50,7 @@ AITRIAGE_INSTALL_DIR=$install_dir \
 AITRIAGE_SKIP_SETUP=1 \
   sh "$repository_root/scripts/install.sh"
 
+test -d "$install_dir"
 test "$("$install_dir/aitriage" version)" = "AITriage $version"
 
 printf 'corrupt' >>"$release_dir/$asset"

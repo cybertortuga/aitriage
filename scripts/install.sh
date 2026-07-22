@@ -68,6 +68,14 @@ fi
 tar -xzf "$temporary_dir/$asset" -C "$temporary_dir"
 [ -f "$temporary_dir/aitriage" ] || fail "release archive does not contain aitriage"
 
+# A caller-provided install directory is commonly a new path under a writable
+# temporary or workspace directory. Create it as the current user first; the
+# old flow treated every missing directory as privileged and invoked sudo even
+# when its parent was writable.
+if [ ! -d "$install_dir" ]; then
+  install -d "$install_dir" 2>/dev/null || true
+fi
+
 if [ -d "$install_dir" ] && [ -w "$install_dir" ]; then
   install -m 0755 "$temporary_dir/aitriage" "$install_dir/aitriage"
 elif command -v sudo >/dev/null 2>&1; then
