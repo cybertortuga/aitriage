@@ -18,6 +18,7 @@ import (
 	"github.com/cybertortuga/aitriage/internal/scanner/external"
 	"github.com/cybertortuga/aitriage/internal/scanner/network"
 	"github.com/cybertortuga/aitriage/internal/scanner/nfr"
+	"github.com/cybertortuga/aitriage/rules"
 )
 
 // Options configuration for the scan engine.
@@ -90,6 +91,22 @@ func RunAllScanners(ctx context.Context, opts Options) llm.RichScanResult {
 	// 2: External Scanners — every scanner records a typed execution status so a
 	// full audit can never silently skip a mandatory scanner. A missing binary is
 	// recorded as "missing" (not omitted); an error as "failed".
+	// The trusted taint config is generated once, from the compiled-in rule
+	// catalog, into an owner-only temp file. It is built up-front so that a
+	// failure to load the mandatory taint rules fails the full audit closed (via
+	// the semgrep execution status) rather than silently downgrading coverage.
+	var taintCfgPath string
+	var taintRuleIDs []string
+	var taintErr error
+	if opts.RunExternal {
+		if dir, err := os.MkdirTemp("", "aitriage-taint-"); err != nil {
+			taintErr = fmt.Errorf("create trusted rules dir: %w", err)
+		} else {
+			defer func() { _ = os.RemoveAll(dir) }()
+			taintCfgPath, taintRuleIDs, taintErr = rules.WriteTaintConfig(dir)
+		}
+	}
+
 	if opts.RunExternal {
 		wg.Add(1)
 		go func() {
@@ -139,7 +156,14 @@ func RunAllScanners(ctx context.Context, opts Options) llm.RichScanResult {
 
 			swg.Add(1)
 			go run("semgrep", "semgrep", func(scanCtx context.Context) ([]external.UnifiedFinding, error) {
-				return external.RunSemgrep(scanCtx, opts.ProjectPath, "auto")
+				// Mandatory taint rules must be loadable; otherwise the full audit
+				// fails closed instead of running Semgrep without them.
+				if taintErr != nil {
+					return nil, fmt.Errorf("mandatory taint rules unavailable: %w", taintErr)
+				}
+				// Registry "auto" rules and the trusted AITriage taint rules run
+				// simultaneously in one Semgrep pass.
+				return external.RunSemgrepConfigs(scanCtx, opts.ProjectPath, taintRuleIDs, "auto", taintCfgPath)
 			})
 			swg.Add(1)
 			go run("gitleaks", "gitleaks", func(scanCtx context.Context) ([]external.UnifiedFinding, error) {

@@ -1,6 +1,11 @@
 package models
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
 
 type Rule struct {
 	ID           string   `yaml:"id" json:"id"`
@@ -25,7 +30,25 @@ type Rule struct {
 	PatternInside    string `yaml:"pattern-inside" json:"pattern_inside,omitempty"`
 	PatternNotInside string `yaml:"pattern-not-inside" json:"pattern_not_inside,omitempty"`
 
+	// Semgrep taint-mode fields. When Mode == "taint" the rule is NOT executed by
+	// the AITriage regex/AST engine; it is compiled into a trusted Semgrep config
+	// and executed by the bundled Semgrep during a full audit. The source/sink/
+	// sanitizer definitions are kept as raw YAML nodes so arbitrary Semgrep
+	// sub-structure (pattern, patterns, pattern-either, focus-metavariable, …) is
+	// preserved verbatim when re-serialized.
+	Mode              string            `yaml:"mode" json:"mode,omitempty"`
+	Metadata          map[string]string `yaml:"metadata" json:"metadata,omitempty"`
+	PatternSources    []yaml.Node       `yaml:"pattern-sources" json:"-"`
+	PatternSinks      []yaml.Node       `yaml:"pattern-sinks" json:"-"`
+	PatternSanitizers []yaml.Node       `yaml:"pattern-sanitizers" json:"-"`
+
 	CompiledPattern *regexp.Regexp `yaml:"-" json:"-"`
+}
+
+// IsTaint reports whether the rule is a Semgrep taint-mode rule. Taint rules are
+// executed by the bundled Semgrep, never by the AITriage regex/AST engine.
+func (r Rule) IsTaint() bool {
+	return strings.EqualFold(strings.TrimSpace(r.Mode), "taint")
 }
 
 type Ruleset struct {

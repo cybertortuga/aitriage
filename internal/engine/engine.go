@@ -86,6 +86,12 @@ func loadEmbeddedRules() ([]models.Rule, error) {
 			if r.Target == "entropy-analysis" {
 				continue
 			}
+			// Taint-mode rules are executed by the bundled Semgrep, not by this
+			// regex/AST engine. Skipping them here keeps the engine from ever
+			// attempting a regex/AST match on a rule that has no pattern.
+			if r.IsTaint() {
+				continue
+			}
 			if !seen[r.ID] {
 				seen[r.ID] = true
 				allRules = append(allRules, r)
@@ -138,6 +144,9 @@ func loadPackRules() ([]models.Rule, error) {
 
 		for _, r := range rs.Rules {
 			if r.Target == "entropy-analysis" {
+				continue
+			}
+			if r.IsTaint() {
 				continue
 			}
 			if !seen[r.ID] {

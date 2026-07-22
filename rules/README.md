@@ -1,9 +1,14 @@
 # AITriage Rules Library
 
-**187 security rules** across **11 categories** — covering OWASP Top 10:2025, OWASP LLM Top 10:2025, and framework-specific patterns.
+**181 security rules** across **11 categories** — covering OWASP Top 10:2025, OWASP LLM Top 10:2025, and framework-specific patterns.
 
-> The engine loads rules from the embedded `default_rules.yaml` at compile time.
-> This directory is the **browsable, documented mirror** for developers and contributors.
+> The engine loads every `*.yaml` file in this directory tree (embedded at compile
+> time) as its single source of truth. Regex and AST rules run in the AITriage
+> engine; taint-mode rules (`mode: taint`) are compiled into a trusted config and
+> executed by the bundled Semgrep during a full audit.
+>
+> The per-category counts below are verified against the embedded catalog by a
+> test (`TestREADMECountsMatchCatalog`), so they cannot silently drift.
 
 ---
 
@@ -11,10 +16,10 @@
 
 | Category | Rules | Stacks / Languages |
 |---|---|---|
-| [Universal](./universal/) | 26 | All (JS, TS, Python, Go, C#) |
+| [Universal](./universal/) | 32 | All (JS, TS, Python, Go, C#) |
 | [Python](./python/) | 12 | All Python frameworks |
 | [Next.js / React](./nextjs/) | 28 | TypeScript, JavaScript, JSX/TSX |
-| [FastAPI](./fastapi/) | 25 | Python |
+| [FastAPI](./fastapi/) | 20 | Python |
 | [Django](./django/) | 16 | Python |
 | [Flask](./flask/) | 14 | Python |
 | [Express.js](./express/) | 14 | TypeScript, JavaScript |
@@ -32,7 +37,7 @@
 | A02 Security Misconfiguration | `DJANGO-DEBUG`, `DJANGO-HOSTS`, `FLASK-DEBUG`, `DOCKER-*` |
 | A03 Supply Chain Failures | `ENTR-02` (lockfile), `ENTR-HALLUCINATION`, `LLM-API-KEY-EXPOSED` |
 | A04 Cryptographic Failures | `ENTR-WEAK-CRYPTO`, `PY-HASHLIB-WEAK`, `GO-WEAK-TLS` |
-| A05 Injection | `*-SQLI`, `*-NOSQL`, `*-CMD-INJECTION`, `PY-SUBPROCESS` |
+| A05 Injection | `*-SQLI`, `*-NOSQL`, `*-CMD-INJECTION`, `PY-SUBPROCESS`, `FAST-XSS` |
 | A07 Authentication Failures | `*-AUTH`, `JWT-HARDCODED`, `ENTR-JWT-NONE` |
 | A08 Integrity Failures | `PY-PICKLE`, `ASP-DESER`, `FLASK-PICKLE` |
 | A09 Logging Failures | `*-LOGGING`, `ENTR-SENSITIVE-LOG` |
@@ -85,6 +90,18 @@ Each rule is a YAML object with the following fields:
 | `contains:X` | Alert only if file also contains X |
 | `threshold:N` | Alert if matching lines exceed N% of total lines |
 | `missing` | Alert if the expected file does not exist |
+
+### Taint Mode (`mode: taint`)
+
+A rule with `mode: taint` is a dataflow rule executed by the **bundled Semgrep**,
+not by the regex/AST engine. It declares Semgrep `pattern-sources`,
+`pattern-sinks` and optional `pattern-sanitizers` (verbatim Semgrep sub-syntax:
+`pattern`, `patterns`, `pattern-either`, `pattern-inside`, `focus-metavariable`,
+…). During a full audit these rules are compiled from the embedded catalog into a
+trusted, owner-only config and run alongside Semgrep `auto`; taint flows through
+local variables, f-strings, `.format()` and `%`-formatting automatically. Loading
+or executing the mandatory taint rules is fail-closed — a full audit errors
+rather than run without them. Example: `FAST-XSS` (reflected XSS in FastAPI).
 
 ---
 

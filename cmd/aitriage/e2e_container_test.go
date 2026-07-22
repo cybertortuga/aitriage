@@ -45,6 +45,21 @@ func TestE2E_ContainerRunFullScannerBundle(t *testing.T) {
 		"import subprocess\n\ndef run(cmd):\n    subprocess.call(cmd, shell=True)\n\nAWS_KEY = \"AKIAIOSFODNN7EXAMPLE\"\n")
 	writeFile(t, filepath.Join(proj, "requirements.txt"), "flask==0.5\n")
 	writeFile(t, filepath.Join(proj, ".env"), "DATABASE_URL=postgres://admin:S3cretDbPass@db:5432/app\n")
+	writeFile(t, filepath.Join(proj, "xss_unsafe.py"), `from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+app = FastAPI()
+@app.get("/hello")
+def hello(name: str):
+    return HTMLResponse(f"<h1>{name}</h1>")
+`)
+	writeFile(t, filepath.Join(proj, "xss_safe.py"), `import html
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+app = FastAPI()
+@app.get("/hello")
+def hello(name: str):
+    return HTMLResponse(f"<h1>{html.escape(name)}</h1>")
+`)
 	// External scanners inspect the whole tree, but test-only assertions and
 	// fixture credentials are filtered before AI triage. This prevents a normal
 	// remediation test suite from exploding into dozens of false positives.
@@ -117,7 +132,42 @@ func TestE2E_ContainerRunFullScannerBundle(t *testing.T) {
 	}
 	assertGeneratedBundleDoesNotReference(t, reportsDir, "selfscan_trap.py")
 	assertGeneratedScanDoesNotReference(t, reportsDir, "test_security.py")
+	assertGeneratedScanReferences(t, reportsDir, "FAST-XSS")
+	assertGeneratedScanReferences(t, reportsDir, "xss_unsafe.py")
+	assertGeneratedScanDoesNotReference(t, reportsDir, "xss_safe.py")
 	t.Logf("container scanner coverage=%q manifest=%v", manifest.ScannerCoverage, byScanner)
+}
+
+func assertGeneratedScanReferences(t *testing.T, reportsDir, marker string) {
+	t.Helper()
+	foundScan := false
+	foundMarker := false
+	err := filepath.WalkDir(reportsDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || entry.Name() != "scan.json" {
+			return nil
+		}
+		foundScan = true
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(data), marker) {
+			foundMarker = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !foundScan {
+		t.Fatal("no scan.json artifact found")
+	}
+	if !foundMarker {
+		t.Fatalf("scan.json does not reference expected marker %q", marker)
+	}
 }
 
 func assertGeneratedScanDoesNotReference(t *testing.T, reportsDir, marker string) {

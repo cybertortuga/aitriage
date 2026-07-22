@@ -189,3 +189,135 @@ rules:
     target: all
     pattern: 'tempfile\.mktemp\s*\('
     suggestion: "MEDIUM: tempfile.mktemp() is vulnerable to race conditions. Use tempfile.mkstemp()."
+
+  # FAST-XSS is a Semgrep taint-mode rule (mode: taint). It is NOT executed by the
+  # AITriage regex/AST engine; the engine skips it and the bundled Semgrep runs it
+  # from a trusted, compiled-in config during a full audit. It tracks untrusted
+  # FastAPI input from route parameters / Query / Path / Form / Body /
+  # request.query_params / request.path_params to an HTML response sink, through
+  # local variables, f-strings, .format() and %-formatting, and is neutralized by
+  # html.escape / markupsafe.escape.
+  - id: FAST-XSS
+    name: "Reflected Cross-Site Scripting (XSS)"
+    stack: fastapi
+    extensions: [".py"]
+    severity: HIGH
+    mode: taint
+    languages: [python]
+    message: "HIGH: Reflected XSS — untrusted FastAPI request input reaches an HTML response without escaping. Wrap the value in html.escape()/markupsafe.escape() or render via an autoescaping template."
+    suggestion: "HIGH: Reflected XSS — untrusted FastAPI request input reaches an HTML response without escaping. Wrap the value in html.escape()/markupsafe.escape() or render via an autoescaping template."
+    metadata:
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
+      owasp: "A05:2025 - Injection"
+    pattern-sources:
+      # Route-handler parameters (sync + async): FastAPI binds path/query params
+      # and Query()/Path()/Form()/Body() defaults to these.
+      - patterns:
+          - pattern: $P
+          - focus-metavariable: $P
+          - pattern-not-inside: |
+              def $F(..., $P = Depends(...), ...):
+                  ...
+          - pattern-not-inside: |
+              def $F(..., $P = Security(...), ...):
+                  ...
+          - pattern-not-inside: |
+              def $F(..., $P: $T = Depends(...), ...):
+                  ...
+          - pattern-not-inside: |
+              def $F(..., $P: $T = Security(...), ...):
+                  ...
+          - pattern-not-inside: |
+              def $F(..., $P: $ANN[..., Depends(...)], ...):
+                  ...
+          - pattern-not-inside: |
+              def $F(..., $P: $ANN[..., Security(...)], ...):
+                  ...
+          - pattern-not-inside: |
+              def $F(..., $P: Request, ...):
+                  ...
+          - pattern-not-inside: |
+              def $F(..., $P: Response, ...):
+                  ...
+          - pattern-not-inside: |
+              def $F(..., $P: BackgroundTasks, ...):
+                  ...
+          - pattern-not-inside: |
+              def $F(..., $P: WebSocket, ...):
+                  ...
+          - pattern-inside: |
+              def $F(..., $P, ...):
+                  ...
+          - pattern-inside: |
+              @$APP.$METHOD(...)
+              def $F(...):
+                  ...
+      - patterns:
+          - pattern: $P
+          - focus-metavariable: $P
+          - pattern-not-inside: |
+              async def $F(..., $P = Depends(...), ...):
+                  ...
+          - pattern-not-inside: |
+              async def $F(..., $P = Security(...), ...):
+                  ...
+          - pattern-not-inside: |
+              async def $F(..., $P: $T = Depends(...), ...):
+                  ...
+          - pattern-not-inside: |
+              async def $F(..., $P: $T = Security(...), ...):
+                  ...
+          - pattern-not-inside: |
+              async def $F(..., $P: $ANN[..., Depends(...)], ...):
+                  ...
+          - pattern-not-inside: |
+              async def $F(..., $P: $ANN[..., Security(...)], ...):
+                  ...
+          - pattern-not-inside: |
+              async def $F(..., $P: Request, ...):
+                  ...
+          - pattern-not-inside: |
+              async def $F(..., $P: Response, ...):
+                  ...
+          - pattern-not-inside: |
+              async def $F(..., $P: BackgroundTasks, ...):
+                  ...
+          - pattern-not-inside: |
+              async def $F(..., $P: WebSocket, ...):
+                  ...
+          - pattern-inside: |
+              async def $F(..., $P, ...):
+                  ...
+          - pattern-inside: |
+              @$APP.$METHOD(...)
+              async def $F(...):
+                  ...
+      # Raw request accessors.
+      - pattern: $REQ.query_params
+      - pattern: $REQ.path_params
+      - pattern: $REQ.query_params.get(...)
+      - pattern: $REQ.path_params.get(...)
+    pattern-sanitizers:
+      - pattern: html.escape(...)
+      - pattern: markupsafe.escape(...)
+    pattern-sinks:
+      - pattern: HTMLResponse(...)
+      - patterns:
+          - pattern: Response(..., media_type=$MEDIA_TYPE, ...)
+          - metavariable-regex:
+              metavariable: $MEDIA_TYPE
+              regex: '(?i)["'']text/html(?:\s*;[^"'']*)?["'']'
+      - patterns:
+          - pattern: return $BODY
+          - focus-metavariable: $BODY
+          - pattern-inside: |
+              @$APP.$METHOD(..., response_class=HTMLResponse, ...)
+              def $F(...):
+                  ...
+      - patterns:
+          - pattern: return $BODY
+          - focus-metavariable: $BODY
+          - pattern-inside: |
+              @$APP.$METHOD(..., response_class=HTMLResponse, ...)
+              async def $F(...):
+                  ...
