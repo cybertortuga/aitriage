@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -19,7 +20,7 @@ func TestAuditStoreWritesOnlyUnderReports(t *testing.T) {
 	if err != nil {
 		t.Fatalf("audit state not written under reports: %v", err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Errorf("audit mode = %o, want 600", info.Mode().Perm())
 	}
 	if _, err := os.Stat(filepath.Join(root, ".aitriage-audit.json")); !os.IsNotExist(err) {

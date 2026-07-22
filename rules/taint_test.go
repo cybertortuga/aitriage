@@ -3,6 +3,7 @@ package rules
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -80,7 +81,7 @@ func TestWriteTaintConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm != 0o600 {
 		t.Errorf("taint config perms = %o, want 600", perm)
 	}
 }

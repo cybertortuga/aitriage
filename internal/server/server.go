@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -131,6 +132,7 @@ func (s *Server) resolveProjectPath(input string) (string, error) {
 	}
 
 	raw := strings.TrimSpace(input)
+	slashRaw := strings.ReplaceAll(raw, `\`, "/")
 	var candidate string
 	switch {
 	case raw == "", raw == ".", raw == "/", raw == "/project", raw == "/host":
@@ -139,15 +141,22 @@ func (s *Server) resolveProjectPath(input string) (string, error) {
 		absolute, resolveErr := filepath.EvalSymlinks(raw)
 		if resolveErr == nil && (absolute == root || strings.HasPrefix(absolute, root+string(os.PathSeparator))) {
 			candidate = absolute
+		} else if filepath.VolumeName(raw) != "" {
+			// A native Windows absolute path (drive or UNC) is never a UI alias.
+			// Do not reinterpret an outside host path as project-relative.
+			return "", fmt.Errorf("path %q escapes the opened project", input)
 		} else {
 			// Older Web clients use /project/... or /host/... and breadcrumb
 			// paths rooted at /. Interpret every other absolute path as project-
 			// relative; it can never address /etc or another container directory.
-			rel := strings.TrimPrefix(filepath.Clean(raw), string(os.PathSeparator))
-			rel = strings.TrimPrefix(rel, "project"+string(os.PathSeparator))
-			rel = strings.TrimPrefix(rel, "host"+string(os.PathSeparator))
-			candidate = filepath.Join(root, rel)
+			rel := projectAliasRelativePath(slashRaw)
+			candidate = filepath.Join(root, filepath.FromSlash(rel))
 		}
+	case strings.HasPrefix(slashRaw, "/"):
+		// On Windows, filepath.IsAbs("/project/...") is false. These are still
+		// container/Web aliases and must be interpreted independently of GOOS.
+		rel := projectAliasRelativePath(slashRaw)
+		candidate = filepath.Join(root, filepath.FromSlash(rel))
 	default:
 		candidate = filepath.Join(root, raw)
 	}
@@ -160,6 +169,16 @@ func (s *Server) resolveProjectPath(input string) (string, error) {
 		return "", fmt.Errorf("path %q escapes the opened project", input)
 	}
 	return resolved, nil
+}
+
+func projectAliasRelativePath(value string) string {
+	rel := strings.TrimLeft(pathpkg.Clean(value), "/")
+	rel = strings.TrimPrefix(rel, "project/")
+	rel = strings.TrimPrefix(rel, "host/")
+	if rel == "project" || rel == "host" || rel == "." {
+		return ""
+	}
+	return rel
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -1455,15 +1474,28 @@ Fix exactly this finding with the smallest correct code/config change, then prov
 }
 
 func repositoryRelativePath(scanPath, fullFindingPath, originalFilePath string) string {
-	if originalFilePath != "" && !filepath.IsAbs(originalFilePath) {
+	if originalFilePath != "" && !portableAbsolutePath(originalFilePath) {
 		return filepath.ToSlash(originalFilePath)
 	}
 	if scanPath != "" && fullFindingPath != "" {
+		scanSlash := strings.ReplaceAll(scanPath, `\`, "/")
+		findingSlash := strings.ReplaceAll(fullFindingPath, `\`, "/")
+		if strings.HasPrefix(scanSlash, "/") && strings.HasPrefix(findingSlash, "/") {
+			scanSlash = strings.TrimSuffix(pathpkg.Clean(scanSlash), "/")
+			findingSlash = pathpkg.Clean(findingSlash)
+			if prefix := scanSlash + "/"; strings.HasPrefix(findingSlash, prefix) {
+				return strings.TrimPrefix(findingSlash, prefix)
+			}
+		}
 		if rel, err := filepath.Rel(scanPath, fullFindingPath); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
 			return filepath.ToSlash(rel)
 		}
 	}
 	return filepath.ToSlash(fullFindingPath)
+}
+
+func portableAbsolutePath(value string) bool {
+	return filepath.IsAbs(value) || strings.HasPrefix(strings.ReplaceAll(value, `\`, "/"), "/")
 }
 
 func (s *Server) promptLocalAndRuntimePath(pathValue string) (string, string) {

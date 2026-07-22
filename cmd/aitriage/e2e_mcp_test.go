@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +17,11 @@ import (
 // buildBinary compiles the aitriage binary once for the process-level E2E.
 func buildBinary(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "aitriage")
+	name := "aitriage"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	bin := filepath.Join(t.TempDir(), name)
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)

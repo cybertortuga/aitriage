@@ -91,7 +91,7 @@ func TestDetectProjects_Isolation(t *testing.T) {
 	// Express project should contain backend files
 	foundServer := false
 	for _, f := range expressProj.Files {
-		if strings.Contains(f.Path, "backend/server.js") {
+		if strings.Contains(f.Path, filepath.Join("backend", "server.js")) {
 			foundServer = true
 		}
 	}
@@ -102,7 +102,7 @@ func TestDetectProjects_Isolation(t *testing.T) {
 	// FastAPI project should contain other files
 	foundMain := false
 	for _, f := range fastapiProj.Files {
-		if strings.Contains(f.Path, "other/main.py") {
+		if strings.Contains(f.Path, filepath.Join("other", "main.py")) {
 			foundMain = true
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -117,7 +118,7 @@ func TestCodeMitigationAcceptsAbsoluteInProjectEvidence(t *testing.T) {
 	mock := &fakeLLM{
 		t: t,
 		classifyHandler: func(_ int, _ []EnrichedFinding) (string, error) {
-			return `{"finding_dispositions":[{"finding_index":0,"disposition":"False Positive","confidence":"high","rationale":"environment variable name only","evidence":{"basis":"code_mitigation","file":"` + path + `","line":2,"observed":"os.environ.get(TOKEN_ENV)"}}]}`, nil
+			return `{"finding_dispositions":[{"finding_index":0,"disposition":"False Positive","confidence":"high","rationale":"environment variable name only","evidence":{"basis":"code_mitigation","file":` + strconv.Quote(path) + `,"line":2,"observed":"os.environ.get(TOKEN_ENV)"}}]}`, nil
 		},
 	}
 	var usage llm.Usage

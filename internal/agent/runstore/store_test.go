@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -73,11 +74,11 @@ func TestManifestPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm != 0o600 {
 		t.Fatalf("manifest perm = %o, want 0600", perm)
 	}
 	dirInfo, _ := os.Stat(run.Dir())
-	if perm := dirInfo.Mode().Perm(); perm != 0o700 {
+	if perm := dirInfo.Mode().Perm(); runtime.GOOS != "windows" && perm != 0o700 {
 		t.Fatalf("run dir perm = %o, want 0700", perm)
 	}
 }

@@ -471,7 +471,10 @@ func TestHandleScan(t *testing.T) {
 	}
 
 	// 2. Test valid request
-	body := []byte(`{"path":"` + tempDir + `", "external": false}`)
+	body, err := json.Marshal(map[string]any{"path": tempDir, "external": false})
+	if err != nil {
+		t.Fatal(err)
+	}
 	req, _ = http.NewRequest("POST", "/api/scan", bytes.NewBuffer(body))
 	addAuthCookie(req)
 	rr = httptest.NewRecorder()
@@ -505,7 +508,10 @@ func TestHandleScanContainerModeFailsClosedWhenBundleExecutionsAreMissing(t *tes
 	t.Setenv("PATH", t.TempDir())
 	s := setupTestServer(t)
 	tempDir := t.TempDir()
-	body := []byte(`{"path":"` + tempDir + `"}`)
+	body, err := json.Marshal(map[string]any{"path": tempDir})
+	if err != nil {
+		t.Fatal(err)
+	}
 	req, _ := http.NewRequest("POST", "/api/scan", bytes.NewBuffer(body))
 	rr := httptest.NewRecorder()
 	s.ServeHTTP(rr, req)

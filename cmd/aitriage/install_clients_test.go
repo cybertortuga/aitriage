@@ -146,7 +146,7 @@ func TestManagedAgentContractPreservesProjectInstructions(t *testing.T) {
 			t.Errorf("managed contract missing approval-ordering rule %q", required)
 		}
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o640 {
+	if info, err := os.Stat(path); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o640) {
 		t.Fatalf("AGENTS.md mode changed: info=%v err=%v", info, err)
 	}
 
@@ -185,7 +185,7 @@ func TestEnsureGitignoreEntryPreservesContentAndIsIdempotent(t *testing.T) {
 	if content != "node_modules/\n/aitriage-reports/\n" {
 		t.Fatalf("unexpected .gitignore:\n%s", content)
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o640 {
+	if info, err := os.Stat(path); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o640) {
 		t.Fatalf(".gitignore mode changed: info=%v err=%v", info, err)
 	}
 }
@@ -253,6 +253,14 @@ func TestCodexInstallTwoProjectsNoLeak(t *testing.T) {
 
 	projA := t.TempDir()
 	projB := t.TempDir()
+	rootA, err := filepath.EvalSymlinks(projA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootB, err := filepath.EvalSymlinks(projB)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := runInstallCodex(nil, []string{projA}); err != nil {
 		t.Fatalf("install A: %v", err)
@@ -264,10 +272,10 @@ func TestCodexInstallTwoProjectsNoLeak(t *testing.T) {
 	cfgA := readConfig(t, filepath.Join(projA, ".codex", "config.toml"))
 	cfgB := readConfig(t, filepath.Join(projB, ".codex", "config.toml"))
 
-	if !strings.Contains(cfgA, projA) || strings.Contains(cfgA, projB) {
+	if !strings.Contains(cfgA, tomlQuote(rootA)) || strings.Contains(cfgA, tomlQuote(rootB)) {
 		t.Errorf("project A config leaked scan-root:\n%s", cfgA)
 	}
-	if !strings.Contains(cfgB, projB) || strings.Contains(cfgB, projA) {
+	if !strings.Contains(cfgB, tomlQuote(rootB)) || strings.Contains(cfgB, tomlQuote(rootA)) {
 		t.Errorf("project B config leaked scan-root:\n%s", cfgB)
 	}
 	if strings.Count(cfgA, "[mcp_servers.aitriage]") != 1 {

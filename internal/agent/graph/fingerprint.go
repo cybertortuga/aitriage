@@ -3,7 +3,7 @@ package graph
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"path/filepath"
+	"path"
 	"strconv"
 	"strings"
 )
@@ -45,7 +45,7 @@ func normalizePath(p string) string {
 	p = strings.TrimPrefix(p, "/src/")
 	p = strings.TrimPrefix(p, "./")
 	p = strings.TrimPrefix(p, "/")
-	return strings.ToLower(filepath.Clean(p))
+	return strings.ToLower(path.Clean(p))
 }
 
 // dedupFindings groups identical findings by fingerprint. It returns the unique

@@ -241,10 +241,12 @@ func TestProjectContext_FindFilesByExtension(t *testing.T) {
 }
 
 func TestProjectContext_GetFile(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "src", "main.go")
 	ctx := &core.ProjectContext{
-		RootPath: "/project",
+		RootPath: root,
 		Files: []*core.FileInfo{
-			{Path: "/project/src/main.go", Extension: ".go"},
+			{Path: file, Extension: ".go"},
 		},
 	}
 
@@ -254,8 +256,8 @@ func TestProjectContext_GetFile(t *testing.T) {
 		return
 	}
 
-	if f.Path != "/project/src/main.go" {
-		t.Errorf("Expected path /project/src/main.go, got %s", f.Path)
+	if f.Path != file {
+		t.Errorf("Expected path %s, got %s", file, f.Path)
 	}
 
 	// test caching

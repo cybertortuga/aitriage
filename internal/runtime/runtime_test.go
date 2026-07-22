@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -187,7 +188,7 @@ func TestEnsureScannerCacheDirOutsideProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o700 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
 		t.Errorf("cache mode = %o, want 700", info.Mode().Perm())
 	}
 }
@@ -231,16 +232,21 @@ func TestDockerRunArgsSecurity(t *testing.T) {
 }
 
 func TestContainerScanRoot(t *testing.T) {
-	if got, err := ContainerScanRoot("/host/repo", "."); err != nil || got != "/workspace" {
+	root := t.TempDir()
+	nested := filepath.Join(root, "synthetic", "app")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ContainerScanRoot(root, "."); err != nil || got != "/workspace" {
 		t.Fatalf("root = %q err=%v", got, err)
 	}
-	if got, err := ContainerScanRoot("/host/repo", "synthetic/app"); err != nil || got != "/workspace/synthetic/app" {
+	if got, err := ContainerScanRoot(root, filepath.Join("synthetic", "app")); err != nil || got != "/workspace/synthetic/app" {
 		t.Fatalf("nested = %q err=%v", got, err)
 	}
-	if _, err := ContainerScanRoot("/host/repo", "../escape"); err == nil {
+	if _, err := ContainerScanRoot(root, "../escape"); err == nil {
 		t.Fatal("escape above root must be rejected")
 	}
-	if _, err := ContainerScanRoot("/host/repo", "/etc/passwd"); err == nil {
+	if _, err := ContainerScanRoot(root, t.TempDir()); err == nil {
 		t.Fatal("absolute path outside root must be rejected")
 	}
 }

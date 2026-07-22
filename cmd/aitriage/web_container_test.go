@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -8,14 +9,16 @@ import (
 // TestWebContainerArgs locks the Web container launch: published port, source
 // read-only, reports read-write, and no docker socket / privileged.
 func TestWebContainerArgs(t *testing.T) {
-	args := webContainerArgs("ghcr.io/cybertortuga/aitriage:v1", "/host/repo", "/host/scanner-cache", 8080)
+	hostRoot := t.TempDir()
+	cache := t.TempDir()
+	args := webContainerArgs("ghcr.io/cybertortuga/aitriage:v1", hostRoot, cache, 8080)
 	joined := strings.Join(args, " ")
 	for _, want := range []string{
 		"--name aitriage-web-8080",
 		"-p 127.0.0.1:8080:8080",
-		"/host/repo:/workspace:ro",
-		"/host/repo/aitriage-reports:/workspace/aitriage-reports:rw",
-		"/host/scanner-cache:/home/aitriage/.cache:rw",
+		hostRoot + ":/workspace:ro",
+		filepath.Join(hostRoot, "aitriage-reports") + ":/workspace/aitriage-reports:rw",
+		cache + ":/home/aitriage/.cache:rw",
 		"web --runtime native --port 8080 --host-prefix /workspace",
 		"AITRIAGE_RUNTIME=container",
 		"AITRIAGE_REPORTS_DIR=/workspace/aitriage-reports",
