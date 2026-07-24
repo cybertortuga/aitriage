@@ -23,6 +23,32 @@ func serversUnderKey(t *testing.T, data []byte, key string) map[string]any {
 	return servers
 }
 
+// decodeArgs returns the server entry's "args" as decoded strings. Using
+// decoded values (not marshaled JSON) keeps path assertions correct on Windows,
+// where backslashes are escaped inside JSON.
+func decodeArgs(t *testing.T, entry map[string]any) []string {
+	t.Helper()
+	raw, _ := entry["args"].([]any)
+	argv := make([]string, 0, len(raw))
+	for _, a := range raw {
+		s, _ := a.(string)
+		argv = append(argv, s)
+	}
+	return argv
+}
+
+// aitriageArgsIn reads the config at path and returns the aitriage server's
+// decoded args joined by a separator, for substring assertions.
+func aitriageArgsIn(t *testing.T, path, key string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	entry, _ := serversUnderKey(t, data, key)[mcpServerName].(map[string]any)
+	return strings.Join(decodeArgs(t, entry), "\x1f")
+}
+
 // withCleanInstallState resets the shared install flags for a test.
 func withCleanInstallState(t *testing.T) {
 	t.Helper()
@@ -80,10 +106,14 @@ func TestJSONClientInstallWritesProjectLocalConfig(t *testing.T) {
 			if !ok {
 				t.Fatalf("aitriage entry missing under %q:\n%s", tc.serversKey, data)
 			}
-			args, _ := json.Marshal(entry["args"])
+			// Compare against DECODED arg values, not marshaled JSON bytes: on
+			// Windows a path's backslashes are escaped in JSON (C:\\...), so a
+			// substring match against the raw path would spuriously fail.
+			argv := decodeArgs(t, entry)
+			joined := strings.Join(argv, "\x1f")
 			for _, want := range []string{"serve", "--profile", "safe", "--runtime", "container", "--scan-root", root} {
-				if !strings.Contains(string(args), want) {
-					t.Errorf("safe-profile arg %q missing:\n%s", want, args)
+				if !strings.Contains(joined, want) {
+					t.Errorf("safe-profile arg %q missing: %v", want, argv)
 				}
 			}
 			if tc.wantType && entry["type"] != "stdio" {
@@ -246,13 +276,13 @@ func TestJSONClientInstallTwoProjectsNoLeak(t *testing.T) {
 		t.Fatalf("install B: %v", err)
 	}
 
-	cfgA, _ := os.ReadFile(client.configPath(rootA))
-	cfgB, _ := os.ReadFile(client.configPath(rootB))
-	if !strings.Contains(string(cfgA), rootA) || strings.Contains(string(cfgA), rootB) {
-		t.Errorf("project A config leaked or missed a scan-root:\n%s", cfgA)
+	argsA := aitriageArgsIn(t, client.configPath(rootA), "mcpServers")
+	argsB := aitriageArgsIn(t, client.configPath(rootB), "mcpServers")
+	if !strings.Contains(argsA, rootA) || strings.Contains(argsA, rootB) {
+		t.Errorf("project A config leaked or missed a scan-root: %s", argsA)
 	}
-	if !strings.Contains(string(cfgB), rootB) || strings.Contains(string(cfgB), rootA) {
-		t.Errorf("project B config leaked or missed a scan-root:\n%s", cfgB)
+	if !strings.Contains(argsB, rootB) || strings.Contains(argsB, rootA) {
+		t.Errorf("project B config leaked or missed a scan-root: %s", argsB)
 	}
 }
 
