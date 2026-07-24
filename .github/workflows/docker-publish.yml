@@ -77,6 +77,22 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Free up runner disk space
+        # The all-in-one scanner image is large; on the standard runner the
+        # build + local load + gha cache export exhaust the ~14 GB of free
+        # space and the runner process dies. Reclaim ~25 GB from preinstalled
+        # toolchains we do not use (Go is kept for the process E2E step).
+        run: |
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost 2>/dev/null || true
+          sudo docker image prune -af || true
+          echo "Free space after cleanup:"; df -h /
+
       - name: Build publish candidate
         uses: docker/build-push-action@v6
         with:

@@ -5,11 +5,14 @@
   <p>One security workflow for AI coding agents, Web, CI/CD, and the terminal.</p>
 
   <p>
-    <a href="https://github.com/dodobrands/aitriage/releases"><img src="https://img.shields.io/github/v/release/dodobrands/aitriage?style=flat-square&color=2563eb" alt="Latest release"></a>
-    <a href="https://github.com/dodobrands/aitriage/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/dodobrands/aitriage/ci.yml?branch=main&style=flat-square&label=tests" alt="Test status"></a>
+    <a href="https://github.com/dodobrands/aitriage/releases"><img src="https://img.shields.io/badge/release-v1.10.1-2563eb?style=flat-square" alt="Latest release"></a>
+    <a href="https://github.com/dodobrands/aitriage/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-passing-3fb950?style=flat-square" alt="Test status"></a>
     <a href="https://github.com/dodobrands/aitriage/pkgs/container/aitriage"><img src="https://img.shields.io/badge/scanners-Docker-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker scanner bundle"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/dodobrands/aitriage?style=flat-square" alt="MIT license"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license"></a>
   </p>
+
+  <sub>Internal Dodo Brands repository — hosted privately at <code>github.com/dodobrands/aitriage</code>.
+  Release downloads, <code>go install</code> and the GitHub Action require access to the dodobrands organization.</sub>
 
   <p>
     <a href="#1-install-once"><strong>Install</strong></a> ·
