@@ -183,14 +183,23 @@ curl -fsSL https://github.com/cybertortuga/aitriage/releases/latest/download/ins
 
 | Interface | Use it when | AI access |
 | :--- | :--- | :--- |
-| [AI IDE](#2-ai-ide-codex-or-claude-code) | Codex or Claude Code should audit and help fix the open project | existing Codex or Claude subscription |
+| [AI IDE](#2-ai-ide-codex-claude-code-cursor-antigravity-vs-code) | Codex, Claude Code, Cursor, Antigravity or VS Code should audit and help fix the open project | subscription of the AI IDE you use |
 | [Web](#3-web-ui) | a person wants a local browser dashboard | provider API key for AI triage |
 | [CI/CD](#4-cicd) | pushes and pull requests need an automatic gate | provider key in CI secrets |
 | [CLI](#5-cli) | terminal or scripts | none for raw scan; provider key for full AI triage |
 
-## 2. AI IDE: Codex or Claude Code
+## 2. AI IDE: Codex, Claude Code, Cursor, Antigravity, VS Code
 
-This mode uses the model included in the current Codex or Claude subscription. It does not need a separate LLM API key.
+This mode uses the model included in the AI IDE's own subscription. It does not need a separate LLM API key.
+
+> **Two activation paths.** Only Claude Code can approve the MCP server from the
+> command line (`claude mcp add`), so it is live right after the connector runs.
+> **Cursor, Antigravity, VS Code and Codex** have no scriptable approval: the
+> connector writes the project-local config, then **you must enable the
+> `aitriage` server and approve its tools in that IDE's UI** (Codex: trust the
+> project) before opening a new session. Until you do, the server is not
+> connected — and the agent must **not** pass off a raw `aitriage scan` as the
+> audit.
 
 ### Connect the open project through your AI IDE
 
@@ -204,14 +213,23 @@ is not ready. Detect this client and run exactly one command from the open
 repository root:
 - Codex: `aitriage install-codex .`
 - Claude Code: `aitriage install-claude-code .`
+- Cursor: `aitriage install-cursor .`
+- Antigravity: `aitriage install-antigravity .`
+- VS Code (Copilot agent): `aitriage install-vscode .`
+If you cannot tell which client you are, ask me instead of guessing.
 
 Do not clone AITriage here. Preserve existing source, instructions, MCP servers,
 and `.gitignore` entries. Do not audit or edit source during setup. Verify the
-project-local MCP configuration, list the files changed, and tell me to open a
-new task or session so the client loads the server.
+project-local MCP configuration and list the files changed. For Claude Code the
+server is live immediately. For Codex, Cursor, Antigravity or VS Code, tell me
+the exact UI step to enable the `aitriage` server and approve its tools — it is
+NOT active until I do that. Then tell me to open a new task or session so the
+client loads the server.
 ```
 
-Open a new task/session in the same project. From then on, ordinary requests are enough:
+For Cursor, Antigravity, VS Code and Codex, enable and approve the `aitriage`
+server in the IDE now (the connector prints the exact step). Then open a new
+task/session in the same project. From then on, ordinary requests are enough:
 
 ```text
 Проверь этот проект через AITriage. Пока ничего не исправляй.
@@ -228,21 +246,28 @@ false positives. Запусти тесты и проверь исправлен�
 
 ### Connect manually
 
-Run one command from the project root:
+Run the one command for your IDE from the project root:
 
 ```bash
-aitriage install-codex .
-# or
-aitriage install-claude-code .
+aitriage install-codex .         # Codex        → .codex/config.toml
+aitriage install-claude-code .   # Claude Code  → claude mcp add (or .mcp.json)
+aitriage install-cursor .        # Cursor       → .cursor/mcp.json
+aitriage install-antigravity .   # Antigravity  → .agents/mcp_config.json
+aitriage install-vscode .        # VS Code      → .vscode/mcp.json
 ```
 
-Both connectors use the verified container runtime by default, preserve unrelated client settings, add `/aitriage-reports/` to `.gitignore`, and confine tools to the opened root and its subdirectories. Open a new task/session after connecting.
+Every connector uses the verified container runtime by default, preserves unrelated client settings, adds `/aitriage-reports/` to `.gitignore`, writes a **project-local** config (never a global one), and confines tools to the opened root and its subdirectories. Claude Code is live immediately; for the others, enable and approve the `aitriage` server in the IDE UI as the command prints. Open a new task/session after connecting.
 
-Update by running the same command again. Remove only the AITriage integration with:
+Windsurf is not supported as a first-class connector: it only reads a single global `~/.codeium/windsurf/mcp_config.json`, which cannot keep one project's scan-root isolated from another. Point it at `aitriage serve --profile safe --scan-root <project>` manually if you accept that trade-off.
+
+Update by running the same command again. Remove only the AITriage integration with `--uninstall`:
 
 ```bash
 aitriage install-codex . --uninstall
 aitriage install-claude-code . --uninstall
+aitriage install-cursor . --uninstall
+aitriage install-antigravity . --uninstall
+aitriage install-vscode . --uninstall
 ```
 
 ## 3. Web UI
@@ -372,8 +397,9 @@ Connectors add `/aitriage-reports/` to `.gitignore`. AITriage excludes this dire
 | :--- | :--- |
 | Docker is absent or stopped | Follow the official URL printed by `aitriage setup --full`, start Docker, then repeat the same command |
 | Runtime is incomplete after an upgrade | Run `aitriage setup --repair`, then `aitriage setup --status` |
-| Codex or Claude cannot see AITriage | Re-run the matching connector from the repository root and open a new task/session |
+| An AI IDE cannot see AITriage | Re-run the matching connector from the repository root and open a new task/session |
 | Claude shows MCP approval pending | Open Claude Code in the project and approve the local `aitriage` server |
+| Cursor / Antigravity / VS Code shows nothing, or the agent improvises | The connector only writes the config; enable the `aitriage` server and approve its tools in the IDE UI, then open a new session. These clients have no scriptable approval |
 | A real subdirectory is rejected | Reconnect from the intended repository root; paths outside it and symlink escapes are deliberately blocked |
 | The agent ran only `aitriage scan` | Ask it to use the AITriage MCP workflow; raw scan is not AI triage |
 | Web AI is unavailable | Export a supported provider API key before starting Web |

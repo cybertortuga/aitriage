@@ -267,15 +267,29 @@ func runInstallCodex(cmd *cobra.Command, args []string) error {
 				return err
 			}
 		}
-		contractChanged, err := syncAgentContract(root, "AGENTS.md", agentsMdContent, true)
-		if err != nil {
-			return err
+		// Keep the shared AGENTS.md contract if Cursor or Antigravity is still
+		// connected here — they read the same file and would lose their contract.
+		contractShared := agentsMdSiblingInstalled(root, "codex")
+		contractChanged := false
+		if !contractShared {
+			contractChanged, err = syncAgentContract(root, "AGENTS.md", agentsMdContent, true)
+			if err != nil {
+				return err
+			}
 		}
 		if !configChanged && !contractChanged {
-			fmt.Printf("AITriage was not present in %s or AGENTS.md — nothing to remove.\n", root)
+			if contractShared {
+				fmt.Printf("Removed nothing: another client still uses the shared AGENTS.md here.\n")
+			} else {
+				fmt.Printf("AITriage was not present in %s or AGENTS.md — nothing to remove.\n", root)
+			}
 			return nil
 		}
-		fmt.Printf("✅ Removed AITriage from Codex config and managed AGENTS.md instructions: %s\n", root)
+		if contractShared {
+			fmt.Printf("✅ Removed AITriage from Codex config. Kept AGENTS.md — another client still uses it: %s\n", root)
+		} else {
+			fmt.Printf("✅ Removed AITriage from Codex config and managed AGENTS.md instructions: %s\n", root)
+		}
 		return nil
 	}
 	if err := validateClientRuntime(); err != nil {
@@ -529,27 +543,41 @@ func runClaudeMCP(claudeBin, root string, args ...string) (string, error) {
 // jsonSetServer inserts/updates mcpServers.<name> = entry, preserving all other
 // servers and top-level keys. Empty input yields a fresh document.
 func jsonSetServer(existing []byte, name string, entry map[string]any) ([]byte, error) {
-	doc, err := decodeJSONObject(existing)
-	if err != nil {
-		return nil, err
-	}
-	servers, _ := doc["mcpServers"].(map[string]any)
-	if servers == nil {
-		servers = map[string]any{}
-	}
-	servers[name] = entry
-	doc["mcpServers"] = servers
-	return encodeJSON(doc)
+	return jsonSetServerWithKey(existing, "mcpServers", name, entry)
 }
 
 // jsonRemoveServer deletes mcpServers.<name>. The returned bool reports whether
 // the entry existed.
 func jsonRemoveServer(existing []byte, name string) ([]byte, bool, error) {
+	return jsonRemoveServerWithKey(existing, "mcpServers", name)
+}
+
+// jsonSetServerWithKey is jsonSetServer generalised over the top-level servers
+// key. Most MCP clients (Cursor, Antigravity, Claude Desktop) nest servers under
+// "mcpServers"; VS Code uses "servers". Everything else about the document is
+// preserved verbatim, so unrelated servers and top-level keys survive.
+func jsonSetServerWithKey(existing []byte, serversKey, name string, entry map[string]any) ([]byte, error) {
+	doc, err := decodeJSONObject(existing)
+	if err != nil {
+		return nil, err
+	}
+	servers, _ := doc[serversKey].(map[string]any)
+	if servers == nil {
+		servers = map[string]any{}
+	}
+	servers[name] = entry
+	doc[serversKey] = servers
+	return encodeJSON(doc)
+}
+
+// jsonRemoveServerWithKey deletes <serversKey>.<name>. The returned bool reports
+// whether the entry existed.
+func jsonRemoveServerWithKey(existing []byte, serversKey, name string) ([]byte, bool, error) {
 	doc, err := decodeJSONObject(existing)
 	if err != nil {
 		return nil, false, err
 	}
-	servers, _ := doc["mcpServers"].(map[string]any)
+	servers, _ := doc[serversKey].(map[string]any)
 	if servers == nil {
 		return existing, false, nil
 	}
@@ -557,7 +585,7 @@ func jsonRemoveServer(existing []byte, name string) ([]byte, bool, error) {
 		return existing, false, nil
 	}
 	delete(servers, name)
-	doc["mcpServers"] = servers
+	doc[serversKey] = servers
 	out, err := encodeJSON(doc)
 	return out, true, err
 }
