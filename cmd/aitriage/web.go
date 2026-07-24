@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	rt "github.com/cybertortuga/aitriage/internal/runtime"
-	"github.com/cybertortuga/aitriage/internal/server"
+	rt "github.com/dodobrands/aitriage/internal/runtime"
+	"github.com/dodobrands/aitriage/internal/server"
 	"github.com/spf13/cobra"
 )
 

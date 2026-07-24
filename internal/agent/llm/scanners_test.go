@@ -3,7 +3,7 @@ package llm
 import (
 	"testing"
 
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
 )
 
 func TestMissingRequiredScanners(t *testing.T) {

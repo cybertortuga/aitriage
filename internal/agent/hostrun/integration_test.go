@@ -8,13 +8,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cybertortuga/aitriage/internal/agent/hostagent"
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
-	"github.com/cybertortuga/aitriage/internal/agent/pipeline"
-	"github.com/cybertortuga/aitriage/internal/agent/runstore"
-	"github.com/cybertortuga/aitriage/internal/engine/history"
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
-	"github.com/cybertortuga/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/agent/hostagent"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/agent/pipeline"
+	"github.com/dodobrands/aitriage/internal/agent/runstore"
+	"github.com/dodobrands/aitriage/internal/engine/history"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/internal/scanner"
 )
 
 // fakeHost answers deferred SecureCoder requests the way a host coding agent's

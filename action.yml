@@ -1,6 +1,6 @@
 name: 'AITriage Security Scan'
 description: 'Deterministic security scanner for AI-generated codebases. SARIF gate + optional AI triage.'
-author: 'cybertortuga'
+author: 'dodobrands'
 
 inputs:
   command:
@@ -65,7 +65,7 @@ runs:
   # Rolling major image tag, refreshed by the docker-publish workflow on main
   # so downstream workflows consume fixes without hand-repinning an image
   # digest on every rollout.
-  image: 'docker://ghcr.io/cybertortuga/aitriage:v1'
+  image: 'docker://ghcr.io/dodobrands/aitriage:v1'
   entrypoint: '/entrypoint.sh'
   env:
     AITRIAGE_COMMAND: ${{ inputs.command }}

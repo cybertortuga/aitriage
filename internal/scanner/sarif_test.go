@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/scanner"
 )
 
 func TestToSARIFExportsOnlyActiveLocatedFindings(t *testing.T) {

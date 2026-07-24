@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/scanner"
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 )

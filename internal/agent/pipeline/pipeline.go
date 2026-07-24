@@ -13,11 +13,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cybertortuga/aitriage/internal/agent/graph"
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/engine/orchestrator"
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/internal/agent/graph"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/engine/orchestrator"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
 )
 
 // ScanOptions mirrors the scan-orchestration knobs used by the CLI. RunExternal

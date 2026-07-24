@@ -3,9 +3,9 @@ package main
 import (
 	"testing"
 
-	"github.com/cybertortuga/aitriage/internal/config"
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
-	"github.com/cybertortuga/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/config"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/internal/scanner"
 	"github.com/spf13/cobra"
 )
 

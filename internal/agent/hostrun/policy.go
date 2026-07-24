@@ -1,9 +1,9 @@
 package hostrun
 
 import (
-	"github.com/cybertortuga/aitriage/internal/config"
-	"github.com/cybertortuga/aitriage/internal/healthpolicy"
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/internal/config"
+	"github.com/dodobrands/aitriage/internal/healthpolicy"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
 )
 
 // AuditPolicy resolves the health-check policy for a local host-agent run so it

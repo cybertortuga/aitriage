@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/scanner"
 	"github.com/fatih/color"
 )
 

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/cybertortuga/aitriage/internal/agent/runstore"
+	"github.com/dodobrands/aitriage/internal/agent/runstore"
 	"github.com/spf13/cobra"
 )
 

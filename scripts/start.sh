@@ -4,7 +4,7 @@
 set -e
 
 PORT=${1:-8080}
-IMAGE="ghcr.io/cybertortuga/aitriage:latest"
+IMAGE="ghcr.io/dodobrands/aitriage:latest"
 CONTAINER="aitriage-web"
 
 echo ""

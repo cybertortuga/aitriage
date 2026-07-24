@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
-	"github.com/cybertortuga/aitriage/internal/config"
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/config"
+	"github.com/dodobrands/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/scanner"
 	"github.com/spf13/cobra"
 )
 

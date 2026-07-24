@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cybertortuga/aitriage/internal/engine/baseline"
-	"github.com/cybertortuga/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/engine/baseline"
+	"github.com/dodobrands/aitriage/internal/scanner"
 	"github.com/spf13/cobra"
 )
 

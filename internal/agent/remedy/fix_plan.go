@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/engine/core"
 )
 
 type FixItem struct {

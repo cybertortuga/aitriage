@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	lipgloss "github.com/charmbracelet/lipgloss"
-	"github.com/cybertortuga/aitriage/internal/scanner/deps"
+	"github.com/dodobrands/aitriage/internal/scanner/deps"
 )
 
 // RenderDependencyTree generates a premium ASCII tree representation of the dependency graph.

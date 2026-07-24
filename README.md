@@ -5,10 +5,10 @@
   <p>One security workflow for AI coding agents, Web, CI/CD, and the terminal.</p>
 
   <p>
-    <a href="https://github.com/cybertortuga/aitriage/releases"><img src="https://img.shields.io/github/v/release/cybertortuga/aitriage?style=flat-square&color=2563eb" alt="Latest release"></a>
-    <a href="https://github.com/cybertortuga/aitriage/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/cybertortuga/aitriage/ci.yml?branch=main&style=flat-square&label=tests" alt="Test status"></a>
-    <a href="https://github.com/cybertortuga/aitriage/pkgs/container/aitriage"><img src="https://img.shields.io/badge/scanners-Docker-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker scanner bundle"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/cybertortuga/aitriage?style=flat-square" alt="MIT license"></a>
+    <a href="https://github.com/dodobrands/aitriage/releases"><img src="https://img.shields.io/github/v/release/dodobrands/aitriage?style=flat-square&color=2563eb" alt="Latest release"></a>
+    <a href="https://github.com/dodobrands/aitriage/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/dodobrands/aitriage/ci.yml?branch=main&style=flat-square&label=tests" alt="Test status"></a>
+    <a href="https://github.com/dodobrands/aitriage/pkgs/container/aitriage"><img src="https://img.shields.io/badge/scanners-Docker-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker scanner bundle"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/dodobrands/aitriage?style=flat-square" alt="MIT license"></a>
   </p>
 
   <p>
@@ -35,15 +35,15 @@ Open Codex or Claude Code and paste this request:
 
 ```text
 Install the official released AITriage CLI on this computer and prepare its
-complete scanner bundle. Official project: https://github.com/cybertortuga/aitriage
+complete scanner bundle. Official project: https://github.com/dodobrands/aitriage
 
 Do not clone AITriage into my current repository and do not change its source.
 If `aitriage` is missing, detect the host operating system and run exactly one
 official installer:
 - Native Windows PowerShell:
-  `irm https://github.com/cybertortuga/aitriage/releases/latest/download/install.ps1 | iex`
+  `irm https://github.com/dodobrands/aitriage/releases/latest/download/install.ps1 | iex`
 - macOS or Linux shell:
-  `curl -fsSL https://github.com/cybertortuga/aitriage/releases/latest/download/install.sh | sh`
+  `curl -fsSL https://github.com/dodobrands/aitriage/releases/latest/download/install.sh | sh`
 
 Do not run the Unix installer on native Windows. Do not run the Windows
 installer inside WSL. The installer verifies the release checksum and prepares
@@ -74,7 +74,7 @@ The result is one host CLI plus one verified Docker image. The source repository
 Requirements: macOS or Linux, and a running [Docker Desktop or Docker Engine](https://docs.docker.com/get-started/get-docker/).
 
 ```bash
-curl -fsSL https://github.com/cybertortuga/aitriage/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/dodobrands/aitriage/releases/latest/download/install.sh | sh
 aitriage setup --status
 ```
 
@@ -83,7 +83,7 @@ SHA-256 checksum, installs the CLI, and runs `aitriage setup --full`. To inspect
 the script before running it:
 
 ```bash
-curl -fsSLO https://github.com/cybertortuga/aitriage/releases/latest/download/install.sh
+curl -fsSLO https://github.com/dodobrands/aitriage/releases/latest/download/install.sh
 less install.sh
 sh install.sh
 ```
@@ -96,7 +96,7 @@ shells if it is not already present.
 Go 1.25.12 or newer remains a developer fallback:
 
 ```bash
-go install github.com/cybertortuga/aitriage/cmd/aitriage@latest
+go install github.com/dodobrands/aitriage/cmd/aitriage@latest
 aitriage setup --full
 ```
 
@@ -117,13 +117,13 @@ macOS/Linux and does **not** install Docker Desktop for you.
 In PowerShell (no administrator required):
 
 ```powershell
-irm https://github.com/cybertortuga/aitriage/releases/latest/download/install.ps1 | iex
+irm https://github.com/dodobrands/aitriage/releases/latest/download/install.ps1 | iex
 ```
 
 Inspect-first (recommended):
 
 ```powershell
-irm https://github.com/cybertortuga/aitriage/releases/latest/download/install.ps1 -OutFile install.ps1
+irm https://github.com/dodobrands/aitriage/releases/latest/download/install.ps1 -OutFile install.ps1
 # review install.ps1, then:
 $installer = [ScriptBlock]::Create((Get-Content -Raw .\install.ps1))
 & $installer
@@ -154,7 +154,7 @@ Uninstall (removes only the AITriage CLI and its User PATH entry; add
 `-RemoveImage` to also remove the downloaded scanner image):
 
 ```powershell
-$installer = [ScriptBlock]::Create((irm https://github.com/cybertortuga/aitriage/releases/latest/download/install.ps1))
+$installer = [ScriptBlock]::Create((irm https://github.com/dodobrands/aitriage/releases/latest/download/install.ps1))
 & $installer -Uninstall
 ```
 
@@ -165,7 +165,7 @@ Desktop's WSL integration enabled and run the **Linux** installer inside WSL. Do
 not mix native Windows and WSL paths, binaries or MCP configs in one project:
 
 ```bash
-curl -fsSL https://github.com/cybertortuga/aitriage/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/dodobrands/aitriage/releases/latest/download/install.sh | sh
 ```
 
 ### What is installed
@@ -309,7 +309,7 @@ CI uses the same AITriage pipeline and SecureCoder prompts, but its model is aut
 
 ```text
 Add AITriage CI/CD to this repository using an official example from
-https://github.com/cybertortuga/aitriage/tree/main/examples/github-actions.
+https://github.com/dodobrands/aitriage/tree/main/examples/github-actions.
 Preserve existing workflows. Never put a provider key in YAML or source code;
 reference a GitHub Secret. Show me the workflow diff and required secret before
 committing or pushing. Do not invent an organization-specific reusable workflow

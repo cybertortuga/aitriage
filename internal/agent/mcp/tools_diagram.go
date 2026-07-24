@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cybertortuga/aitriage/internal/agent/architect"
+	"github.com/dodobrands/aitriage/internal/agent/architect"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

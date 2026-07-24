@@ -17,13 +17,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/agent/graph"
-	"github.com/cybertortuga/aitriage/internal/agent/hostagent"
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
-	"github.com/cybertortuga/aitriage/internal/agent/pipeline"
-	"github.com/cybertortuga/aitriage/internal/agent/runstore"
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/internal/agent/graph"
+	"github.com/dodobrands/aitriage/internal/agent/hostagent"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/agent/pipeline"
+	"github.com/dodobrands/aitriage/internal/agent/runstore"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
 )
 
 // Manager owns one project's run store and executes host-agent runs.

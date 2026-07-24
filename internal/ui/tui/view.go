@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/cybertortuga/aitriage/internal/telemetry"
+	"github.com/dodobrands/aitriage/internal/telemetry"
 )
 
 // renderMarkdownToTerminal converts raw markdown (from LLM) into styled

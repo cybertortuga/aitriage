@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	agentcontext "github.com/cybertortuga/aitriage/internal/agent/context"
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
-	"github.com/cybertortuga/aitriage/internal/agent/prompts"
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
+	agentcontext "github.com/dodobrands/aitriage/internal/agent/context"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/agent/prompts"
+	"github.com/dodobrands/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
 )
 
 // Run Orchestrates the full SecureCoder-enhanced pipeline:

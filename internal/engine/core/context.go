@@ -9,10 +9,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cybertortuga/aitriage/internal/config"
-	"github.com/cybertortuga/aitriage/internal/scanner/ast"
-	"github.com/cybertortuga/aitriage/internal/scanner/entropy"
-	"github.com/cybertortuga/aitriage/internal/scanner/pathpolicy"
+	"github.com/dodobrands/aitriage/internal/config"
+	"github.com/dodobrands/aitriage/internal/scanner/ast"
+	"github.com/dodobrands/aitriage/internal/scanner/entropy"
+	"github.com/dodobrands/aitriage/internal/scanner/pathpolicy"
 	ignore "github.com/sabhiram/go-gitignore"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )

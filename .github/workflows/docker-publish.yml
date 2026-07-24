@@ -12,7 +12,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: cybertortuga/aitriage
+  IMAGE_NAME: dodobrands/aitriage
 
 permissions:
   contents: read

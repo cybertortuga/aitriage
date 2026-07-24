@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
 )
 
 // AgentHandoffSchemaVersion versions the Web/CI handoff envelope. It is

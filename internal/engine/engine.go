@@ -10,12 +10,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cybertortuga/aitriage/internal/config"
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/engine/loader"
-	"github.com/cybertortuga/aitriage/internal/models"
-	"github.com/cybertortuga/aitriage/internal/scanner/ast"
-	"github.com/cybertortuga/aitriage/rules"
+	"github.com/dodobrands/aitriage/internal/config"
+	"github.com/dodobrands/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/engine/loader"
+	"github.com/dodobrands/aitriage/internal/models"
+	"github.com/dodobrands/aitriage/internal/scanner/ast"
+	"github.com/dodobrands/aitriage/rules"
 	"gopkg.in/yaml.v3"
 )
 

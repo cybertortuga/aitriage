@@ -44,7 +44,7 @@ jobs:
       - name: Run AI triage
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        uses: cybertortuga/aitriage@v1
+        uses: dodobrands/aitriage@v1
         with:
           command: agent
           summary-file: summary.md

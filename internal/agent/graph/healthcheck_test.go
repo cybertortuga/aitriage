@@ -3,9 +3,9 @@ package graph
 import (
 	"testing"
 
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
-	"github.com/cybertortuga/aitriage/internal/scanner/deployaudit"
-	"github.com/cybertortuga/aitriage/internal/scanner/network"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/internal/scanner/deployaudit"
+	"github.com/dodobrands/aitriage/internal/scanner/network"
 )
 
 func TestComputeHealthCheckHonorsDeployAndNetworkFalsePositives(t *testing.T) {

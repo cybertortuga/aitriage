@@ -18,7 +18,7 @@ import (
 
 // ImageRepo is the release image lineage. The compatible tag is derived from the
 // host CLI version; `latest` is only used via an explicit override.
-const ImageRepo = "ghcr.io/cybertortuga/aitriage"
+const ImageRepo = "ghcr.io/dodobrands/aitriage"
 
 // RequiredTools is the scanner bundle the image must contain (plus aitriage).
 var RequiredTools = []string{"aitriage", "semgrep", "trivy", "gitleaks", "bandit"}

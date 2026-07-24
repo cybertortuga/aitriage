@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cybertortuga/aitriage/internal/models"
-	"github.com/cybertortuga/aitriage/rules"
+	"github.com/dodobrands/aitriage/internal/models"
+	"github.com/dodobrands/aitriage/rules"
 	"gopkg.in/yaml.v3"
 )
 

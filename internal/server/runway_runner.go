@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/agent/graph"
-	"github.com/cybertortuga/aitriage/internal/config"
-	"github.com/cybertortuga/aitriage/internal/models"
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/internal/agent/graph"
+	"github.com/dodobrands/aitriage/internal/config"
+	"github.com/dodobrands/aitriage/internal/models"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
 )
 
 // runRunwaySession is the canonical Web execution path. Simple mode and the

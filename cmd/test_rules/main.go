@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/cybertortuga/aitriage/internal/engine"
+	"github.com/dodobrands/aitriage/internal/engine"
 )
 
 func main() {

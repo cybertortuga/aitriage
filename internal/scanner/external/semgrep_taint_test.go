@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
-	"github.com/cybertortuga/aitriage/rules"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/rules"
 )
 
 // runXSS runs the trusted taint config (as a full audit would) over one fixture

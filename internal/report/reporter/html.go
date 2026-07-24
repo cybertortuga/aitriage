@@ -5,7 +5,7 @@ import (
 	"html/template"
 	"os"
 
-	"github.com/cybertortuga/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/scanner"
 )
 
 const reportTemplate = `

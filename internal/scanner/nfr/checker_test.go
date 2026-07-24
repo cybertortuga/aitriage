@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cybertortuga/aitriage/internal/scanner/nfr"
+	"github.com/dodobrands/aitriage/internal/scanner/nfr"
 )
 
 func TestCheckNFR_FindsMissingDotEnvExampleOnlyWhenEnvironmentIsUsed(t *testing.T) {

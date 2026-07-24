@@ -22,7 +22,7 @@ branch. Older tags are not patched — please upgrade to the latest release.
 Instead, report privately through one of the following channels:
 
 - **GitHub Security Advisories** — use the *"Report a vulnerability"* button under
-  the repository's [Security tab](https://github.com/cybertortuga/aitriage/security/advisories/new)
+  the repository's [Security tab](https://github.com/dodobrands/aitriage/security/advisories/new)
   (preferred).
 - If that is unavailable, open a minimal issue asking a maintainer to open a
   private advisory — **without** disclosing any technical detail.

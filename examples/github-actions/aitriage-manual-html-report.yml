@@ -41,7 +41,7 @@ jobs:
           fetch-depth: 1
 
       - name: Generate report
-        uses: cybertortuga/aitriage@v1
+        uses: dodobrands/aitriage@v1
         with:
           command: scan
           format: html

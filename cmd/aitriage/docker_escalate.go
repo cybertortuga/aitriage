@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	rt "github.com/cybertortuga/aitriage/internal/runtime"
+	rt "github.com/dodobrands/aitriage/internal/runtime"
 )
 
 const (
 	dockerImageLocal    = "aitriage:local"
-	dockerImageRegistry = "ghcr.io/cybertortuga/aitriage:latest"
+	dockerImageRegistry = "ghcr.io/dodobrands/aitriage:latest"
 )
 
 // needsDocker checks if external SAST tools are missing.

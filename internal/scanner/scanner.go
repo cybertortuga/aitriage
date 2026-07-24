@@ -9,13 +9,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/config"
-	"github.com/cybertortuga/aitriage/internal/engine"
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/healthpolicy"
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
-	"github.com/cybertortuga/aitriage/internal/scanner/deps"
-	"github.com/cybertortuga/aitriage/internal/scanner/detector"
+	"github.com/dodobrands/aitriage/internal/config"
+	"github.com/dodobrands/aitriage/internal/engine"
+	"github.com/dodobrands/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/healthpolicy"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/internal/scanner/deps"
+	"github.com/dodobrands/aitriage/internal/scanner/detector"
 )
 
 type ScanOptions struct {

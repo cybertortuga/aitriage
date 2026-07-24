@@ -87,7 +87,7 @@ func main() {
 			os.Exit(1)
 		}
 		if strings.Contains(strings.Join(args, " "), "RepoDigests") {
-			fmt.Println("ghcr.io/cybertortuga/aitriage@sha256:test")
+			fmt.Println("ghcr.io/dodobrands/aitriage@sha256:test")
 		}
 	case "run":
 		version := os.Getenv("AITRIAGE_FAKE_BUNDLE_VERSION")

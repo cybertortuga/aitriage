@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cybertortuga/aitriage/internal/agent/remedy"
-	"github.com/cybertortuga/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/agent/remedy"
+	"github.com/dodobrands/aitriage/internal/scanner"
 	"github.com/spf13/cobra"
 )
 

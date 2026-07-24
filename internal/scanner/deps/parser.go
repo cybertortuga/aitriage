@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/engine/core"
 )
 
 var goModLineRegex = regexp.MustCompile(`^\s*([a-zA-Z0-9\.\-\/\_]+)\s+v([a-zA-Z0-9\.\-\+]+)(\s+// indirect)?`)

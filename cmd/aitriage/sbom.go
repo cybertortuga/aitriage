@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/scanner"
-	"github.com/cybertortuga/aitriage/internal/scanner/deps"
+	"github.com/dodobrands/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/scanner/deps"
 	"github.com/spf13/cobra"
 )
 
@@ -160,7 +160,7 @@ func generateCycloneDX(report scanner.ScanReport, projectPath string) ([]byte, e
 		Metadata: cycloneDXMeta{
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 			Tools: []cycloneDXTool{{
-				Vendor:  "cybertortuga",
+				Vendor:  "dodobrands",
 				Name:    "aitriage",
 				Version: "1.0.0",
 			}},

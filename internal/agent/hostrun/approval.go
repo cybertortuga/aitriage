@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/agent/pipeline"
-	"github.com/cybertortuga/aitriage/internal/agent/runstore"
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/internal/agent/pipeline"
+	"github.com/dodobrands/aitriage/internal/agent/runstore"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
 )
 
 // Approval is the recorded, auditable user decision that gates source changes.

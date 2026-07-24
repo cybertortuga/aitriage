@@ -12,10 +12,10 @@
   and is NOT installed by this script.
 
   Canonical use (PowerShell 5.1 or 7, no administrator):
-    irm https://github.com/cybertortuga/aitriage/releases/latest/download/install.ps1 | iex
+    irm https://github.com/dodobrands/aitriage/releases/latest/download/install.ps1 | iex
 
   Inspect-first (recommended):
-    irm https://github.com/cybertortuga/aitriage/releases/latest/download/install.ps1 -OutFile install.ps1
+    irm https://github.com/dodobrands/aitriage/releases/latest/download/install.ps1 -OutFile install.ps1
     # review install.ps1
     $installer = [ScriptBlock]::Create((Get-Content -Raw .\install.ps1))
     & $installer
@@ -44,7 +44,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── Configuration (with test-only env overrides) ─────────────────────────────
-if (-not $Repository)     { $Repository     = if ($env:AITRIAGE_REPOSITORY) { $env:AITRIAGE_REPOSITORY } else { 'cybertortuga/aitriage' } }
+if (-not $Repository)     { $Repository     = if ($env:AITRIAGE_REPOSITORY) { $env:AITRIAGE_REPOSITORY } else { 'dodobrands/aitriage' } }
 if (-not $ReleaseBaseUrl) { $ReleaseBaseUrl = $env:AITRIAGE_RELEASE_BASE_URL }
 $DockerWindowsUrl = 'https://docs.docker.com/desktop/setup/install/windows-install/'
 $RetryCommand = 'aitriage setup --full'

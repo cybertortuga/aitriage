@@ -73,7 +73,7 @@ func TestSetupPassAndIdempotent(t *testing.T) {
 	if f.warmed != 1 {
 		t.Fatalf("expected scanner preparation once, got %d", f.warmed)
 	}
-	if r.Image != "ghcr.io/cybertortuga/aitriage:v1.7.0" {
+	if r.Image != "ghcr.io/dodobrands/aitriage:v1.7.0" {
 		t.Fatalf("image = %q", r.Image)
 	}
 	if r.Digest == "" {
@@ -162,10 +162,10 @@ func TestStatusPreservesBundleVerificationFailure(t *testing.T) {
 
 func TestResolveImage(t *testing.T) {
 	t.Setenv("AITRIAGE_IMAGE", "")
-	if got := ResolveImage("1.7.0"); got != "ghcr.io/cybertortuga/aitriage:v1.7.0" {
+	if got := ResolveImage("1.7.0"); got != "ghcr.io/dodobrands/aitriage:v1.7.0" {
 		t.Errorf("semver pin = %q", got)
 	}
-	if got := ResolveImage("dev"); got != "ghcr.io/cybertortuga/aitriage:v1" {
+	if got := ResolveImage("dev"); got != "ghcr.io/dodobrands/aitriage:v1" {
 		t.Errorf("dev fallback = %q", got)
 	}
 	t.Setenv("AITRIAGE_IMAGE", "local/custom:latest")

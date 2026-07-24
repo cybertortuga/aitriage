@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	rt "github.com/cybertortuga/aitriage/internal/runtime"
+	rt "github.com/dodobrands/aitriage/internal/runtime"
 	"github.com/spf13/cobra"
 )
 

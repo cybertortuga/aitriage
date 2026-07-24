@@ -10,15 +10,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/agent/architect"
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
-	"github.com/cybertortuga/aitriage/internal/scanner"
-	"github.com/cybertortuga/aitriage/internal/scanner/deployaudit"
-	"github.com/cybertortuga/aitriage/internal/scanner/entropy"
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
-	"github.com/cybertortuga/aitriage/internal/scanner/network"
-	"github.com/cybertortuga/aitriage/internal/scanner/nfr"
-	"github.com/cybertortuga/aitriage/rules"
+	"github.com/dodobrands/aitriage/internal/agent/architect"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/scanner/deployaudit"
+	"github.com/dodobrands/aitriage/internal/scanner/entropy"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/internal/scanner/network"
+	"github.com/dodobrands/aitriage/internal/scanner/nfr"
+	"github.com/dodobrands/aitriage/rules"
 )
 
 // Options configuration for the scan engine.

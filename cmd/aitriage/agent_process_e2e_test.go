@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	rt "github.com/cybertortuga/aitriage/internal/runtime"
+	rt "github.com/dodobrands/aitriage/internal/runtime"
 )
 
 func TestE2E_DefaultAgentUsesFullContainerBundle(t *testing.T) {

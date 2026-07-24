@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
 )
 
 // GenerateClaudeSpec creates a CLAUDE.md formatted string from a rich scan result.

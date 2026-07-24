@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/cybertortuga/aitriage/internal/models"
+	"github.com/dodobrands/aitriage/internal/models"
 )
 
 type AuditRepository struct {

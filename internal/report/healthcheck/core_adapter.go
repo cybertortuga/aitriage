@@ -1,7 +1,7 @@
 package healthcheck
 
 import (
-	"github.com/cybertortuga/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/engine/core"
 )
 
 // FromCoreResults maps deterministic core SAST results into a Health Check Input.

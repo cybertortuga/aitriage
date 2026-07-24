@@ -38,7 +38,7 @@ format:
 	@go fmt ./...
 	@if command -v goimports > /dev/null; then goimports -w .; fi
 	@if command -v gofumpt > /dev/null; then gofumpt -w .; fi
-	@if command -v gci > /dev/null; then gci write --section Standard --section Default --section "Prefix(github.com/cybertortuga/aitriage)" .; fi
+	@if command -v gci > /dev/null; then gci write --section Standard --section Default --section "Prefix(github.com/dodobrands/aitriage)" .; fi
 	@echo "$(BLUE)Formatting Web sources...$(RESET)"
 	@if [ -d "web" ]; then \
 		cd web && npm run format || true; \

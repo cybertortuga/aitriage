@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
 )
 
 func TestClassifyFindingsRejectsWrongIdentityToNeedsReview(t *testing.T) {

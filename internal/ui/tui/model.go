@@ -18,14 +18,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/scanner"
-	"github.com/cybertortuga/aitriage/internal/scanner/deployaudit"
-	"github.com/cybertortuga/aitriage/internal/scanner/deps"
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
-	"github.com/cybertortuga/aitriage/internal/scanner/network"
-	"github.com/cybertortuga/aitriage/internal/scanner/nfr"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/scanner/deployaudit"
+	"github.com/dodobrands/aitriage/internal/scanner/deps"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/internal/scanner/network"
+	"github.com/dodobrands/aitriage/internal/scanner/nfr"
 )
 
 // ChatMessage represents a single message in the AI chat

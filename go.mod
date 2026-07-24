@@ -1,4 +1,4 @@
-module github.com/cybertortuga/aitriage
+module github.com/dodobrands/aitriage
 
 go 1.25.12
 

@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/cybertortuga/aitriage/internal/models"
-	"github.com/cybertortuga/aitriage/internal/server/repositories"
-	"github.com/cybertortuga/aitriage/internal/server/utils"
+	"github.com/dodobrands/aitriage/internal/models"
+	"github.com/dodobrands/aitriage/internal/server/repositories"
+	"github.com/dodobrands/aitriage/internal/server/utils"
 )
 
 type EngagementHandler struct {

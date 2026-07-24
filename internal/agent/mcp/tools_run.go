@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cybertortuga/aitriage/internal/agent/hostagent"
-	"github.com/cybertortuga/aitriage/internal/agent/hostrun"
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
-	"github.com/cybertortuga/aitriage/internal/agent/pipeline"
+	"github.com/dodobrands/aitriage/internal/agent/hostagent"
+	"github.com/dodobrands/aitriage/internal/agent/hostrun"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/agent/pipeline"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

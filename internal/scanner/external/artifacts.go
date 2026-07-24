@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/scanner/pathpolicy"
+	"github.com/dodobrands/aitriage/internal/scanner/pathpolicy"
 )
 
 var generatedArtifactDirs = map[string]struct{}{

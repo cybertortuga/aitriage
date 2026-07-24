@@ -3,15 +3,15 @@ package graph
 import (
 	"encoding/json"
 
-	agentcontext "github.com/cybertortuga/aitriage/internal/agent/context"
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
-	"github.com/cybertortuga/aitriage/internal/scanner/deployaudit"
-	"github.com/cybertortuga/aitriage/internal/scanner/entropy"
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
-	"github.com/cybertortuga/aitriage/internal/scanner/network"
-	"github.com/cybertortuga/aitriage/internal/scanner/nfr"
+	agentcontext "github.com/dodobrands/aitriage/internal/agent/context"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/internal/scanner/deployaudit"
+	"github.com/dodobrands/aitriage/internal/scanner/entropy"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/internal/scanner/network"
+	"github.com/dodobrands/aitriage/internal/scanner/nfr"
 )
 
 // AgentState represents the shared state flowing through the orchestrator.

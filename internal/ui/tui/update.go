@@ -15,16 +15,16 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	lipgloss "github.com/charmbracelet/lipgloss"
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
-	"github.com/cybertortuga/aitriage/internal/agent/remedy"
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/engine/orchestrator"
-	"github.com/cybertortuga/aitriage/internal/scanner"
-	"github.com/cybertortuga/aitriage/internal/scanner/deployaudit"
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
-	"github.com/cybertortuga/aitriage/internal/scanner/network"
-	"github.com/cybertortuga/aitriage/internal/scanner/nfr"
-	"github.com/cybertortuga/aitriage/internal/telemetry"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/agent/remedy"
+	"github.com/dodobrands/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/engine/orchestrator"
+	"github.com/dodobrands/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/scanner/deployaudit"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/internal/scanner/network"
+	"github.com/dodobrands/aitriage/internal/scanner/nfr"
+	"github.com/dodobrands/aitriage/internal/telemetry"
 )
 
 // ── Cyrillic → Latin QWERTY normalization ────────────────────────────────────
@@ -1609,7 +1609,7 @@ jobs:
 
     - name: Run AITriage Scanner
       run: |
-        curl -sSfL https://raw.githubusercontent.com/cybertortuga/aitriage/main/install.sh | sh
+        curl -sSfL https://raw.githubusercontent.com/dodobrands/aitriage/main/install.sh | sh
         ./aitriage scan . --export-sarif
 
     - name: Upload SARIF report

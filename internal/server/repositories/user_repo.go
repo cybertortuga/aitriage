@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/cybertortuga/aitriage/internal/models"
+	"github.com/dodobrands/aitriage/internal/models"
 )
 
 type UserRepository struct {

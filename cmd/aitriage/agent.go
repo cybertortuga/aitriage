@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/agent/graph"
-	"github.com/cybertortuga/aitriage/internal/agent/llm"
-	"github.com/cybertortuga/aitriage/internal/agent/pipeline"
-	"github.com/cybertortuga/aitriage/internal/config"
-	"github.com/cybertortuga/aitriage/internal/healthpolicy"
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
-	rt "github.com/cybertortuga/aitriage/internal/runtime"
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/internal/agent/graph"
+	"github.com/dodobrands/aitriage/internal/agent/llm"
+	"github.com/dodobrands/aitriage/internal/agent/pipeline"
+	"github.com/dodobrands/aitriage/internal/config"
+	"github.com/dodobrands/aitriage/internal/healthpolicy"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
+	rt "github.com/dodobrands/aitriage/internal/runtime"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
 	"github.com/spf13/cobra"
 )
 

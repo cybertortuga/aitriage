@@ -56,7 +56,7 @@ jobs:
       - name: Collect deterministic findings
         # Use the maintained v1 release line. Consumers receive the digest pin
         # after the next Action release advances this reference (see WF-001).
-        uses: cybertortuga/aitriage@v1
+        uses: dodobrands/aitriage@v1
         with:
           command: scan
           format: sarif
@@ -150,7 +150,7 @@ jobs:
           # Needs-Manual-Review fallback is safe but not cacheable and blocks
           # artifact-bundle reuse on the next run.
           AITRIAGE_CLASSIFY_RETRIES: '4'
-        uses: cybertortuga/aitriage@v1
+        uses: dodobrands/aitriage@v1
         with:
           command: agent
           # A clean TP/Needs Review summary is written to the job summary too.

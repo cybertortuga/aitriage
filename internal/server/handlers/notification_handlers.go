@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/server/middleware"
-	"github.com/cybertortuga/aitriage/internal/server/repositories"
-	"github.com/cybertortuga/aitriage/internal/server/utils"
+	"github.com/dodobrands/aitriage/internal/server/middleware"
+	"github.com/dodobrands/aitriage/internal/server/repositories"
+	"github.com/dodobrands/aitriage/internal/server/utils"
 )
 
 type NotificationHandler struct {

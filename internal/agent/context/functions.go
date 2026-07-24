@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/scanner/ast"
+	"github.com/dodobrands/aitriage/internal/scanner/ast"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 

@@ -5,7 +5,7 @@ import (
 	"html/template"
 	"os"
 
-	"github.com/cybertortuga/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/engine/core"
 )
 
 const dashTemplate = `<!DOCTYPE html>

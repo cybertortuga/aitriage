@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cybertortuga/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/engine/core"
 )
 
 func TestNewWorkspace(t *testing.T) {

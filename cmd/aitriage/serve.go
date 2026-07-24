@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	mcpserver "github.com/cybertortuga/aitriage/internal/agent/mcp"
-	rt "github.com/cybertortuga/aitriage/internal/runtime"
+	mcpserver "github.com/dodobrands/aitriage/internal/agent/mcp"
+	rt "github.com/dodobrands/aitriage/internal/runtime"
 	"github.com/spf13/cobra"
 )
 

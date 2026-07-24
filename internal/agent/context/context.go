@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/agent/architect"
+	"github.com/dodobrands/aitriage/internal/agent/architect"
 )
 
 // RepoContext holds the complete gathered repository context for LLM consumption.

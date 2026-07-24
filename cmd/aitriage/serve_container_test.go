@@ -10,10 +10,10 @@ import (
 // stdio (no TTY), read-only source, read-write reports, /workspace scan-root,
 // and an inner native server (the scanner bundle lives in the image).
 func TestContainerServeArgs(t *testing.T) {
-	t.Setenv("AITRIAGE_IMAGE", "ghcr.io/cybertortuga/aitriage:v1.7.0")
+	t.Setenv("AITRIAGE_IMAGE", "ghcr.io/dodobrands/aitriage:v1.7.0")
 	hostRoot := t.TempDir()
 	cache := t.TempDir()
-	args := containerServeArgs("ghcr.io/cybertortuga/aitriage:v1.7.0", hostRoot, "safe", cache, "aitriage-mcp-test")
+	args := containerServeArgs("ghcr.io/dodobrands/aitriage:v1.7.0", hostRoot, "safe", cache, "aitriage-mcp-test")
 	joined := strings.Join(args, " ")
 
 	for _, want := range []string{
@@ -25,7 +25,7 @@ func TestContainerServeArgs(t *testing.T) {
 		filepath.Join(hostRoot, "aitriage-reports") + ":/workspace/aitriage-reports:rw",
 		cache + ":/home/aitriage/.cache:rw",
 		"AITRIAGE_CACHE_DIR=/workspace/aitriage-reports/cache",
-		"ghcr.io/cybertortuga/aitriage:v1.7.0 serve --runtime native --profile safe --scan-root /workspace",
+		"ghcr.io/dodobrands/aitriage:v1.7.0 serve --runtime native --profile safe --scan-root /workspace",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("container serve args missing %q:\n%s", want, joined)

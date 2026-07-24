@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cybertortuga/aitriage/internal/agent/architect"
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/scanner/detector"
+	"github.com/dodobrands/aitriage/internal/agent/architect"
+	"github.com/dodobrands/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/scanner/detector"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

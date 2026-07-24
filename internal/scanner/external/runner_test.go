@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
 )
 
 func TestIsInstalled_Go(t *testing.T) {

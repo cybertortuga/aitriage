@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
 )
 
 func integrityTestState() *AgentState {

@@ -60,7 +60,7 @@ FROM debian:bookworm-slim
 
 LABEL org.opencontainers.image.title="AITriage"
 LABEL org.opencontainers.image.description="AI-powered security scanner — all tools included"
-LABEL org.opencontainers.image.source="https://github.com/cybertortuga/aitriage"
+LABEL org.opencontainers.image.source="https://github.com/dodobrands/aitriage"
 
 # System deps + runtime C libs (merged into single layer for cache)
 RUN apt-get update && apt-get install -y --no-install-recommends \

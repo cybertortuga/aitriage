@@ -4,7 +4,7 @@
 #
 # Add to your .pre-commit-config.yaml:
 #   repos:
-#     - repo: https://github.com/cybertortuga/aitriage
+#     - repo: https://github.com/dodobrands/aitriage
 #       rev: v1.0.0
 #       hooks:
 #         - id: aitriage

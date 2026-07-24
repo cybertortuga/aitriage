@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	rt "github.com/cybertortuga/aitriage/internal/runtime"
+	rt "github.com/dodobrands/aitriage/internal/runtime"
 )
 
 type removeDockerFake struct {

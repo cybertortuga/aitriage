@@ -71,7 +71,7 @@ changelog:
 # ── Release Notes ─────────────────────────────────────────────────────────────
 release:
   github:
-    owner: cybertortuga
+    owner: dodobrands
     name: aitriage
   name_template: "AITriage v{{ .Version }}"
   header: |
@@ -82,12 +82,12 @@ release:
     ### Install
     ```bash
     # macOS / Linux (official release + checksum verification + scanner setup)
-    curl -fsSL https://github.com/cybertortuga/aitriage/releases/latest/download/install.sh | sh
+    curl -fsSL https://github.com/dodobrands/aitriage/releases/latest/download/install.sh | sh
 
     # Go
-    go install github.com/cybertortuga/aitriage/cmd/aitriage@v{{ .Version }}
+    go install github.com/dodobrands/aitriage/cmd/aitriage@v{{ .Version }}
 
     # Binary download — see assets below
     ```
   footer: |
-    **Full Changelog**: https://github.com/cybertortuga/aitriage/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/dodobrands/aitriage/compare/{{ .PreviousTag }}...{{ .Tag }}

@@ -13,9 +13,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cybertortuga/aitriage/internal/agent/prompts"
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
-	"github.com/cybertortuga/aitriage/rules"
+	"github.com/dodobrands/aitriage/internal/agent/prompts"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/rules"
 )
 
 // ── Layer 2: Verdict Cache (keyed by fingerprint) ────────────────────────────

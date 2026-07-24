@@ -14,7 +14,7 @@ changes.
 ## Getting Started
 
 ```bash
-git clone https://github.com/cybertortuga/aitriage.git
+git clone https://github.com/dodobrands/aitriage.git
 cd aitriage
 go mod download
 make build          # Build the binary to bin/aitriage

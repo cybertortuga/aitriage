@@ -2,7 +2,7 @@
 
 set -eu
 
-repository=${AITRIAGE_REPOSITORY:-cybertortuga/aitriage}
+repository=${AITRIAGE_REPOSITORY:-dodobrands/aitriage}
 install_dir=${AITRIAGE_INSTALL_DIR:-/usr/local/bin}
 user_install_dir=${AITRIAGE_USER_INSTALL_DIR:-${HOME:?HOME is required}/.local/bin}
 skip_setup=${AITRIAGE_SKIP_SETUP:-0}

@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cybertortuga/aitriage/internal/agent/remedy"
-	"github.com/cybertortuga/aitriage/internal/engine/orchestrator"
+	"github.com/dodobrands/aitriage/internal/agent/remedy"
+	"github.com/dodobrands/aitriage/internal/engine/orchestrator"
 	"github.com/spf13/cobra"
 )
 

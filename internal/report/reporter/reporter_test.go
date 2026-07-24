@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/engine/core"
-	"github.com/cybertortuga/aitriage/internal/scanner"
-	"github.com/cybertortuga/aitriage/internal/scanner/detector"
+	"github.com/dodobrands/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/scanner"
+	"github.com/dodobrands/aitriage/internal/scanner/detector"
 )
 
 func createMockReport() scanner.ScanReport {

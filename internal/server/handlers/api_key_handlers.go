@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/server/repositories"
+	"github.com/dodobrands/aitriage/internal/server/repositories"
 )
 
 type APIKeyHandler struct {

@@ -373,7 +373,7 @@ func SeedDefaultData(db *sql.DB) error {
 		"sla_medium":          "30",
 		"sla_low":             "90",
 		"enterprise_name":     "AITriage Enterprise",
-		"enterprise_support":  "support@cybertortuga.io",
+		"enterprise_support":  "security@dodobrands.io",
 	}
 
 	for k, v := range defaultConfigs {

@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/models"
+	"github.com/dodobrands/aitriage/internal/models"
 	"gopkg.in/yaml.v3"
 )
 

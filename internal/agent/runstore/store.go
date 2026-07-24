@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/agent/hostagent"
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/internal/agent/hostagent"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
 )
 
 // SchemaVersion is bumped only for incompatible run-bundle changes. Open()

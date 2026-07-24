@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cybertortuga/aitriage/internal/scanner/external"
+	"github.com/dodobrands/aitriage/internal/scanner/external"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

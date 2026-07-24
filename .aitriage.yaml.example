@@ -1,7 +1,7 @@
 # AITriage Configuration Template
 # Copy this file to '.aitriage.yaml' in your project root.
 # Environment variables are supported using $VAR or ${VAR} syntax.
-# Docs: https://github.com/cybertortuga/aitriage
+# Docs: https://github.com/dodobrands/aitriage
 
 # ─── LLM Integration (optional, for aitriage agent/fix) ───────────────────────
 llm:

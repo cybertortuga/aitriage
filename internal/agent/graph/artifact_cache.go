@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/agent/prompts"
+	"github.com/dodobrands/aitriage/internal/agent/prompts"
 )
 
 // Schema v2: generated CS-* IDs (FindingID) are excluded from the disposition

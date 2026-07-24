@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cybertortuga/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/engine/core"
 )
 
 // SARIF Format structs
@@ -84,7 +84,7 @@ func (r ScanReport) ToSARIF() ([]byte, error) {
 			Driver: SarifDriver{
 				Name:           "AITriage",
 				Version:        "1.0.0", // Update with actual version later if needed
-				InformationUri: "https://github.com/cybertortuga/aitriage",
+				InformationUri: "https://github.com/dodobrands/aitriage",
 				Rules:          []SarifRule{},
 			},
 		},

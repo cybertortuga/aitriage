@@ -11,7 +11,7 @@ import (
 func TestWebContainerArgs(t *testing.T) {
 	hostRoot := t.TempDir()
 	cache := t.TempDir()
-	args := webContainerArgs("ghcr.io/cybertortuga/aitriage:v1", hostRoot, cache, 8080)
+	args := webContainerArgs("ghcr.io/dodobrands/aitriage:v1", hostRoot, cache, 8080)
 	joined := strings.Join(args, " ")
 	for _, want := range []string{
 		"--name aitriage-web-8080",

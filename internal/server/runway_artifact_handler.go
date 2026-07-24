@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/agent/graph"
-	"github.com/cybertortuga/aitriage/internal/models"
-	"github.com/cybertortuga/aitriage/internal/server/middleware"
+	"github.com/dodobrands/aitriage/internal/agent/graph"
+	"github.com/dodobrands/aitriage/internal/models"
+	"github.com/dodobrands/aitriage/internal/server/middleware"
 )
 
 const maxRunwayArtifactBytes = 25 << 20

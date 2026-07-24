@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cybertortuga/aitriage/internal/agent/graph"
+	"github.com/dodobrands/aitriage/internal/agent/graph"
 )
 
 func writeTriageArtifact(path string, state *graph.AgentState) error {

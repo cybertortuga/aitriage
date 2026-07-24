@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/server/utils"
+	"github.com/dodobrands/aitriage/internal/server/utils"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/time/rate"
 )

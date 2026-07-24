@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/cybertortuga/aitriage/internal/report/healthcheck"
+	"github.com/dodobrands/aitriage/internal/report/healthcheck"
 )
 
 type MetricsRepository struct {

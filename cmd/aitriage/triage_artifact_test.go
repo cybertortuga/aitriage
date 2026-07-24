@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cybertortuga/aitriage/internal/agent/graph"
+	"github.com/dodobrands/aitriage/internal/agent/graph"
 )
 
 func TestWriteTriageArtifactWritesCanonicalJSON(t *testing.T) {

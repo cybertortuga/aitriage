@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/agent/graph"
-	"github.com/cybertortuga/aitriage/internal/models"
+	"github.com/dodobrands/aitriage/internal/agent/graph"
+	"github.com/dodobrands/aitriage/internal/models"
 )
 
 // handlePipeline exposes the canonical Runway/CI graph as an SSE stream for

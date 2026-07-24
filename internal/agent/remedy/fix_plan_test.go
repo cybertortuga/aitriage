@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cybertortuga/aitriage/internal/agent/remedy"
-	"github.com/cybertortuga/aitriage/internal/engine/core"
+	"github.com/dodobrands/aitriage/internal/agent/remedy"
+	"github.com/dodobrands/aitriage/internal/engine/core"
 )
 
 func TestGenerateFixPlan_Critical(t *testing.T) {
