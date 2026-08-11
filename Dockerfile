@@ -78,6 +78,9 @@ ENV PIPX_BIN_DIR=/usr/local/bin
 # Semgrep 1.170.1 pins mcp 1.23.3, which has three fixable HIGH CVEs.
 # AITriage never exposes Semgrep's MCP server; nevertheless, keep the
 # transitive package patched and prove CLI compatibility below and in E2E.
+# pipx can retain superseded dist-info directories after an in-place transitive
+# upgrade. The imported modules are patched below; stale metadata is removed so
+# scanners cannot mistake those superseded records for active packages.
 RUN pip3 install --break-system-packages 'pipx==1.8.0' && \
     pipx install 'semgrep==1.170.1' && \
     pipx runpip semgrep install --no-cache-dir \
@@ -92,6 +95,12 @@ RUN pip3 install --break-system-packages 'pipx==1.8.0' && \
       "import importlib.metadata as m; assert m.version('mcp') == '1.28.1'; assert m.version('msgpack') == '1.2.1'; assert m.version('setuptools') == '83.0.0'" && \
     /opt/pipx/venvs/bandit/bin/python -c \
       "import importlib.metadata as m; assert m.version('setuptools') == '83.0.0'" && \
+    find /opt/pipx /usr/local/lib -type d \
+      \( -name 'msgpack-1.1.2.dist-info' -o -name 'setuptools-70.3.0.dist-info' \) \
+      -prune -print -exec rm -rf '{}' + && \
+    test -z "$(find /opt/pipx /usr/local/lib -type d \
+      \( -name 'msgpack-1.1.2.dist-info' -o -name 'setuptools-70.3.0.dist-info' \) \
+      -print -quit)" && \
     bandit --version && \
     rm -rf /root/.cache/pip
 
