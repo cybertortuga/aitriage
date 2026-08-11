@@ -129,7 +129,27 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock \
             aquasec/trivy:0.72.0 image \
             --quiet --severity HIGH,CRITICAL --ignore-unfixed \
-            --scanners vuln --exit-code 1 aitriage:publish-candidate
+            --scanners vuln --list-all-pkgs --format json \
+            aitriage:publish-candidate > trivy-image.json
+
+          jq '{findings: [.Results[] as $result | $result.Vulnerabilities[]? | {
+            target: $result.Target,
+            package: .PkgName,
+            path: .PkgPath,
+            installed: .InstalledVersion,
+            fixed: .FixedVersion,
+            severity: .Severity,
+            id: .VulnerabilityID
+          }]}' trivy-image.json
+
+          test "$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-image.json)" -eq 0
+
+      - name: Upload candidate vulnerability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-publish-candidate-${{ github.sha }}
+          path: trivy-image.json
 
       - name: Build and push
         uses: docker/build-push-action@v6
