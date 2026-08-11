@@ -35,12 +35,14 @@ RUN go mod download github.com/zricethezav/gitleaks/v8@v8.30.1 && \
     cp -a /go/pkg/mod/github.com/zricethezav/gitleaks/v8@v8.30.1/. /src/ && \
     chmod -R u+w /src && \
     go mod edit -require=golang.org/x/crypto@v0.52.0 && \
+    go mod edit -require=golang.org/x/text@v0.39.0 && \
     go mod tidy && \
     CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
       go build -trimpath -ldflags="-s -w -X=github.com/zricethezav/gitleaks/v8/version.Version=v8.30.1" -o /gitleaks .
 
 # Trivy v0.72.0 was released with Go 1.26.4 and oras-go 2.6.0. Rebuilding the
-# exact tagged source on patched Go 1.26.5, oras-go 2.6.1, and gRPC-Go 1.82.1
+# exact tagged source on patched Go 1.26.5, oras-go 2.6.2, go-git 5.19.2,
+# x/text 0.39.0, and gRPC-Go 1.82.1
 # removes the fixable CVEs without changing Trivy's scanner version or behavior.
 FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS trivy-builder
 ARG TARGETOS
@@ -49,7 +51,9 @@ WORKDIR /src
 RUN go mod download github.com/aquasecurity/trivy@v0.72.0 && \
     cp -a /go/pkg/mod/github.com/aquasecurity/trivy@v0.72.0/. /src/ && \
     chmod -R u+w /src && \
-    go mod edit -require=oras.land/oras-go/v2@v2.6.1 && \
+    go mod edit -require=oras.land/oras-go/v2@v2.6.2 && \
+    go mod edit -require=github.com/go-git/go-git/v5@v5.19.2 && \
+    go mod edit -require=golang.org/x/text@v0.39.0 && \
     go mod edit -require=google.golang.org/grpc@v1.82.1 && \
     go mod tidy && \
     GOEXPERIMENT=jsonv2 CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
@@ -76,14 +80,18 @@ ENV PIPX_BIN_DIR=/usr/local/bin
 # transitive package patched and prove CLI compatibility below and in E2E.
 RUN pip3 install --break-system-packages 'pipx==1.8.0' && \
     pipx install 'semgrep==1.170.1' && \
-    pipx runpip semgrep install --no-cache-dir 'mcp==1.28.1' && \
+    pipx runpip semgrep install --no-cache-dir \
+      'mcp==1.28.1' 'msgpack==1.2.1' 'setuptools==83.0.0' && \
     pipx install 'bandit==1.9.4' && \
+    pipx runpip bandit install --no-cache-dir 'setuptools==83.0.0' && \
     pipx upgrade-shared && \
     /opt/pipx/shared/bin/python -m pip install --upgrade \
       'setuptools==83.0.0' 'wheel==0.47.0' 'jaraco.context==6.1.2' && \
     semgrep --version && semgrep scan --help >/dev/null && \
     /opt/pipx/venvs/semgrep/bin/python -c \
-      "import importlib.metadata as m; assert m.version('mcp') == '1.28.1'" && \
+      "import importlib.metadata as m; assert m.version('mcp') == '1.28.1'; assert m.version('msgpack') == '1.2.1'; assert m.version('setuptools') == '83.0.0'" && \
+    /opt/pipx/venvs/bandit/bin/python -c \
+      "import importlib.metadata as m; assert m.version('setuptools') == '83.0.0'" && \
     bandit --version && \
     rm -rf /root/.cache/pip
 
