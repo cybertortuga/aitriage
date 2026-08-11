@@ -110,12 +110,22 @@ jobs:
         run: |
           docker run --rm --entrypoint sh aitriage:publish-candidate -c '
             set -eu
+            test -z "$(find / -xdev -path "*/pip/_vendor*" -print -quit)"
+            test -z "$(find / -xdev -name "pip-*.dist-info" -print -quit)"
+            ! command -v pip3 >/dev/null
+            ! command -v pipx >/dev/null
             aitriage version
             semgrep --version
-            /opt/pipx/venvs/semgrep/bin/python -c "import importlib.metadata as m; assert m.version(\"mcp\") == \"1.28.1\""
+            /opt/pipx/venvs/semgrep/bin/python -c "import importlib.metadata as m; assert m.version(\"mcp\") == \"1.28.1\"; assert m.version(\"setuptools\") == \"83.0.0\""
+            /opt/pipx/venvs/bandit/bin/python -c "import importlib.metadata as m; assert m.version(\"setuptools\") == \"83.0.0\""
             trivy --version
             gitleaks version
             bandit --version
+            mkdir -p /tmp/scanner-smoke
+            printf "%s\n" "rules:" "  - id: self-comparison" "    languages: [python]" "    severity: WARNING" "    message: self comparison" "    pattern: \"\$X == \$X\"" > /tmp/scanner-smoke/rule.yml
+            printf "%s\n" "value = 1" "print(value)" > /tmp/scanner-smoke/clean.py
+            semgrep scan --config=/tmp/scanner-smoke/rule.yml --json --quiet /tmp/scanner-smoke/clean.py >/dev/null
+            bandit -r /tmp/scanner-smoke/clean.py -f json -q >/dev/null
           '
 
       - name: Run full scanner process E2E
@@ -129,7 +139,60 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock \
             aquasec/trivy:0.72.0 image \
             --quiet --severity HIGH,CRITICAL --ignore-unfixed \
-            --scanners vuln --exit-code 1 aitriage:publish-candidate
+            --scanners vuln --list-all-pkgs --format json \
+            aitriage:publish-candidate > trivy-image.json
+
+          jq '{findings: [.Results[] as $result | $result.Vulnerabilities[]? | {
+            target: $result.Target,
+            package: .PkgName,
+            path: .PkgPath,
+            installed: .InstalledVersion,
+            fixed: .FixedVersion,
+            severity: .Severity,
+            id: .VulnerabilityID
+          }]}' trivy-image.json
+
+          test "$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-image.json)" -eq 0
+
+      - name: Upload candidate vulnerability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-publish-candidate-${{ github.sha }}
+          path: trivy-image.json
+
+      - name: Remove amd64 candidate from the runner
+        run: docker image rm aitriage:publish-candidate
+
+      - name: Build arm64 smoke candidate
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/arm64
+          load: true
+          tags: aitriage:arm64-smoke
+          build-args: |
+            AITRIAGE_VERSION=${{ steps.version.outputs.value }}
+          cache-from: type=gha
+
+      - name: Verify arm64 scanner bundle
+        run: |
+          docker run --rm --platform linux/arm64 --entrypoint sh aitriage:arm64-smoke -c '
+            set -eu
+            test -z "$(find / -xdev -path "*/pip/_vendor*" -print -quit)"
+            ! command -v pip3 >/dev/null
+            ! command -v pipx >/dev/null
+            aitriage version
+            semgrep --version
+            semgrep scan --help >/dev/null
+            bandit --version
+            trivy --version
+            gitleaks version
+          '
+
+      - name: Remove arm64 candidate from the runner
+        run: docker image rm aitriage:arm64-smoke
 
       - name: Build and push
         uses: docker/build-push-action@v6
