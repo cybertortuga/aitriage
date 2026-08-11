@@ -30,12 +30,22 @@ jobs:
         run: |
           docker run --rm --entrypoint sh aitriage:test -c '
             set -eu
+            test -z "$(find / -xdev -path "*/pip/_vendor*" -print -quit)"
+            test -z "$(find / -xdev -name "pip-*.dist-info" -print -quit)"
+            ! command -v pip3 >/dev/null
+            ! command -v pipx >/dev/null
             aitriage version
             semgrep --version
-            /opt/pipx/venvs/semgrep/bin/python -c "import importlib.metadata as m; assert m.version(\"mcp\") == \"1.28.1\""
+            /opt/pipx/venvs/semgrep/bin/python -c "import importlib.metadata as m; assert m.version(\"mcp\") == \"1.28.1\"; assert m.version(\"setuptools\") == \"83.0.0\""
+            /opt/pipx/venvs/bandit/bin/python -c "import importlib.metadata as m; assert m.version(\"setuptools\") == \"83.0.0\""
             trivy --version
             gitleaks version
             bandit --version
+            mkdir -p /tmp/scanner-smoke
+            printf "%s\n" "rules:" "  - id: self-comparison" "    languages: [python]" "    severity: WARNING" "    message: self comparison" "    pattern: \"\$X == \$X\"" > /tmp/scanner-smoke/rule.yml
+            printf "%s\n" "value = 1" "print(value)" > /tmp/scanner-smoke/clean.py
+            semgrep scan --config=/tmp/scanner-smoke/rule.yml --json --quiet /tmp/scanner-smoke/clean.py >/dev/null
+            bandit -r /tmp/scanner-smoke/clean.py -f json -q >/dev/null
           '
 
       - name: Run scan via entrypoint (SARIF gate)
